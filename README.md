@@ -1,11 +1,25 @@
 # sonar
 
+*[Version française](README.fr.md)*
+
 A Claude Code **mod** that gives the **Claude Desktop Code tab** what the terminal's *status line* shows —
 **without spending a single token**: it reads figures the engine already has and runs `git status` locally.
 
+In the prompt footer, between the permission mode and the model name, a short line — alerts first, since the app cuts the end
+of the line when the window is narrow:
+
 ```
-ctx 34% · 5h 23% → 15:00 · 7d 41% ≈ 20%/d → Fri 13:00 · cache 🔥 92% → 13:42 · my-repo ⎇ feat/x ●2 · 💰 $1.23
+⚠️7d 80% · ctx 34% · 5h 23% · 🔥 · ⎇ feat/x ●2 · $13
 ```
+
+Type `/sonar` for the full detail (reset times, daily budget, cache expiry, repo name):
+
+```
+ctx 34% · 5h 23% → 15:00 · ⚠️ 7d 80% ≈ 6.7%/d → Fri 13:00 · cache 🔥 92% → 13:42 · my-repo ⎇ feat/x ●2 · $12.84
+```
+
+Hovering the footer shows what the app cut. The `banner` placement shows the full line across the window
+(the `hint` and `status` placements exist for the terminal; the desktop app does not draw them).
 
 *(Like a ship's sonar: it keeps sounding what lies around you — context, limits, cache — so you never hit bottom by surprise.)*
 
@@ -24,22 +38,23 @@ cost where no ledger is kept) is simply not shown, and thresholds, language, seg
 | other limits (e.g. a gateway's `budget`) | `session.measure` | absolute thresholds only (no known window length) |
 | `cache` 🔥 hit ratio → when it goes cold; ❔ uncertain; ❄️ cold | last request of the main thread (`turn.step`, subagents excluded) | ❄️ in orange |
 | repo `⎇` branch `●` changed files | `$.session.repo()` + `git status` (at most every 5 s, 3 s timeout) | ⚠️ on `protectedBranches` (`main,master`) |
-| `💰` session cost estimate (list price) | `session.measure` | — |
+| session cost estimate (list price) | `session.measure` | — |
 
 Cache lifetime: inferred from responses (a cache read after more than 6 minutes proves 1 h; a full rewrite points to 5 min),
 or told by the engine on a model switch, or forced with `/sonar ttl`. Until it is known, the cache is shown warm for 5 minutes (`≥`),
 uncertain up to an hour, then cold.
 
-Colours exist only in the `hint` and `banner` placements; everywhere, ⚠️ doubles the colour.
+In the banner, only the figure at fault is coloured; everywhere, ⚠️ doubles the colour.
 
 ## `/sonar` command (English or French words)
 
 | Command | Effect |
 |---|---|
-| `/sonar footer` (`pied`) | at the right of the prompt footer, with the mode labels (default) |
+| `/sonar` | full detail, current placement, cache lifetime, help |
+| `/sonar footer` (`pied`) | short line in the prompt footer (default); in the terminal, with the mode labels |
 | `/sonar hint` (`indice`) | in place of the hint line under the prompt |
 | `/sonar status` (`ligne`) | pinned status line under the prompt (`$.ui.status`) |
-| `/sonar banner` (`bandeau`) | banner above the prompt, with a hide button |
+| `/sonar banner` (`bandeau`) | one grey line above the prompt, full width |
 | `/sonar ttl 5m` / `1h` / `auto` | prompt cache lifetime; `auto` infers it |
 | `/sonar hide` / `show` (`masquer` / `afficher`) | hide / bring back |
 
@@ -61,7 +76,8 @@ claude plugin marketplace add Gh0st113/sonar
 claude plugin install sonar@sonar-mods
 ```
 
-Then `/reload-plugins` in an open session (or start a new one).
+Then `/reload-plugins` in an open session (or start a new one). The line shows up after the first answer:
+before it, the engine has measured nothing yet.
 
 From a local clone (for hacking on it):
 

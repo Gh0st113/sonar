@@ -36,18 +36,17 @@ const TEXTES = {
     cout: (x) => `${x} $`,
     inconnu: (a) => `argument inconnu : « ${a} »`,
     aide: [
-      '/sonar pied | indice | ligne | bandeau — où afficher la sonar',
+      '/sonar pied | indice | ligne | bandeau — où afficher le sonar',
       '/sonar ttl 5m | 1h | auto — durée de vie du cache (auto : déduite des réponses)',
       '/sonar masquer | afficher',
       'Seuils, langue, segments, branches : réglages du plugin (pluginConfigs.sonar dans settings.json).',
     ].join('\n'),
     etat: (lieu, ttl, force) => `Sonar : ${lieu}, cache ${ttl ?? 'inconnu'}${force ? ' (forcé)' : ''}.`,
-    affichee: (lieu) => `Sonar affichée : ${lieu}.`,
+    affichee: (lieu) => `Sonar affiché : ${lieu}.`,
     ttlAuto: 'Durée du cache : déduite des réponses.',
     ttlForce: (t) => `Durée du cache forcée : ${t}.`,
-    masquee: 'Sonar masquée (/sonar afficher pour la remettre).',
-    remise: 'Sonar affichée.',
-    boutonMasquer: 'masquer',
+    masquee: 'Sonar masqué (/sonar afficher pour le remettre).',
+    remise: 'Sonar affiché.',
   },
   en: {
     noms: { five_hour: '5h', seven_day: '7d', spend_limit: 'budget' },
@@ -68,7 +67,6 @@ const TEXTES = {
     ttlForce: (t) => `Cache lifetime forced: ${t}.`,
     masquee: 'Sonar hidden (/sonar show to bring it back).',
     remise: 'Sonar shown.',
-    boutonMasquer: 'hide',
   },
 };
 export const textes = (langue) => TEXTES[langue] ?? TEXTES.en;
@@ -150,6 +148,10 @@ export const pct = (x, cfg = DEFAUTS) =>
   (x < 10 && !Number.isInteger(x) ? x.toFixed(1).replace('.', textes(cfg.langue).decimale) : String(entier(x)));
 // « 34 % » en français (espace), « 34% » en anglais.
 const pc = (x, cfg) => (cfg.langue === 'fr' ? `${pct(x, cfg)} %` : `${pct(x, cfg)}%`);
+// Écriture serrée du pied (une vingtaine de caractères visibles) : « 62% », « 7j », ⚠️ collé, dans toutes les langues.
+const pcSerre = (x, cfg) => `${pct(x, cfg)}%`;
+const serre = (nom) => nom.replace(/\s+/g, '');
+const ICONE_SERREE = { ok: '', attention: '⚠️', alerte: '⚠️' };
 
 export function niveauContexte(p, cfg = DEFAUTS) {
   if (!fini(p)) return undefined;
@@ -215,6 +217,8 @@ export function deduireTtl(avant, apres) {
 }
 
 export const montant = (usd, cfg = DEFAUTS) => textes(cfg.langue).cout(usd.toFixed(2).replace('.', textes(cfg.langue).decimale));
+// Pied : à partir de 10, les centimes n'apportent rien et coûtent 3 caractères.
+const montantCourt = (usd, cfg) => (usd >= 10 ? textes(cfg.langue).cout(String(Math.round(usd))) : montant(usd, cfg));
 
 // Nom court d'un dépôt : la fin de l'URL du remote, sinon le dernier dossier de la racine.
 export function nomDepot(remote, racine) {
@@ -242,32 +246,35 @@ export function segments(d, maintenant, cfg = DEFAUTS) {
   const actif = (k) => cfg.segments.includes(k);
   const s = [];
   const nc = actif('ctx') ? niveauContexte(d.contexte, cfg) : undefined;
-  if (nc) s.push({ cle: 'ctx', texte: `${ICONE[nc]}ctx ${pc(d.contexte, cfg)}`, niveau: nc });
+  if (nc) s.push({ cle: 'ctx', texte: `${ICONE[nc]}ctx ${pc(d.contexte, cfg)}`, court: `${ICONE_SERREE[nc]}ctx ${pcSerre(d.contexte, cfg)}`, niveau: nc });
   if (actif('quotas')) {
     for (const q of quotasTries(d.quotas)) {
       const r = rythme(q, maintenant, cfg);
       if (!r) continue;
       const nom = t.noms[r.kind] ?? r.kind;
       if (r.remis) {
-        s.push({ cle: r.kind, texte: `${nom} ${t.remis}`, niveau: 'ok' });
+        s.push({ cle: r.kind, texte: `${nom} ${t.remis}`, court: `${serre(nom)} ↺`, niveau: 'ok' });
         continue;
       }
-      let x = `${ICONE[r.niveau]}${nom} ${r.epuise ? t.epuise : pc(r.utilise, cfg)}`;
+      const tete = `${ICONE[r.niveau]}${nom} ${r.epuise ? t.epuise : pc(r.utilise, cfg)}`;
+      let x = tete;
+      const court = `${ICONE_SERREE[r.niveau]}${serre(nom)} ${r.epuise ? t.epuise : pcSerre(r.utilise, cfg)}`;
       if (r.parJour !== undefined) x += ` ≈ ${pct(r.parJour, cfg)}${cfg.langue === 'fr' ? ' ' : ''}${t.parJour}`;
       if (r.reste !== undefined) x += ` ${t.reste(pct(r.reste, cfg))}`;
       if (r.reset !== undefined) x += ` → ${echeance(r.reset, maintenant, cfg)}`;
-      s.push({ cle: r.kind, texte: x, niveau: r.niveau });
+      // `tete` : la partie que le bandeau colore (le chiffre en cause), la suite reste grise.
+      s.push({ cle: r.kind, texte: x, tete, court, niveau: r.niveau });
     }
   }
   const c = actif('cache') ? etatCache(d.cache, d.ttlMs, maintenant, d.modele) : undefined;
   if (c && c.etat !== 'rien') {
     if (c.etat === 'chaud') {
       const taux = c.taux !== undefined ? ` ${pc(entier(100 * c.taux), cfg)}` : '';
-      s.push({ cle: 'cache', texte: `cache 🔥${taux} → ${c.auMoins ? '≥ ' : ''}${heure(c.expire, cfg)}`, niveau: 'ok' });
+      s.push({ cle: 'cache', texte: `cache 🔥${taux} → ${c.auMoins ? '≥ ' : ''}${heure(c.expire, cfg)}`, court: '🔥', niveau: 'ok' });
     } else if (c.etat === 'incertain') {
-      s.push({ cle: 'cache', texte: `cache ❔ ${t.incertain}`, niveau: 'ok' });
+      s.push({ cle: 'cache', texte: `cache ❔ ${t.incertain}`, court: 'cache ❔', niveau: 'ok' });
     } else {
-      s.push({ cle: 'cache', texte: `cache ❄️ ${c.autreModele ? t.autreModele : t.froid}`, niveau: 'attention' });
+      s.push({ cle: 'cache', texte: `cache ❄️ ${c.autreModele ? t.autreModele : t.froid}`, court: 'cache ❄️', niveau: 'attention' });
     }
   }
   if (actif('depot') && d.depot?.nom) {
@@ -276,10 +283,17 @@ export function segments(d, maintenant, cfg = DEFAUTS) {
     let x = `${garde ? '⚠️ ' : ''}${d.depot.nom}`;
     if (b) x += ` ⎇ ${b}`;
     if (d.depot.modifies) x += ` ●${d.depot.modifies}`;
-    s.push({ cle: 'depot', texte: x, niveau: garde ? 'attention' : 'ok' });
+    s.push({ cle: 'depot', texte: x, court: `${garde ? '⚠️' : ''}${b ? `⎇ ${b}` : d.depot.nom}${d.depot.modifies ? ` ●${d.depot.modifies}` : ''}`, niveau: garde ? 'attention' : 'ok' });
   }
-  if (actif('cout') && fini(d.cout)) s.push({ cle: 'cout', texte: `💰 ${montant(d.cout, cfg)}`, niveau: 'ok' });
+  if (actif('cout') && fini(d.cout)) s.push({ cle: 'cout', texte: montant(d.cout, cfg), court: montantCourt(d.cout, cfg), niveau: 'ok' });
   return s;
 }
 
 export const ligne = (segs) => segs.map((x) => x.texte).join(' · ');
+
+// Pied : la place est courte et l'appli coupe la fin de la ligne ; la largeur n'est pas mesurable (police proportionnelle),
+// donc on trie par priorité : alertes, puis attentions, puis le reste dans l'ordre des segments (tri stable).
+const PRIORITE = { alerte: 0, attention: 1, ok: 2 };
+export const ligneCourte = (segs) => [...segs]
+  .sort((a, b) => (PRIORITE[a.niveau] ?? 2) - (PRIORITE[b.niveau] ?? 2))
+  .map((x) => x.court ?? x.texte).join(' · ');

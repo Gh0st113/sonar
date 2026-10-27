@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  rythme, niveauContexte, etatCache, deduireTtl, segments, ligne, lireStatut, nomDepot, lireCommande, lireConfig,
+  rythme, niveauContexte, etatCache, deduireTtl, segments, ligne, ligneCourte, lireStatut, nomDepot, lireCommande, lireConfig,
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
 } from '../hooks/logique.mjs';
 
@@ -195,17 +195,32 @@ test('segments (fr) : tout présent, 5 h avant 7 j, sans « undefined » ni « N
   assert.deepEqual(segs.map((s) => s.cle), ['ctx', 'five_hour', 'seven_day', 'cache', 'depot', 'cout']);
   const t = ligne(segs);
   assert.doesNotMatch(t, /undefined|NaN/);
-  assert.match(t, /^ctx 34 % · 5 h 23 % → \d\d:\d\d · 7 j 41 % ≈ 20 %\/j → \S+ \d\d:\d\d · cache 🔥 92 % → \d\d:\d\d · projet-a ⎇ feat\/x ●3 · 💰 1,23 \$$/);
+  assert.match(t, /^ctx 34 % · 5 h 23 % → \d\d:\d\d · 7 j 41 % ≈ 20 %\/j → \S+ \d\d:\d\d · cache 🔥 92 % → \d\d:\d\d · projet-a ⎇ feat\/x ●3 · 1,23 \$$/);
 });
 
 test('segments (en)', () => {
   const t = ligne(segments(TOUT, T0, EN));
-  assert.match(t, /^ctx 34% · 5h 23% → \d\d:\d\d · 7d 41% ≈ 20%\/d → [A-Z][a-z]{2} \d\d:\d\d · cache 🔥 92% → \d\d:\d\d · projet-a ⎇ feat\/x ●3 · 💰 \$1\.23$/);
+  assert.match(t, /^ctx 34% · 5h 23% → \d\d:\d\d · 7d 41% ≈ 20%\/d → [A-Z][a-z]{2} \d\d:\d\d · cache 🔥 92% → \d\d:\d\d · projet-a ⎇ feat\/x ●3 · \$1\.23$/);
+});
+
+test('pied (ligne courte) : sans heures ni budget/jour, alertes en tête, ordre stable sinon', () => {
+  // Écriture serrée dans toutes les langues : « 34% », « 7j », ⚠️ collé.
+  assert.equal(ligneCourte(segments(TOUT, T0, FR)), 'ctx 34% · 5h 23% · 7j 41% · 🔥 · ⎇ feat/x ●3 · 1,23 $');
+  assert.equal(ligneCourte(segments(TOUT, T0, EN)), 'ctx 34% · 5h 23% · 7d 41% · 🔥 · ⎇ feat/x ●3 · $1.23');
+  // 7 j très en avance (alerte) et branche protégée (attention) passent devant ; le reste garde son ordre.
+  const d = { ...TOUT, quotas: [q7(80, 3 * J), q5(23, 2 * H)], depot: { nom: 'p', branche: 'main', modifies: 0 } };
+  assert.equal(ligneCourte(segments(d, T0, FR)), '⚠️7j 80% · ⚠️⎇ main · ctx 34% · 5h 23% · 🔥 · 1,23 $');
+  assert.equal(ligneCourte(segments({ quotas: [q5(40, -1)] }, T0, FR)), '5h ↺');
+  // Coût : arrondi à partir de 10 (les centimes coûtent 3 caractères), exact en dessous.
+  assert.equal(ligneCourte(segments({ quotas: [], cout: 13.34 }, T0, FR)), '13 $');
+  assert.equal(ligneCourte(segments({ quotas: [], cout: 13.34 }, T0, EN)), '$13');
+  assert.equal(ligneCourte(segments({ quotas: [], cout: 0.42 }, T0, EN)), '$0.42');
+  assert.equal(ligneCourte([]), '');
 });
 
 test('segments : choix et ordre fixe, branches protégées réglables', () => {
   const cfg = lireConfig({ language: 'fr', segments: 'cost,context', protectedBranches: 'develop' });
-  assert.equal(ligne(segments(TOUT, T0, cfg)), 'ctx 34 % · 💰 1,23 $');
+  assert.equal(ligne(segments(TOUT, T0, cfg)), 'ctx 34 % · 1,23 $');
   const dev = segments({ quotas: [], depot: { nom: 'p', branche: 'develop', modifies: 0 } }, T0, cfg);
   assert.equal(dev.length, 0); // dépôt désactivé
   const avecDepot = lireConfig({ language: 'fr', protectedBranches: 'develop' });

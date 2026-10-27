@@ -6,7 +6,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } from 'claude-code'
 
 import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
-import { EMPLACEMENTS, TTL, deduireTtl, ligne, lireCommande, lireConfig, lireStatut, nomDepot, nomEmplacement, segments, textes } from './logique.mjs'
+import { EMPLACEMENTS, TTL, deduireTtl, ligne, ligneCourte, lireCommande, lireConfig, lireStatut, nomDepot, nomEmplacement, segments, textes } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
 const cache = atom({ plugin: 'sonar', key: 'cache' } as const, null as SonarReponse | null)
@@ -105,20 +105,25 @@ function demarrerMinuterie($: EngineInterface) {
   })
 }
 
-// Segments colorés (emplacements qui dessinent) : gris quand tout va bien, orange / rouge sinon.
-async function dessin($: EngineInterface, e: RenderInput, avecBouton: boolean) {
+// Une seule ligne grise ; en alerte, seule la tête du segment (le chiffre en cause) prend la couleur. Pas de bouton :
+// sur l'appli de bureau il tombait seul sur une 2e ligne, et /sonar masquer suffit.
+async function dessin($: EngineInterface, e: RenderInput) {
   const segs = await calculer($)
   if (segs.length === 0) return undefined
-  const { Box, Button, Text } = $.ui.resolve(e)
+  const { Box, Text } = $.ui.resolve(e)
   return (
     <Box flexDirection="row">
-      {segs.map((s, i) => (
-        <Text key={s.cle} dimColor={s.niveau === 'ok'} color={s.niveau === 'ok' ? undefined : COULEUR[s.niveau as 'attention' | 'alerte']}>
-          {i > 0 ? ' · ' : ''}{s.texte}
-        </Text>
-      ))}
-      {avecBouton && <Text> </Text>}
-      {avecBouton && <Button key="masquer" plain label={textes(cfg.langue).boutonMasquer} onPress={() => update($, masque, () => true)} />}
+      {segs.flatMap((s, i) => {
+        const sep = i > 0 ? ' · ' : ''
+        if (s.niveau === 'ok') return [<Text key={s.cle} dimColor>{sep}{s.texte}</Text>]
+        const tete = s.tete ?? s.texte
+        const suite = s.texte.slice(tete.length)
+        return [
+          ...(sep ? [<Text key={`${s.cle}-sep`} dimColor>{sep}</Text>] : []),
+          <Text key={s.cle} color={COULEUR[s.niveau as 'attention' | 'alerte']}>{tete}</Text>,
+          ...(suite ? [<Text key={`${s.cle}-suite`} dimColor>{suite}</Text>] : []),
+        ]
+      })}
     </Box>
   )
 }
@@ -130,7 +135,12 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
     try {
-      await $.command.register({ name: 'sonar', description: cfg.langue === 'fr' ? 'Sonar : emplacement, durée du cache, masquer / afficher' : 'Sonar: placement, cache lifetime, hide / show' })
+      // Le menu ne propose pas de sous-commandes : `argumentHint` les rappelle en gris après le nom.
+      await $.command.register({
+        name: 'sonar',
+        description: cfg.langue === 'fr' ? 'Sonar : détail complet, emplacement, durée du cache, masquer / afficher' : 'Sonar: full detail, placement, cache lifetime, hide / show',
+        argumentHint: cfg.langue === 'fr' ? '[pied | indice | ligne | bandeau | ttl 5m|1h|auto | masquer | afficher]' : '[footer | hint | status | banner | ttl 5m|1h|auto | hide | show]',
+      })
       const lieuGarde = await $.store.get('emplacement')
       if (typeof lieuGarde === 'string' && (EMPLACEMENTS as readonly string[]).includes(lieuGarde)) {
         await update($, emplacement, () => lieuGarde as SonarEmplacement)
@@ -143,7 +153,7 @@ export const register: Register = (on, options) => {
       demarrerMinuterie($)
       await rafraichirDepot($)
       await poserStatut($)
-    } catch { /* la sonar ne bloque jamais le démarrage */ }
+    } catch { /* le sonar ne bloque jamais le démarrage */ }
     return r
   }).catch(($, e, next) => next(e))
 
@@ -223,7 +233,9 @@ export const register: Register = (on, options) => {
     if (c.erreur !== undefined) return { text: `${t.inconnu(c.erreur)}\n${t.aide}` }
     if (c.aide) {
       const force = (await $.store.get('ttl')) !== undefined
-      return { text: `${t.etat(nomEmplacement(await lieu($), cfg.langue), (await read($, ttl)) ?? undefined, force)}\n${t.aide}` }
+      // Le détail complet (heures de remise, budget par jour, coût, dépôt), que le pied court ne montre pas.
+      const detail = ligne(await calculer($))
+      return { text: `${detail ? `${detail}\n` : ''}${t.etat(nomEmplacement(await lieu($), cfg.langue), (await read($, ttl)) ?? undefined, force)}\n${t.aide}` }
     }
     if (c.emplacement) {
       await update($, emplacement, () => c.emplacement as SonarEmplacement)
@@ -255,19 +267,26 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     await read($, tic)
     if ((await lieu($)) !== 'pied' || (await read($, masque))) return next(e)
-    const x = ligne(await calculer($))
+    // L'appli de bureau ne dessine pas les `modes` ajoutés (essai du 27/10) : on y dessine notre propre arbre.
+    const x = ligneCourte(await calculer($))
+    if (e.surface === 'desktop') {
+      if (!x) return next(e)
+      const { Text } = $.ui.resolve(e)
+      // Notre dessin remplace celui du moteur : on garde les modes natifs devant, joints comme il le fait.
+      return <Text dimColor>{[...e.props.modes, x].join(' & ')}</Text>
+    }
     return next(x ? { ...e, props: { ...e.props, modes: [...e.props.modes, x] } } : e)
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     await read($, tic)
     if ((await lieu($)) !== 'indice' || (await read($, masque))) return next(e)
-    return (await dessin($, e, false)) ?? next(e)
+    return (await dessin($, e)) ?? next(e)
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     await read($, tic)
     if (e.props.hasSurvey || (await lieu($)) !== 'bandeau' || (await read($, masque))) return next(e)
-    return (await dessin($, e, true)) ?? next(e)
+    return (await dessin($, e)) ?? next(e)
   }).catch(($, e, next) => next(e))
 }

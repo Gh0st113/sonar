@@ -54,16 +54,24 @@ async function demarrer($: Moteur) {
   await $.session.measure(MESURE)
 }
 
-test('pied (défaut) : contexte, quotas avec rythme, dépôt, coût, sur terminal et desktop', FR, async ($, on) => {
+test('pied (défaut) : ligne courte sur terminal et desktop, détail complet dans /sonar', FR, async ($, on) => {
   moteur(on)
   await demarrer($)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PIED, surface })
     const t = (await ui.find({ type: 'Text', text: /ctx/ }))?.text ?? ''
-    expect(t).toMatch(/^ctx 34 % · 5 h 23 % → \d\d:\d\d · 7 j 41 % ≈ 20 %\/j → \S+ \d\d:\d\d · projet-a ⎇ feat\/x ●2 · 💰 1,23 \$$/)
-    expect(t).not.toMatch(/undefined|NaN/)
+    expect(t).toBe('ctx 34% · 5h 23% · 7j 41% · ⎇ feat/x ●2 · 1,23 $')
     await ui.unmount()
   }
+  // Sur desktop, notre dessin remplace celui du moteur : un mode natif reste devant.
+  const avecMode = await $.ui.mount({ ...PIED, props: { modes: ['focus'] }, surface: 'desktop' })
+  expect((await avecMode.find({ type: 'Text', text: /ctx/ }))?.text).toBe('focus & ctx 34% · 5h 23% · 7j 41% · ⎇ feat/x ●2 · 1,23 $')
+  await avecMode.unmount()
+  const r = await commande($, '') as { text?: string }
+  const detail = r.text?.split('\n')[0] ?? ''
+  expect(detail).toMatch(/^ctx 34 % · 5 h 23 % → \d\d:\d\d · 7 j 41 % ≈ 20 %\/j → \S+ \d\d:\d\d · projet-a ⎇ feat\/x ●2 · 1,23 \$$/)
+  expect(detail).not.toMatch(/undefined|NaN/)
+  expect(r.text).toContain('Sonar : pied')
 })
 
 test('cache : la réponse du fil principal compte, celle d’un sous-agent non ; froid après 1 h', FR, async ($, on) => {
@@ -82,27 +90,36 @@ test('cache : la réponse du fil principal compte, celle d’un sous-agent non ;
   for await (const _ of $.turn.step({ turnId: 't2', index: 0, model: 'claude-haiku-5-5', messageCount: 1, agentId: 'a1' })) { /* rien */ }
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PIED, surface })
-    // Durée de vie encore inconnue : chaud au moins 5 min (« ≥ »).
-    expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toMatch(/cache 🔥 92 % → ≥ \d\d:\d\d/)
+    expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toContain(' · 🔥 · ')
     await ui.unmount()
   }
+  // Durée de vie encore inconnue : chaud au moins 5 min (« ≥ ») ; le détail est dans /sonar.
+  expect((await commande($, '') as { text?: string }).text).toMatch(/cache 🔥 92 % → ≥ \d\d:\d\d/)
   await horloge.advance(H + 60_000)
   const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toContain('cache ❄️ froid')
+  // Froid = attention : il passe en tête du pied.
+  expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toMatch(/^cache ❄️ · ctx 34%/)
   await ui.unmount()
+  expect((await commande($, '') as { text?: string }).text).toContain('cache ❄️ froid')
 })
 
-test('/sonar bandeau : couleurs, bouton masquer, puis /sonar afficher', FR, async ($, on) => {
+test('/sonar bandeau : une ligne grise, seule la tête du segment en alerte colorée, /sonar masquer puis afficher', FR, async ($, on) => {
   moteur(on)
   await demarrer($)
+  // 7 j très en avance : alerte.
+  await $.session.measure({ ...MESURE, rateLimits: [QUOTAS[0]!, { ...QUOTAS[1]!, percentUsed: 90 }] })
   await commande($, 'bandeau')
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BANDEAU, surface })
     expect((await ui.find({ type: 'Text', text: /ctx 34/ }))?.text).toBe('ctx 34 %')
+    // Le séparateur reste gris : seule la tête du segment prend la couleur.
+    expect((await ui.find({ type: 'Text', text: /7 j/ }))?.text).toBe('⚠️ 7 j 90 %')
+    expect((await ui.find({ type: 'Text', text: /%\/j/ }))?.text).toMatch(/^ ≈ \d+(,\d)? %\/j → \S+ \d\d:\d\d$/)
+    expect(await ui.find({ type: 'Button' })).toBeUndefined()
     await ui.unmount()
   }
+  await commande($, 'masquer')
   const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
-  await ui.press({ key: 'masquer' })
   expect(await ui.find({ type: 'Text', text: /ctx/ })).toBeUndefined()
   await ui.unmount()
   await commande($, 'afficher')
@@ -131,7 +148,7 @@ test('git en panne ou hors dépôt : pas de segment dépôt, le reste s’affich
   await demarrer($)
   const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
   const t = (await ui.find({ type: 'Text', text: /ctx/ }))?.text ?? ''
-  expect(t).toContain('ctx 34 %')
+  expect(t).toContain('ctx 34%')
   expect(t).not.toContain('⎇')
   await ui.unmount()
 })
@@ -158,7 +175,8 @@ test('quota remis à zéro pendant l’attente : « ↺ » au tic suivant', FR, 
   await demarrer($)
   await horloge.advance(2 * H + 60_000)
   const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toContain('5 h ↺ remis à zéro')
+  expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toContain('5h ↺')
+  expect((await commande($, '') as { text?: string }).text).toContain('5 h ↺ remis à zéro')
   await ui.unmount()
 })
 
@@ -168,7 +186,7 @@ test('options : anglais, segments choisis, emplacement par défaut « banner »'
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BANDEAU, surface })
     expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toBe('ctx 34%')
-    expect((await ui.find({ type: 'Text', text: /💰/ }))?.text).toBe(' · 💰 $1.23')
+    expect((await ui.find({ type: 'Text', text: /\$1\.23/ }))?.text).toBe(' · $1.23')
     expect(await ui.find({ type: 'Text', text: /5h|⎇/ })).toBeUndefined()
     await ui.unmount()
   }
@@ -185,6 +203,6 @@ test('hors abonnement : ni quotas ni coût connus, seul le reste s’affiche', F
   await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
   await $.session.measure({ context: { tokens: 20_000, window: 1_000_000, percent: 2 }, rateLimits: [], changed: ['context'] })
   const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text' }))?.text).toBe('ctx 2 %')
+  expect((await ui.find({ type: 'Text' }))?.text).toBe('ctx 2%')
   await ui.unmount()
 })
