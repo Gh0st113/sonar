@@ -1,5 +1,7 @@
 // Mod « sonar » : la status line du terminal, pour l'onglet Code de Claude Desktop.
 // N'ajoute aucun token : il lit les chiffres que le moteur a déjà (session.measure, turn.step) et git en local.
+// Ne répète pas ce que Claude Code affiche déjà (contexte, % des 5 h) : le pied ne garde que l'essentiel,
+// le bandeau (option) et le panneau de /sonar montrent le détail en jauges.
 // Rien de propre à un abonnement : un chiffre que le moteur n'a pas (quotas hors abonnement, coût) n'est pas affiché,
 // et seuils, langue, segments et branches protégées sont des options du plugin. Logique pure (testée) : ./logique.mjs.
 import { atom, read, update } from 'claude-code'
@@ -7,8 +9,8 @@ import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } 
 
 import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
 import {
-  EMPLACEMENTS, TTL, besoinMaison, cheminArchive, cheminJournal, cleReleve, deduireTtl, ligne, ligneCourte,
-  lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, segments, textes,
+  EMPLACEMENTS, TTL, besoinMaison, cheminArchive, cheminJournal, cleReleve, deduireTtl, elementsPied, jauges, ligne,
+  lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -20,7 +22,16 @@ const emplacement = atom({ plugin: 'sonar', key: 'emplacement' } as const, null 
 const masque = atom({ plugin: 'sonar', key: 'masque' } as const, false)
 const tic = atom({ plugin: 'sonar', key: 'tic' } as const, 0)
 
+// Ce que logique.mjs renvoie pour le pied (elementsPied) et le détail (jauges).
+type Morceau = { cle: string; etiquette: string; valeur: string; detail?: string; niveau: 'ok' | 'attention' | 'alerte'; part?: number; repere?: number }
+type Vue = ReturnType<EngineInterface['ui']['resolve']>
+
 const COULEUR = { attention: 'warning', alerte: 'error' } as const
+// Le Svg est dessiné comme une image : pas de couleurs du thème, un gris lisible sur fond clair comme sombre.
+const GRIS = '#888'
+const TEINTE = { ok: GRIS, attention: '#d4a017', alerte: '#e5484d' } as const
+const PANNEAU = 'sonar'
+const SEP = '   '
 const GIT_DELAI_MS = 3000
 const GIT_ECART_MS = 5000
 
@@ -43,8 +54,8 @@ function localeHote(): string {
 }
 
 // Données partielles tolérées (passerelle, hôte qui omet un champ).
-const versMesure = (u: { context?: { percent?: number }; rateLimits?: SessionRateLimit[]; cost?: { usd: number } }): SonarMesure => ({
-  contexte: u.context?.percent,
+// Le contexte n'est pas gardé : Claude Code l'affiche déjà.
+const versMesure = (u: { rateLimits?: SessionRateLimit[]; cost?: { usd: number } }): SonarMesure => ({
   quotas: (u.rateLimits ?? []).map(q => ({ kind: q.kind, percentUsed: q.percentUsed, resetsAt: q.resetsAt })),
   cout: u.cost?.usd,
 })
@@ -82,18 +93,20 @@ async function lieu($: EngineInterface): Promise<SonarEmplacement> {
   return (await read($, emplacement)) ?? (cfg.emplacement as SonarEmplacement)
 }
 
+// Ce que le sonar sait à l'instant : `pied` (le minimum, pour le pied) et `jauges` (tout le détail).
 async function calculer($: EngineInterface) {
   const m = await read($, mesure)
   const t = await read($, ttl)
-  return segments({
-    contexte: m?.contexte,
+  const d = {
     quotas: m?.quotas ?? [],
     cout: m?.cout,
     cache: (await read($, cache)) ?? undefined,
     ttlMs: t ? TTL[t] : undefined,
     modele: (await read($, modele)) ?? undefined,
     depot: (await read($, depot)) ?? undefined,
-  }, await $.clock.now(), cfg)
+  }
+  const maintenant = await $.clock.now()
+  return { pied: elementsPied(d, maintenant, cfg) as Morceau[], jauges: jauges(d, maintenant, cfg) as Morceau[] }
 }
 
 // Emplacement « ligne » : $.ui.status n'est pas un dessin, il faut le reposer à chaque changement.
@@ -102,7 +115,7 @@ async function poserStatut($: EngineInterface) {
     $.ui.status(undefined)
     return
   }
-  const t = ligne(await calculer($))
+  const t = ligne((await calculer($)).jauges, SEP)
   $.ui.status(t || undefined)
 }
 
@@ -140,30 +153,64 @@ function demarrerMinuterie($: EngineInterface) {
   })
 }
 
-// Une seule ligne grise ; en alerte, seule la tête du segment (le chiffre en cause) prend la couleur. Pas de bouton :
-// sur l'appli de bureau il tombait seul sur une 2e ligne, et /sonar masquer suffit.
-// Un seul Text, les couleurs en morceaux dedans : des Text côte à côte dans un Box se partageaient la largeur
-// et, la fenêtre étroite, chacun passait à la ligne dans sa colonne (vu le 28/10 sur l'appli de bureau).
-async function dessin($: EngineInterface, e: RenderInput) {
-  const segs = await calculer($)
-  if (segs.length === 0) return undefined
-  const { Text } = $.ui.resolve(e)
-  // Pas de dimColor sur le parent : un enfant en hériterait et l'alerte serait ternie.
+// Une ligne : étiquette pâle et petite, valeur nette aux chiffres alignés (colorée seulement hors norme), détail pâle.
+// Un seul Text parent : des Text côte à côte dans un Box se partageaient la largeur et, la fenêtre étroite,
+// chacun passait à la ligne dans sa colonne (vu le 28/10). Pas de dimColor sur le parent : les enfants en hériteraient.
+function phrase(u: Vue, els: Morceau[]) {
+  const { Text } = u
   return (
     <Text>
-      {segs.flatMap((s, i) => {
-        const sep = i > 0 ? ' · ' : ''
-        if (s.niveau === 'ok') return [<Text key={s.cle} dimColor>{sep}{s.texte}</Text>]
-        const tete = s.tete ?? s.texte
-        const suite = s.texte.slice(tete.length)
-        return [
-          ...(sep ? [<Text key={`${s.cle}-sep`} dimColor>{sep}</Text>] : []),
-          <Text key={s.cle} color={COULEUR[s.niveau as 'attention' | 'alerte']}>{tete}</Text>,
-          ...(suite ? [<Text key={`${s.cle}-suite`} dimColor>{suite}</Text>] : []),
-        ]
-      })}
+      {els.flatMap((el, i) => [
+        <Text key={`${el.cle}-e`} dimColor size="caption">{`${i > 0 ? SEP : ''}${el.etiquette} `}</Text>,
+        <Text key={`${el.cle}-v`} weight="medium" tabular {...(el.niveau === 'ok' ? {} : { color: COULEUR[el.niveau] })}>{el.valeur}</Text>,
+        ...(el.detail ? [<Text key={`${el.cle}-d`} dimColor size="caption">{` (${el.detail})`}</Text>] : []),
+      ])}
     </Text>
   )
+}
+
+// Jauge : barre = usage, trait = part de la fenêtre écoulée (ce que serait un usage régulier).
+const JAUGE = { largeur: 120, hauteur: 8 }
+function svgJauge(part: number, repere: number | undefined, niveau: Morceau['niveau']) {
+  const { largeur: L, hauteur: H } = JAUGE
+  const plein = Math.round(L * Math.min(1, Math.max(0, part)))
+  const fond = `<rect y="1" width="${L}" height="${H - 2}" rx="3" fill="${GRIS}" fill-opacity="0.25"/>`
+  const barre = plein > 0 ? `<rect y="1" width="${plein}" height="${H - 2}" rx="3" fill="${TEINTE[niveau]}"${niveau === 'ok' ? ' fill-opacity="0.7"' : ''}/>` : ''
+  const trait = repere === undefined ? '' : `<rect x="${Math.min(L - 2, Math.max(0, Math.round(L * repere) - 1))}" width="2" height="${H}" fill="${GRIS}"/>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${L}" height="${H}" viewBox="0 0 ${L} ${H}">${fond}${barre}${trait}</svg>`
+}
+
+// Le Svg là où la surface le dessine : jamais sur le terminal (le kit y laisse la clé, l'appli n'en dessine rien).
+const svgDe = (u: Vue, surface: string) => (surface !== 'terminal' && 'Svg' in u ? u.Svg : undefined)
+
+// Un élément du bandeau ou du panneau : sa ligne, et dessous sa jauge là où le Svg existe (pas sur le terminal).
+function bloc(u: Vue, el: Morceau, Svg: ReturnType<typeof svgDe>) {
+  const { Box } = u
+  return (
+    <Box key={el.cle} flexDirection="column">
+      {phrase(u, [el])}
+      {Svg && el.part !== undefined ? <Svg source={svgJauge(el.part, el.repere, el.niveau)} alt={`${el.etiquette} ${el.valeur}`} width={JAUGE.largeur} height={JAUGE.hauteur} /> : null}
+    </Box>
+  )
+}
+
+// Bandeau : les jauges côte à côte (elles passent à la ligne si la place manque) ; sur le terminal, une ligne de texte.
+async function bandeau($: EngineInterface, e: RenderInput) {
+  const { jauges: js } = await calculer($)
+  if (js.length === 0) return undefined
+  const u = $.ui.resolve(e)
+  const Svg = svgDe(u, e.surface)
+  if (!Svg) return phrase(u, js)
+  const { Box } = u
+  return <Box flexDirection="row" flexWrap="wrap" columnGap={3} rowGap={1}>{js.map(el => bloc(u, el, Svg))}</Box>
+}
+
+// Sous le détail (panneau ou réponse de /sonar) : emplacement, durée du cache, fichier des relevés.
+async function notes($: EngineInterface) {
+  const t = textes(cfg.langue)
+  const force = (await $.store.get('ttl')) !== undefined
+  const etat = t.etat(nomEmplacement(await lieu($), cfg.langue), (await read($, ttl)) ?? undefined, force)
+  return cfg.journal === null ? etat : `${etat}\n${t.journal(await resoudreJournal($).catch(() => undefined))}`
 }
 
 export const register: Register = (on, options) => {
@@ -276,11 +323,10 @@ export const register: Register = (on, options) => {
     const c = lireCommande(e.args)
     if (c.erreur !== undefined) return { text: `${t.inconnu(c.erreur)}\n${t.aide}` }
     if (c.aide) {
-      const force = (await $.store.get('ttl')) !== undefined
-      // Le détail complet (heures de remise, budget par jour, coût, dépôt), que le pied court ne montre pas.
-      const detail = ligne(await calculer($))
-      const journal = cfg.journal === null ? '' : `${t.journal(await resoudreJournal($).catch(() => undefined))}\n`
-      return { text: `${detail ? `${detail}\n` : ''}${t.etat(nomEmplacement(await lieu($), cfg.langue), (await read($, ttl)) ?? undefined, force)}\n${journal}${t.aide}` }
+      // Le détail complet va dans le panneau ; s'il ne peut pas s'ouvrir, il est écrit ici, une ligne par élément.
+      const ouvert = await $.ui.open({ id: PANNEAU, title: 'Sonar' }).then(r => r.isPlaced, () => false)
+      const detail = ouvert ? '' : ligne((await calculer($)).jauges, '\n')
+      return { text: `${detail ? `${detail}\n` : ''}${await notes($)}\n${t.aide}` }
     }
     if (c.emplacement) {
       await update($, emplacement, () => c.emplacement as SonarEmplacement)
@@ -312,26 +358,43 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     await read($, tic)
     if ((await lieu($)) !== 'pied' || (await read($, masque))) return next(e)
-    // L'appli de bureau ne dessine pas les `modes` ajoutés (essai du 27/10) : on y dessine notre propre arbre.
-    const x = ligneCourte(await calculer($))
+    // Le pied ne montre que ce qui mérite un coup d'œil (cas normal : la semaine seule).
+    const { pied } = await calculer($)
+    if (pied.length === 0) return next(e)
+    // L'appli de bureau ne dessine pas les `modes` ajoutés (essai du 27/10) : on y dessine notre propre arbre,
+    // les modes natifs devant, joints comme le moteur le fait.
     if (e.surface === 'desktop') {
-      if (!x) return next(e)
-      const { Text } = $.ui.resolve(e)
-      // Notre dessin remplace celui du moteur : on garde les modes natifs devant, joints comme il le fait.
-      return <Text dimColor>{[...e.props.modes, x].join(' & ')}</Text>
+      const u = $.ui.resolve(e)
+      const { Text } = u
+      return <Text>{e.props.modes.length > 0 ? <Text dimColor>{`${e.props.modes.join(' & ')} & `}</Text> : null}{phrase(u, pied)}</Text>
     }
-    return next(x ? { ...e, props: { ...e.props, modes: [...e.props.modes, x] } } : e)
+    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, ligne(pied, '  ')] } })
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     await read($, tic)
     if ((await lieu($)) !== 'indice' || (await read($, masque))) return next(e)
-    return (await dessin($, e)) ?? next(e)
+    const { jauges: js } = await calculer($)
+    return js.length > 0 ? phrase($.ui.resolve(e), js) : next(e)
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     await read($, tic)
     if (e.props.hasSurvey || (await lieu($)) !== 'bandeau' || (await read($, masque))) return next(e)
-    return (await dessin($, e)) ?? next(e)
+    return (await bandeau($, e)) ?? next(e)
+  }).catch(($, e, next) => next(e))
+
+  // Panneau ouvert par /sonar : tout le détail, jauges comprises sur le bureau ; fermé par sa croix.
+  on('ui.render', { component: 'Pane', requestId: PANNEAU }, async ($, e) => {
+    await read($, tic)
+    const { jauges: js } = await calculer($)
+    const u = $.ui.resolve(e)
+    const { Box, Text } = u
+    return (
+      <Box flexDirection="column" rowGap={1}>
+        {js.length > 0 ? js.map(el => bloc(u, el, svgDe(u, e.surface))) : <Text dimColor>{t.vide}</Text>}
+        <Text dimColor size="caption">{await notes($)}</Text>
+      </Box>
+    )
   }).catch(($, e, next) => next(e))
 }

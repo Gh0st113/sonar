@@ -1,8 +1,6 @@
 export type SonarQuota = { kind: string; percentUsed: number; resetsAt?: string }
 
 export type SonarMesure = {
-  /** remplissage du contexte, 0 à 100 ; absent avant la 1re réponse */
-  contexte?: number
   quotas: SonarQuota[]
   /** coût estimé de la session en USD (prix catalogue) */
   cout?: number

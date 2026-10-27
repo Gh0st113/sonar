@@ -5,56 +5,71 @@
 Un **mod** Claude Code qui donne à **l'onglet Code de Claude Desktop** ce que la *status line* montre dans le terminal —
 **sans dépenser un seul token** : il lit les chiffres que le moteur a déjà et lance `git status` en local.
 
-Dans le pied de la zone de saisie, entre le mode de permission et le nom du modèle, une ligne courte — alertes en tête,
-car l'appli coupe la fin de la ligne quand la fenêtre est étroite :
+Il ne répète pas ce que Claude Code affiche déjà (remplissage du contexte, pourcentage des 5 h) et ne montre que ce qui
+mérite un coup d'œil. Trois niveaux de lecture :
+
+**Le pied** de la zone de saisie (par défaut), entre le mode de permission et le nom du modèle. Le plus souvent, un seul mot :
 
 ```
-⚠️7j 80% · ctx 34% · 5h 23% · 🔥 · ⎇ feat/x ●2 · 13 $
+sem. 41 %
 ```
 
-Tapez `/sonar` pour le détail complet (heures de remise à zéro, budget par jour, expiration du cache, nom du dépôt) :
+S'y ajoutent, seulement quand c'est utile, `5 h rapide` (les 5 h partent plus vite que le temps), `cache froid`
+(la prochaine réponse réécrira tout le cache) et `branche main` (vous êtes sur une branche protégée). L'étiquette est pâle,
+le chiffre net ; la couleur (orange, rouge) ne touche que la valeur en cause.
+
+**Le bandeau** (`/sonar bandeau`, en option) au-dessus de la saisie : une jauge par fenêtre et pour le cache. La barre est
+l'usage, le petit trait vertical la part de la fenêtre déjà écoulée : barre au-delà du trait = vous consommez plus vite que
+le rythme régulier. Viennent ensuite la branche et le coût, en clair.
+
+**Le panneau** (`/sonar`) : tout le détail, jauges comprises, avec les heures de remise à zéro, le budget par jour, le taux
+de lecture du cache, la branche et les fichiers modifiés, le coût et le fichier des relevés. Il se ferme par sa croix.
+Quand le panneau ne peut pas s'ouvrir, `/sonar` écrit ce détail, une ligne par élément :
 
 ```
-ctx 34 % · 5 h 23 % → 15:00 · ⚠️ 7 j 80 % ≈ 6,7 %/j → ven. 13:00 · cache 🔥 92 % → 13:42 · mon-depot ⎇ feat/x ●2 · 12,84 $
+5 h 23 % (remise 15:00)
+semaine 41 % (20 %/j, remise ven. 13:00)
+cache chaud (92 % relu, jusqu'à 13:42)
+branche feat/x (mon-depot, 2 modifiés)
+coût 12,84 $
 ```
 
-Le survol du pied montre ce que l'appli a coupé. L'emplacement `bandeau` montre la ligne complète sur toute la largeur
-(les emplacements `indice` et `ligne` servent au terminal ; l'appli de bureau ne les dessine pas).
+Dans le terminal, le bandeau et le panneau s'écrivent en texte (le terminal ne dessine pas de jauge). Les emplacements
+`indice` et `ligne` servent au terminal ; l'appli de bureau ne les dessine pas.
 
-*(Comme le sonar d'un navire : il sonde en continu ce qui vous entoure — contexte, quotas, cache — pour ne jamais toucher le fond par surprise.)*
+*(Comme le sonar d'un navire : il sonde en continu ce qui vous entoure — quotas, cache, branche — pour ne jamais toucher le fond par surprise.)*
 
 Licence : [MIT](LICENSE).
 
 Rien n'est propre à un abonnement ni à une personne : un chiffre que le moteur n'a pas (quotas hors abonnement,
 coût quand il n'est pas suivi) n'est simplement pas affiché ; seuils, langue, segments et branches protégées sont des options.
 
-## Segments
+## Ce qui est affiché
 
-| Segment | Source | Alerte |
-|---|---|---|
-| `ctx` remplissage du contexte | `session.measure` | orange dès `contextWarn` (50), rouge au-delà de `contextAlert` (80) |
-| `5 h`, `7 j` quotas de l'abonnement, heure de remise | `session.measure` | selon le **rythme** : consommation comparée à la part de la fenêtre déjà écoulée — orange à plus de `paceWarn` (5) points d'avance, rouge à plus de `paceAlert` (15) ; et orange dès `quotaWarn` (70 %), rouge dès `quotaAlert` (90 %) quel que soit le rythme |
-| `≈ X %/j` (7 j) | ce qui reste ÷ jours avant la remise | sous un jour : `(reste X %)` |
-| autres limites (ex. `budget` d'une passerelle) | `session.measure` | seuils absolus seulement (durée de fenêtre inconnue) |
-| `cache` 🔥 taux de lecture → heure où il refroidit ; ❔ incertain ; ❄️ froid | dernière requête du fil principal (`turn.step`, sous-agents exclus) | ❄️ en orange |
-| dépôt `⎇` branche `●` fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | ⚠️ sur `protectedBranches` (`main,master`) |
-| coût estimé de la session (prix catalogue) | `session.measure` | — |
+| Élément | Source | Pied | Couleur |
+|---|---|---|---|
+| `semaine` (quota sur 7 jours), heure de remise, budget par jour | `session.measure` | toujours (`sem. 41 %`) | selon le **rythme** : consommation comparée à la part de la fenêtre déjà écoulée — orange à plus de `paceWarn` (5) points d'avance, rouge à plus de `paceAlert` (15) ; et orange dès `quotaWarn` (70 %), rouge dès `quotaAlert` (90 %) quel que soit le rythme |
+| `5 h`, heure de remise | `session.measure` | `5 h rapide`, sans pourcentage, seulement en avance sur le rythme | orange, rouge au-delà de `paceAlert` |
+| autres limites (ex. `budget` d'une passerelle) | `session.measure` | avec leur pourcentage | seuils absolus seulement (durée de fenêtre inconnue) |
+| `cache` chaud (taux de lecture, heure où il refroidit), incertain, froid | dernière requête du fil principal (`turn.step`, sous-agents exclus) | `cache froid` seulement | froid en orange |
+| `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | seulement sur `protectedBranches` (`main,master`) | orange sur une branche protégée |
+| `coût` estimé de la session (prix catalogue) | `session.measure` | jamais | — |
+
+Le contexte n'est affiché nulle part : Claude Code le montre déjà.
 
 Durée de vie du cache : déduite des réponses (une lecture du cache après plus de 6 minutes prouve 1 h ; une réécriture complète
 indique 5 min), donnée par le moteur lors d'un changement de modèle, ou forcée par `/sonar ttl`. Tant qu'elle est inconnue,
-le cache est affiché chaud pendant 5 minutes (`≥`), incertain jusqu'à une heure, puis froid.
-
-Dans le bandeau, seul le chiffre en cause est en couleur ; partout, ⚠️ double la couleur.
+le cache est affiché chaud pendant 5 minutes (« au moins jusqu'à »), incertain jusqu'à une heure, puis froid.
 
 ## Commande `/sonar` (mots français ou anglais)
 
 | Commande | Effet |
 |---|---|
-| `/sonar` | détail complet, emplacement actuel, durée du cache, aide |
-| `/sonar pied` (`footer`) | ligne courte dans le pied de la saisie (par défaut) ; dans le terminal, avec les libellés de mode |
-| `/sonar indice` (`hint`) | à la place de la ligne d'aide sous la saisie |
-| `/sonar ligne` (`status`) | ligne d'état fixe sous la saisie (`$.ui.status`) |
-| `/sonar bandeau` (`banner`) | une ligne grise au-dessus de la saisie, sur toute la largeur |
+| `/sonar` | ouvre le panneau de détail ; répond par l'emplacement actuel, la durée du cache et l'aide |
+| `/sonar pied` (`footer`) | l'essentiel dans le pied de la saisie (par défaut) ; dans le terminal, avec les libellés de mode |
+| `/sonar indice` (`hint`) | le détail à la place de la ligne d'aide sous la saisie |
+| `/sonar ligne` (`status`) | le détail en ligne d'état fixe sous la saisie (`$.ui.status`) |
+| `/sonar bandeau` (`banner`) | les jauges au-dessus de la saisie |
 | `/sonar ttl 5m` / `1h` / `auto` | durée de vie du cache ; `auto` la déduit |
 | `/sonar masquer` / `afficher` (`hide` / `show`) | masquer / réafficher |
 
@@ -64,8 +79,9 @@ L'emplacement et une `ttl` forcée sont gardés d'une session à l'autre.
 
 Dans `settings.json`, sous `pluginConfigs["sonar@sonar-mods"].options` (la clé est `<plugin>@<catalogue>` une fois installé ; ou le menu de configuration quand l'hôte en a un) :
 `language` (`auto` / `en` / `fr`), `clock` (`auto` / `24h` / `12h`), `placement`, `segments` (séparés par des virgules :
-`context,quotas,cache,repo,cost`), `contextWarn`, `contextAlert`, `paceWarn`, `paceAlert`, `quotaWarn`, `quotaAlert`,
-`protectedBranches`. Une valeur invalide revient à sa valeur par défaut.
+`quotas,cache,repo,cost`), `paceWarn`, `paceAlert`, `quotaWarn`, `quotaAlert`, `protectedBranches`.
+Une valeur invalide revient à sa valeur par défaut ; `contextWarn`, `contextAlert` et le segment `context` des versions
+précédentes sont ignorés.
 
 ## Journal des relevés de quota (désactivé par défaut)
 
