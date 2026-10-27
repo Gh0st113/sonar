@@ -206,3 +206,72 @@ test('hors abonnement : ni quotas ni coût connus, seul le reste s’affiche', F
   expect((await ui.find({ type: 'Text' }))?.text).toBe('ctx 2%')
   await ui.unmount()
 })
+
+// Le disque sous le mod : un dictionnaire chemin → texte. Le moteur rend les chemins absolus (antislashs sous Windows).
+function disque(on: On, fichiers: Record<string, string> = {}) {
+  const etat = { fichiers, panne: false }
+  const p = (x: string) => x.replace(/\\/g, '/')
+  on('fs.exists', (_, e) => ({ value: p(e.path) in fichiers }))
+  on('fs.read', (_, e) => {
+    if (!(p(e.path) in fichiers)) throw new Error('ENOENT')
+    return { value: fichiers[p(e.path)]! }
+  })
+  on('fs.write', (_, e) => {
+    if (etat.panne) throw new Error('disque plein')
+    fichiers[p(e.path)] = e.text
+    return { value: undefined }
+  })
+  return etat
+}
+const JOURNAL = 'C:/Users/moi/.claude/sonar/quota-log.jsonl'
+const lignes = (f: Record<string, string>, p = JOURNAL) => (f[p] ?? '').split('\n').filter(Boolean).map(l => JSON.parse(l))
+const attendre = () => new Promise(r => setTimeout(r, 20))
+
+test('journal des quotas : désactivé par défaut, rien n’est écrit', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot' })
+  mock.env(on, { USERPROFILE: 'C:\\Users\\moi' })
+  const { fichiers: f } = disque(on)
+  await demarrer($)
+  await attendre()
+  expect(Object.keys(f)).toEqual([])
+  expect((await commande($, '') as { text?: string }).text).not.toContain('Relevés')
+})
+
+test('journal des quotas : une ligne par changement, chemin par défaut, nommé dans /sonar', { options: { ...FR.options, quotaLog: true } }, async ($, on) => {
+  const horloge = moteur(on, { git: 'hors-depot' })
+  mock.env(on, { USERPROFILE: 'C:\\Users\\moi' })
+  const { fichiers: f } = disque(on)
+  await demarrer($)
+  await attendre()
+  expect(lignes(f)).toEqual([{
+    ts: iso(T0),
+    five_hour: { pct: 23, resets_at: iso(T0 + 2 * H).replace('.000Z', 'Z') },
+    seven_day: { pct: 41, resets_at: iso(T0 + 72 * H).replace('.000Z', 'Z') },
+  }])
+  // Même chiffres : aucune ligne ; un % qui bouge : une ligne.
+  await horloge.advance(60_000)
+  await $.session.measure(MESURE)
+  await attendre()
+  expect(lignes(f).length).toBe(1)
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 24 }, QUOTAS[1]!] })
+  await attendre()
+  expect(lignes(f).map(l => l.five_hour.pct)).toEqual([23, 24])
+  expect(lignes(f)[1].ts).toBe(iso(T0 + 60_000))
+  expect((await commande($, '') as { text?: string }).text).toContain(`Relevés de quota : ${JOURNAL}`)
+})
+
+test('journal des quotas : chemin choisi, ligne déjà écrite par une autre session non dupliquée, disque en panne sans effet', { options: { ...FR.options, quotaLog: true, quotaLogPath: 'D:/releves/q.jsonl' } }, async ($, on) => {
+  moteur(on, { git: 'hors-depot' })
+  const deja = `{"ts":"x","five_hour":{"pct":23,"resets_at":"${iso(T0 + 2 * H).replace('.000Z', 'Z')}"},"seven_day":{"pct":41,"resets_at":"${iso(T0 + 72 * H).replace('.000Z', 'Z')}"}}\n`
+  const d = disque(on, { 'D:/releves/q.jsonl': deja })
+  await demarrer($)
+  await attendre()
+  expect(d.fichiers['D:/releves/q.jsonl']).toBe(deja)
+  d.panne = true
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 30 }] })
+  await attendre()
+  // L'affichage n'en souffre pas.
+  const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toContain('5h 30%')
+  await ui.unmount()
+})

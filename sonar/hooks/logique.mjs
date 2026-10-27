@@ -25,6 +25,8 @@ export const DEFAUTS = {
   segments: SEGMENTS,
   branches: ['main', 'master'],
   emplacement: 'pied',
+  // Journal des relevés de quota : null = désactivé, sinon l'option quotaLogPath telle quelle (vide = chemin par défaut).
+  journal: null,
 };
 
 const TEXTES = {
@@ -47,6 +49,7 @@ const TEXTES = {
     ttlForce: (t) => `Durée du cache forcée : ${t}.`,
     masquee: 'Sonar masqué (/sonar afficher pour le remettre).',
     remise: 'Sonar affiché.',
+    journal: (c) => `Relevés de quota : ${c ?? 'dossier personnel introuvable, aucun relevé'}`,
   },
   en: {
     noms: { five_hour: '5h', seven_day: '7d', spend_limit: 'budget' },
@@ -67,6 +70,7 @@ const TEXTES = {
     ttlForce: (t) => `Cache lifetime forced: ${t}.`,
     masquee: 'Sonar hidden (/sonar show to bring it back).',
     remise: 'Sonar shown.',
+    journal: (c) => `Usage limit log: ${c ?? 'home folder not found, nothing logged'}`,
   },
 };
 export const textes = (langue) => TEXTES[langue] ?? TEXTES.en;
@@ -104,6 +108,7 @@ export function lireConfig(options = {}, localeHote = '') {
     segments: o.segments === undefined || segs.length === 0 ? SEGMENTS : segs,
     branches,
     emplacement: EMPLACEMENTS.includes(lieu) ? lieu : DEFAUTS.emplacement,
+    journal: o.quotaLog === true ? String(o.quotaLogPath ?? '') : null,
   };
 }
 
@@ -297,3 +302,82 @@ const PRIORITE = { alerte: 0, attention: 1, ok: 2 };
 export const ligneCourte = (segs) => [...segs]
   .sort((a, b) => (PRIORITE[a.niveau] ?? 2) - (PRIORITE[b.niveau] ?? 2))
   .map((x) => x.court ?? x.texte).join(' · ');
+
+// ——— Journal des relevés de quota (option quotaLog, désactivée par défaut) ———
+// Une ligne JSON par changement du % ou de l'heure de remise à zéro de five_hour / seven_day ; aucun appel au modèle.
+// Les noms de champs sont lus par un script d'analyse externe : ne pas les changer.
+export const FENETRES_JOURNAL = ['five_hour', 'seven_day'];
+export const CHEMIN_JOURNAL = '.claude/sonar/quota-log.jsonl';
+// $.fs lit et écrit au plus 4 Mio d'un coup : à 3 Mio, le journal part en archive et repart de zéro.
+export const TAILLE_MAX_JOURNAL = 3 * 1024 * 1024;
+
+// ISO UTC à la seconde (« 2026-11-01T10:00:00Z ») ; illisible → undefined.
+export function isoUtc(x) {
+  const ms = typeof x === 'number' ? x : Date.parse(String(x ?? ''));
+  return fini(ms) ? new Date(Math.round(ms / 1000) * 1000).toISOString().replace('.000Z', 'Z') : undefined;
+}
+
+// Relevé à l'instant `maintenant` : { ts, five_hour?, seven_day? } ; undefined si aucune des deux fenêtres n'est lisible.
+export function releve(quotas, maintenant) {
+  const r = { ts: new Date(maintenant).toISOString() };
+  for (const kind of FENETRES_JOURNAL) {
+    const q = (quotas ?? []).find((x) => x?.kind === kind && fini(x.percentUsed));
+    if (!q) continue;
+    const resets = isoUtc(q.resetsAt);
+    r[kind] = resets ? { pct: q.percentUsed, resets_at: resets } : { pct: q.percentUsed };
+  }
+  return FENETRES_JOURNAL.some((k) => r[k]) ? r : undefined;
+}
+
+// Ce qui compare deux relevés : les fenêtres, pas l'heure du relevé.
+export const cleReleve = (r) => (r ? JSON.stringify(FENETRES_JOURNAL.map((k) => [r[k]?.pct ?? null, r[k]?.resets_at ?? null])) : '');
+
+// Dernier relevé lisible d'un journal (texte JSONL) ; une ligne abîmée en fin de fichier est ignorée.
+export function dernierReleve(texte) {
+  const lignes = String(texte ?? '').split(/\r?\n/);
+  for (let i = lignes.length - 1; i >= 0; i--) {
+    if (!lignes[i].trim()) continue;
+    try {
+      const o = JSON.parse(lignes[i]);
+      if (o && typeof o === 'object' && FENETRES_JOURNAL.some((k) => o[k])) return o;
+    } catch { /* ligne abîmée : on remonte */ }
+  }
+  return undefined;
+}
+
+// Nouveau texte du journal avec `r` ajouté, ou undefined si rien n'a changé depuis sa dernière ligne.
+export function ajouterReleve(texte, r) {
+  if (!r || cleReleve(dernierReleve(texte)) === cleReleve(r)) return undefined;
+  const t = String(texte ?? '');
+  return `${t}${t && !t.endsWith('\n') ? '\n' : ''}${JSON.stringify(r)}\n`;
+}
+
+// Ce qu'il faut écrire : undefined si rien n'a changé ; sinon le nouveau texte, et `archive` (l'ancien texte) quand
+// l'ajout ferait passer le journal au-delà de TAILLE_MAX_JOURNAL : le journal repart alors de la seule nouvelle ligne.
+export function majJournal(texte, r) {
+  const t = String(texte ?? '');
+  const nouveau = ajouterReleve(t, r);
+  if (nouveau === undefined) return undefined;
+  return nouveau.length > TAILLE_MAX_JOURNAL && t ? { archive: t, texte: `${JSON.stringify(r)}\n` } : { texte: nouveau };
+}
+
+// Chemin du journal : vide → ~/.claude/sonar/quota-log.jsonl ; « ~/… » sous le dossier personnel ; sinon tel quel.
+// undefined si le dossier personnel est inconnu alors qu'il en faut un.
+export function cheminJournal(option, maison) {
+  const o = String(option ?? '').trim().replace(/\\/g, '/');
+  // « / » (dossier personnel à la racine) devient '' : les chemins ci-dessous remettent le « / ».
+  const m = maison ? String(maison).replace(/\\/g, '/').replace(/\/+$/, '') : undefined;
+  if (!o) return m !== undefined ? `${m}/${CHEMIN_JOURNAL}` : undefined;
+  if (o === '~' || o.startsWith('~/')) return m !== undefined ? `${m}${o.slice(1)}` : undefined;
+  return o;
+}
+
+// Le dossier personnel ne sert qu'au chemin par défaut et à « ~/… ».
+export const besoinMaison = (option) => /^$|^~([\\/]|$)/.test(String(option ?? '').trim());
+
+// Archive d'un journal plein : « quota-log.jsonl » → « quota-log.2026-10-27T224200Z.jsonl ».
+export function cheminArchive(chemin, maintenant) {
+  const date = isoUtc(maintenant).replace(/[:-]/g, '').replace(/^(\d{4})(\d\d)(\d\d)/, '$1-$2-$3');
+  const m = /^(.*?)(\.[^./]+)?$/.exec(chemin);
+  return `${m[1]}.${date}${m[2] ?? ''}`;
+}

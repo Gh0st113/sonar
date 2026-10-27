@@ -67,6 +67,24 @@ Set in `settings.json` under `pluginConfigs.sonar.options` (or the config menu w
 `context,quotas,cache,repo,cost`), `contextWarn`, `contextAlert`, `paceWarn`, `paceAlert`, `quotaWarn`, `quotaAlert`,
 `protectedBranches`. An invalid value falls back to its default.
 
+## Usage limit log (off by default)
+
+To follow your usage limits over time, `quotaLog: true` appends a JSON line to a local file whenever the `5h` or `7d`
+percentage — or its reset time — changes. No line when nothing moved, no model call (zero tokens); writing never delays the
+display and a disk error is ignored.
+
+```json
+{"ts":"2026-10-27T22:42:00.000Z","five_hour":{"pct":66,"resets_at":"2026-10-27T23:00:00Z"},"seven_day":{"pct":67,"resets_at":"2026-11-01T10:00:00Z"}}
+```
+
+`pct` is the used percentage as the engine reports it, `resets_at` the reset time in UTC; an unknown window is left out.
+The file is `quotaLogPath` (`~/…` accepted), by default `~/.claude/sonar/quota-log.jsonl`; `/sonar` shows the path in use.
+Past 3 MiB its content moves to an archive next to it (`quota-log.<date>.jsonl`) and the file starts over.
+
+```json
+"pluginConfigs": { "sonar": { "options": { "quotaLog": true } } }
+```
+
 ## Install
 
 From GitHub:

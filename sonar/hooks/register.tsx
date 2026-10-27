@@ -6,7 +6,10 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } from 'claude-code'
 
 import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
-import { EMPLACEMENTS, TTL, deduireTtl, ligne, ligneCourte, lireCommande, lireConfig, lireStatut, nomDepot, nomEmplacement, segments, textes } from './logique.mjs'
+import {
+  EMPLACEMENTS, TTL, besoinMaison, cheminArchive, cheminJournal, cleReleve, deduireTtl, ligne, ligneCourte,
+  lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, segments, textes,
+} from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
 const cache = atom({ plugin: 'sonar', key: 'cache' } as const, null as SonarReponse | null)
@@ -26,6 +29,10 @@ let cfg = lireConfig()
 let minuterie: Timer | undefined
 let dernierGit = 0
 let gitEnCours = false
+// Journal des relevés de quota : chemin résolu une fois, dernier relevé connu, écritures à la file (jamais deux à la fois).
+let cheminReleves: string | undefined
+let derniereCle = ''
+let ecriture: Promise<unknown> = Promise.resolve()
 
 function localeHote(): string {
   try {
@@ -41,6 +48,34 @@ const versMesure = (u: { context?: { percent?: number }; rateLimits?: SessionRat
   quotas: (u.rateLimits ?? []).map(q => ({ kind: q.kind, percentUsed: q.percentUsed, resetsAt: q.resetsAt })),
   cout: u.cost?.usd,
 })
+
+async function resoudreJournal($: EngineInterface): Promise<string | undefined> {
+  if (cfg.journal === null) return undefined
+  const maison = besoinMaison(cfg.journal) ? (await $.env.get('USERPROFILE')) || (await $.env.get('HOME')) : undefined
+  cheminReleves ??= cheminJournal(cfg.journal, maison)
+  return cheminReleves
+}
+
+// Relevé de quota (option quotaLog) : une ligne ajoutée au journal quand un % ou une heure de remise change.
+// Jamais attendu par l'affichage ; erreurs avalées. Le fichier est relu juste avant d'écrire : deux sessions ouvertes
+// qui voient le même changement ne l'écrivent qu'une fois (sauf écritures à la même milliseconde, sans verrou possible).
+function journaliser($: EngineInterface, m: SonarMesure) {
+  if (cfg.journal === null) return
+  // L'heure du relevé est celle de la mesure, pas celle où la file arrive à l'écriture.
+  const quand = $.clock.now()
+  ecriture = ecriture.then(async () => {
+    const maintenant = await quand
+    const r = releve(m.quotas, maintenant)
+    if (!r || cleReleve(r) === derniereCle) return
+    const chemin = await resoudreJournal($)
+    if (!chemin) return
+    const maj = majJournal((await $.fs.exists(chemin)) ? String(await $.fs.read(chemin)) : '', r)
+    // $.fs lit et écrit au plus 4 Mio : un journal plein part en archive à côté.
+    if (maj?.archive !== undefined) await $.fs.write(cheminArchive(chemin, maintenant), maj.archive)
+    if (maj) await $.fs.write(chemin, maj.texte)
+    derniereCle = cleReleve(r)
+  }).catch(() => undefined)
+}
 
 // L'emplacement choisi par /sonar (gardé dans le store) l'emporte sur l'option du plugin.
 async function lieu($: EngineInterface): Promise<SonarEmplacement> {
@@ -149,7 +184,11 @@ export const register: Register = (on, options) => {
       if (ttlGarde === '5m' || ttlGarde === '1h') await update($, ttl, () => ttlGarde)
       await update($, mesure, () => null)
       const u = await $.session.usage().catch(() => undefined)
-      if (u) await update($, mesure, () => versMesure(u))
+      if (u) {
+        const m = versMesure(u)
+        await update($, mesure, () => m)
+        journaliser($, m)
+      }
       demarrerMinuterie($)
       await rafraichirDepot($)
       await poserStatut($)
@@ -159,7 +198,9 @@ export const register: Register = (on, options) => {
 
   on('session.measure', async ($, e, next) => {
     try {
-      await update($, mesure, () => versMesure(e))
+      const m = versMesure(e)
+      await update($, mesure, () => m)
+      journaliser($, m)
       await poserStatut($)
     } catch { /* idem */ }
     return next(e)
@@ -235,7 +276,8 @@ export const register: Register = (on, options) => {
       const force = (await $.store.get('ttl')) !== undefined
       // Le détail complet (heures de remise, budget par jour, coût, dépôt), que le pied court ne montre pas.
       const detail = ligne(await calculer($))
-      return { text: `${detail ? `${detail}\n` : ''}${t.etat(nomEmplacement(await lieu($), cfg.langue), (await read($, ttl)) ?? undefined, force)}\n${t.aide}` }
+      const journal = cfg.journal === null ? '' : `${t.journal(await resoudreJournal($).catch(() => undefined))}\n`
+      return { text: `${detail ? `${detail}\n` : ''}${t.etat(nomEmplacement(await lieu($), cfg.langue), (await read($, ttl)) ?? undefined, force)}\n${journal}${t.aide}` }
     }
     if (c.emplacement) {
       await update($, emplacement, () => c.emplacement as SonarEmplacement)

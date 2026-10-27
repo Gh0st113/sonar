@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   rythme, niveauContexte, etatCache, deduireTtl, segments, ligne, ligneCourte, lireStatut, nomDepot, lireCommande, lireConfig,
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
+  releve, ajouterReleve, dernierReleve, cheminJournal, cheminArchive, isoUtc, majJournal, besoinMaison, TAILLE_MAX_JOURNAL,
 } from '../hooks/logique.mjs';
 
 const H = 3_600_000;
@@ -240,4 +241,75 @@ test('segments : rien de connu, quota remis, épuisé, tête détachée, cache i
   const passerelle = segments({ quotas: [{ kind: 'spend_limit', percentUsed: 62.8, resetsAt: iso(T0 + 10 * J) }] }, T0, EN);
   assert.match(ligne(passerelle), /^budget 63% → \d{1,2}\/\d{1,2}$/); // > 6 jours : la date
   assert.deepEqual(lireConfig({ contextWarn: 60 }).ctx, { attention: 60, alerte: 80 }); // un seul champ donné
+});
+
+test('journal des quotas : format de ligne, fenêtre absente omise, heure de remise en ISO UTC', () => {
+  const ts = Date.parse('2026-10-27T22:42:00Z');
+  const quotas = [
+    { kind: 'seven_day', percentUsed: 67, resetsAt: '2026-11-01T10:00:00.000Z' },
+    { kind: 'five_hour', percentUsed: 66, resetsAt: '2026-10-27T23:00:00Z' },
+    { kind: 'spend_limit', percentUsed: 12 }, // hors journal
+  ];
+  assert.equal(JSON.stringify(releve(quotas, ts)),
+    '{"ts":"2026-10-27T22:42:00.000Z","five_hour":{"pct":66,"resets_at":"2026-10-27T23:00:00Z"},"seven_day":{"pct":67,"resets_at":"2026-11-01T10:00:00Z"}}');
+  // Heure de remise donnée avec un fuseau : ramenée en UTC.
+  assert.equal(releve([{ kind: 'five_hour', percentUsed: 5, resetsAt: '2026-10-28T01:00:00+02:00' }], ts).five_hour.resets_at, '2026-10-27T23:00:00Z');
+  // Une seule fenêtre : l'autre est absente ; heure de remise illisible : champ omis.
+  assert.deepEqual(releve([{ kind: 'seven_day', percentUsed: 12.5, resetsAt: 'n/a' }], ts), { ts: '2026-10-27T22:42:00.000Z', seven_day: { pct: 12.5 } });
+  // Rien de lisible : pas de relevé.
+  assert.equal(releve([], ts), undefined);
+  assert.equal(releve([{ kind: 'five_hour', percentUsed: NaN }, { kind: 'spend_limit', percentUsed: 3 }], ts), undefined);
+  assert.equal(releve(undefined, ts), undefined);
+});
+
+test('journal des quotas : une ligne seulement quand le % ou l’heure de remise change', () => {
+  const r = (p5, p7, h7 = '2026-11-01T10:00:00Z', ts = T0) => releve([q5(p5, 2 * H), { kind: 'seven_day', percentUsed: p7, resetsAt: h7 }], ts);
+  const a = ajouterReleve('', r(10, 40));
+  assert.equal(a.split('\n').length, 2); // une ligne + fin de ligne
+  assert.equal(ajouterReleve(a, r(10, 40, undefined, T0 + 60_000)), undefined); // même chiffres, autre heure : rien
+  const b = ajouterReleve(a, r(11, 40));
+  assert.equal(b.split('\n').filter(Boolean).length, 2);
+  assert.equal(ajouterReleve(b, r(11, 40, '2026-11-08T10:00:00Z')).split('\n').filter(Boolean).length, 3); // remise déplacée
+  // Une fenêtre qui disparaît est un changement.
+  assert.ok(ajouterReleve(b, releve([q5(11, 2 * H)], T0)));
+  // Fichier sans fin de ligne, ou dernière ligne abîmée (écriture coupée) : on compare à la dernière ligne lisible.
+  assert.equal(ajouterReleve(a.trimEnd(), r(12, 40)).split('\n').filter(Boolean).length, 2);
+  assert.equal(ajouterReleve(`${a}{"ts":"2026-`, r(10, 40)), undefined);
+  assert.equal(dernierReleve('pas du json\n\n'), undefined);
+  assert.equal(ajouterReleve('x', undefined), undefined);
+});
+
+test('journal des quotas : archive quand l’ajout dépasserait 3 Mio, jamais pour un relevé inchangé', () => {
+  const r = (p) => releve([q5(p, 2 * H)], T0);
+  const ligneDe = (p) => `${JSON.stringify(r(p))}\n`;
+  assert.deepEqual(majJournal('', r(1)), { texte: ligneDe(1) });
+  assert.equal(majJournal(ligneDe(1), r(1)), undefined);
+  // Juste sous la limite : l'ajout la dépasserait → archive de l'ancien texte, le journal repart de la nouvelle ligne.
+  const plein = `${'#'.repeat(TAILLE_MAX_JOURNAL - ligneDe(1).length - 10)}\n${ligneDe(1)}`;
+  assert.deepEqual(majJournal(plein, r(2)), { archive: plein, texte: ligneDe(2) });
+  // Plein mais rien de nouveau : ni archive ni doublon dans un journal neuf.
+  assert.equal(majJournal(plein, r(1)), undefined);
+  // Un journal court reste en place.
+  assert.deepEqual(majJournal(ligneDe(1), r(2)), { texte: ligneDe(1) + ligneDe(2) });
+});
+
+test('journal des quotas : chemin du fichier et de l’archive', () => {
+  assert.equal(cheminJournal('', 'C:\\Users\\moi'),'C:/Users/moi/.claude/sonar/quota-log.jsonl');
+  assert.equal(cheminJournal('  ', '/home/moi/'), '/home/moi/.claude/sonar/quota-log.jsonl');
+  assert.equal(cheminJournal('~/notes/q.jsonl', '/home/moi'), '/home/moi/notes/q.jsonl');
+  assert.equal(cheminJournal('D:\\data\\q.jsonl',undefined), 'D:/data/q.jsonl');
+  assert.equal(cheminJournal('', undefined), undefined); // dossier personnel inconnu : pas de journal
+  assert.equal(cheminArchive('C:/u/.claude/sonar/quota-log.jsonl', Date.parse('2026-10-27T22:42:00Z')), 'C:/u/.claude/sonar/quota-log.2026-10-27T224200Z.jsonl');
+  assert.equal(cheminArchive('/a.b/journal', Date.parse('2026-10-27T22:42:00Z')), '/a.b/journal.2026-10-27T224200Z');
+  assert.equal(isoUtc('n/a'), undefined);
+  assert.equal(cheminJournal('', '/'), '/.claude/sonar/quota-log.jsonl'); // dossier personnel à la racine
+  assert.equal(cheminJournal('~', '/home/moi'), '/home/moi');
+  // Le dossier personnel n'est demandé que s'il sert.
+  assert.deepEqual(['', ' ', '~', '~/q.jsonl', '~\\q.jsonl', 'D:/q.jsonl', '/var/q.jsonl', '~moi/q'].map(besoinMaison),
+    [true, true, true, true, true, false, false, false]);
+  // Désactivé par défaut : un chemin seul ne l'active pas.
+  assert.equal(lireConfig().journal, null);
+  assert.equal(lireConfig({ quotaLogPath: 'D:/q.jsonl' }).journal, null);
+  assert.equal(lireConfig({ quotaLog: true }).journal, '');
+  assert.equal(lireConfig({ quotaLog: true, quotaLogPath: 'D:/q.jsonl' }).journal, 'D:/q.jsonl');
 });
