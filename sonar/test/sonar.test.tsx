@@ -111,10 +111,11 @@ test('/sonar bandeau : une ligne grise, seule la tête du segment en alerte colo
   await commande($, 'bandeau')
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BANDEAU, surface })
-    expect((await ui.find({ type: 'Text', text: /ctx 34/ }))?.text).toBe('ctx 34 %')
-    // Le séparateur reste gris : seule la tête du segment prend la couleur.
-    expect((await ui.find({ type: 'Text', text: /7 j/ }))?.text).toBe('⚠️ 7 j 90 %')
-    expect((await ui.find({ type: 'Text', text: /%\/j/ }))?.text).toMatch(/^ ≈ \d+(,\d)? %\/j → \S+ \d\d:\d\d$/)
+    // Toute la ligne dans un seul Text : elle ne se découpe pas en colonnes quand la fenêtre est étroite.
+    expect((await ui.find({ type: 'Text', text: /ctx 34/ }))?.text).toMatch(/^ctx 34 % · 5 h 23 % → .* · ⚠️ 7 j 90 % ≈ .* · 1,23 \$$/)
+    // Dedans, seule la tête du segment prend la couleur ; le séparateur et la suite restent gris.
+    expect((await ui.find({ type: 'Text', text: /^⚠️ 7 j 90 %$/ }))?.text).toBe('⚠️ 7 j 90 %')
+    expect((await ui.find({ type: 'Text', text: /^ ≈/ }))?.text).toMatch(/^ ≈ \d+(,\d)? %\/j → \S+ \d\d:\d\d$/)
     expect(await ui.find({ type: 'Button' })).toBeUndefined()
     await ui.unmount()
   }
@@ -138,7 +139,7 @@ test('/sonar indice : remplace la ligne d’aide sous la saisie', FR, async ($, 
   await commande($, 'indice')
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...INDICE, surface })
-    expect((await ui.find({ type: 'Text', text: /ctx 34/ }))?.text).toBe('ctx 34 %')
+    expect((await ui.find({ type: 'Text', text: /ctx 34/ }))?.text).toMatch(/^ctx 34 % · 5 h 23 % → .* · 1,23 \$$/)
     await ui.unmount()
   }
 })
@@ -185,8 +186,7 @@ test('options : anglais, segments choisis, emplacement par défaut « banner »'
   await demarrer($)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BANDEAU, surface })
-    expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toBe('ctx 34%')
-    expect((await ui.find({ type: 'Text', text: /\$1\.23/ }))?.text).toBe(' · $1.23')
+    expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toBe('ctx 34% · $1.23')
     expect(await ui.find({ type: 'Text', text: /5h|⎇/ })).toBeUndefined()
     await ui.unmount()
   }

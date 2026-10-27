@@ -1,6 +1,6 @@
 {
   "name": "sonar",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A status line for the Claude Desktop Code tab: context, usage limits with their pace, prompt cache, repo and branch, cost — no tokens used",
   "author": { "name": "Gh0st113" },
   "license": "MIT",
