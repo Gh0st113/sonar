@@ -67,6 +67,24 @@ Dans `settings.json`, sous `pluginConfigs.sonar.options` (ou le menu de configur
 `context,quotas,cache,repo,cost`), `contextWarn`, `contextAlert`, `paceWarn`, `paceAlert`, `quotaWarn`, `quotaAlert`,
 `protectedBranches`. Une valeur invalide revient à sa valeur par défaut.
 
+## Journal des relevés de quota (désactivé par défaut)
+
+Pour suivre l'évolution de vos quotas dans le temps, `quotaLog: true` ajoute une ligne JSON à un fichier local chaque fois
+que le pourcentage `5 h` ou `7 j` — ou son heure de remise à zéro — change. Aucune ligne si rien n'a bougé, aucun appel au
+modèle (zéro token) ; l'écriture ne retarde jamais l'affichage et une erreur disque est ignorée.
+
+```json
+{"ts":"2026-10-27T22:42:00.000Z","five_hour":{"pct":66,"resets_at":"2026-10-27T23:00:00Z"},"seven_day":{"pct":67,"resets_at":"2026-11-01T10:00:00Z"}}
+```
+
+`pct` est le pourcentage utilisé tel que le moteur le donne, `resets_at` l'heure de remise en UTC ; une fenêtre inconnue est omise.
+Le fichier est `quotaLogPath` (`~/…` accepté), par défaut `~/.claude/sonar/quota-log.jsonl` ; `/sonar` affiche le chemin
+utilisé. Au-delà de 3 Mio, son contenu part dans une archive à côté (`quota-log.<date>.jsonl`) et le fichier repart de zéro.
+
+```json
+"pluginConfigs": { "sonar": { "options": { "quotaLog": true } } }
+```
+
 ## Installation
 
 Depuis GitHub :
