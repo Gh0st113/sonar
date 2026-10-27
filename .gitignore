@@ -1,0 +1,4 @@
+.superpowers/
+# Types écrits par le moteur à chaque chargement du mod
+sonar/.claude-plugin/types/
+node_modules/
