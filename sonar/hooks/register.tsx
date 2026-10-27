@@ -142,12 +142,15 @@ function demarrerMinuterie($: EngineInterface) {
 
 // Une seule ligne grise ; en alerte, seule la tête du segment (le chiffre en cause) prend la couleur. Pas de bouton :
 // sur l'appli de bureau il tombait seul sur une 2e ligne, et /sonar masquer suffit.
+// Un seul Text, les couleurs en morceaux dedans : des Text côte à côte dans un Box se partageaient la largeur
+// et, la fenêtre étroite, chacun passait à la ligne dans sa colonne (vu le 28/10 sur l'appli de bureau).
 async function dessin($: EngineInterface, e: RenderInput) {
   const segs = await calculer($)
   if (segs.length === 0) return undefined
-  const { Box, Text } = $.ui.resolve(e)
+  const { Text } = $.ui.resolve(e)
+  // Pas de dimColor sur le parent : un enfant en hériterait et l'alerte serait ternie.
   return (
-    <Box flexDirection="row">
+    <Text>
       {segs.flatMap((s, i) => {
         const sep = i > 0 ? ' · ' : ''
         if (s.niveau === 'ok') return [<Text key={s.cle} dimColor>{sep}{s.texte}</Text>]
@@ -159,7 +162,7 @@ async function dessin($: EngineInterface, e: RenderInput) {
           ...(suite ? [<Text key={`${s.cle}-suite`} dimColor>{suite}</Text>] : []),
         ]
       })}
-    </Box>
+    </Text>
   )
 }
 

@@ -62,7 +62,7 @@ The placement and a forced `ttl` are kept across sessions.
 
 ## Options
 
-Set in `settings.json` under `pluginConfigs.sonar.options` (or the config menu where the host has one):
+Set in `settings.json` under `pluginConfigs["sonar@sonar-mods"].options` (the key is `<plugin>@<marketplace>` once installed; or the config menu where the host has one):
 `language` (`auto` / `en` / `fr`), `clock` (`auto` / `24h` / `12h`), `placement`, `segments` (comma-separated:
 `context,quotas,cache,repo,cost`), `contextWarn`, `contextAlert`, `paceWarn`, `paceAlert`, `quotaWarn`, `quotaAlert`,
 `protectedBranches`. An invalid value falls back to its default.
@@ -82,7 +82,7 @@ The file is `quotaLogPath` (`~/…` accepted), by default `~/.claude/sonar/quota
 Past 3 MiB its content moves to an archive next to it (`quota-log.<date>.jsonl`) and the file starts over.
 
 ```json
-"pluginConfigs": { "sonar": { "options": { "quotaLog": true } } }
+"pluginConfigs": { "sonar@sonar-mods": { "options": { "quotaLog": true } } }
 ```
 
 ## Install
