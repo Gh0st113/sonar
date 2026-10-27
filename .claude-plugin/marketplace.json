@@ -1,0 +1,5 @@
+{
+  "name": "sonar-mods",
+  "owner": { "name": "Gh0st113" },
+  "plugins": [{ "name": "sonar", "source": "./sonar" }]
+}

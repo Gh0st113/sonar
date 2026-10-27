@@ -1,0 +1,22 @@
+{
+  "name": "sonar",
+  "version": "0.2.0",
+  "description": "A status line for the Claude Desktop Code tab: context, usage limits with their pace, prompt cache, repo and branch, cost — no tokens used",
+  "author": { "name": "Gh0st113" },
+  "license": "MIT",
+  "repository": "https://github.com/Gh0st113/sonar",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "language": { "type": "string", "title": "Language", "description": "Display language; auto follows the system locale", "default": "auto", "options": ["auto", "en", "fr"] },
+    "clock": { "type": "string", "title": "Clock", "description": "Time format; auto = 12h for en-US, 24h elsewhere", "default": "auto", "options": ["auto", "24h", "12h"] },
+    "placement": { "type": "string", "title": "Placement", "description": "Default placement (/sonar can change it per user)", "default": "footer", "options": ["footer", "hint", "status", "banner"] },
+    "segments": { "type": "string", "title": "Segments", "description": "Comma-separated, in any order of: context, quotas, cache, repo, cost", "default": "context,quotas,cache,repo,cost" },
+    "contextWarn": { "type": "number", "title": "Context warning (%)", "description": "Context fill turning orange", "default": 50 },
+    "contextAlert": { "type": "number", "title": "Context alert (%)", "description": "Context fill turning red (above)", "default": 80 },
+    "paceWarn": { "type": "number", "title": "Pace warning (points)", "description": "Points ahead of an even pace turning a limit orange", "default": 5 },
+    "paceAlert": { "type": "number", "title": "Pace alert (points)", "description": "Points ahead of an even pace turning a limit red", "default": 15 },
+    "quotaWarn": { "type": "number", "title": "Limit warning (%)", "description": "Usage turning a limit orange whatever the pace", "default": 70 },
+    "quotaAlert": { "type": "number", "title": "Limit alert (%)", "description": "Usage turning a limit red whatever the pace", "default": 90 },
+    "protectedBranches": { "type": "string", "title": "Protected branches", "description": "Comma-separated branches flagged with a warning", "default": "main,master" }
+  }
+}
