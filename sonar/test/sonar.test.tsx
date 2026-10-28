@@ -106,7 +106,7 @@ test('/sonar : le panneau s’ouvre (jauges sur le bureau, texte sur le terminal
   expect((await bureau.find({ type: 'Text', text: /^semaine/ }))?.text).toMatch(/^semaine 41 % \(20 %\/j, remise \S+ \d\d:\d\d\)$/)
   expect((await bureau.find({ type: 'Svg' } as never) as { props?: { alt?: string } } | undefined)?.props?.alt).toBe('5 h 23 %')
   expect(await bureau.find({ type: 'Text', text: /ctx|contexte/ })).toBeUndefined()
-  expect((await bureau.find({ type: 'Text', text: /Sonar : pied/ }))?.text).toContain('cache inconnu')
+  expect((await bureau.find({ type: 'Text', text: /Sonar : pied/ }))?.text).toContain('durée du cache inconnue')
   await bureau.unmount()
   const terminal = await $.ui.mount({ ...PANNEAU, surface: 'terminal' })
   expect(await terminal.find({ type: 'Text', text: /^branche feat\/x \(projet-a, 2 modifiés\)$/ })).toBeDefined()
