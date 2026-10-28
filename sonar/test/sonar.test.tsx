@@ -88,7 +88,7 @@ test('pied : 5 h « rapide » sans %, branche protégée ; couleur sur la valeur
   // Alertes puis attentions en tête : l'appli coupe la fin du pied quand la fenêtre est étroite.
   expect(await pied($, 'terminal')).toBe('5 h rapide  branche main  sem. 41 %')
   const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text' }))?.text).toMatch(/^5 h rapide +branche main +sem\. 41 %$/)
+  expect((await ui.find({ type: 'Text' }))?.text).toMatch(/^5 h rapide   branche main   sem\. 41 %$/)
   expect((await ui.find({ type: 'Text', text: /^rapide$/ }))?.props.color).toBe('error')
   expect((await ui.find({ type: 'Text', text: /^main$/ }))?.props.color).toBe('warning')
   // La semaine, dans les clous, n'a pas de couleur.
@@ -144,7 +144,7 @@ test('cache : la réponse du fil principal compte, celle d’un sous-agent non ;
   expect(await pied($, 'desktop')).toBe('sem. 41 %')
   expect(await commande($, '')).toMatch(/cache chaud \(92 % relu, au moins jusqu'à \d\d:\d\d\)/)
   await horloge.advance(H + 60_000)
-  expect(await pied($, 'desktop')).toMatch(/^cache froid +sem\. 41 %$/)
+  expect(await pied($, 'desktop')).toMatch(/^cache froid   sem\. 41 %$/)
   expect(await pied($, 'terminal')).toBe('cache froid  sem. 41 %')
   expect(await commande($, '')).toContain('cache froid')
 })

@@ -32,6 +32,7 @@ const GRIS = '#888'
 const TEINTE = { ok: GRIS, attention: '#d4a017', alerte: '#e5484d' } as const
 const PANNEAU = 'sonar'
 const SEP = '   '
+const SEP_BUREAU = '   '
 const GIT_DELAI_MS = 3000
 const GIT_ECART_MS = 5000
 
@@ -156,12 +157,14 @@ function demarrerMinuterie($: EngineInterface) {
 // Une ligne : étiquette pâle et petite, valeur nette aux chiffres alignés (colorée seulement hors norme), détail pâle.
 // Un seul Text parent : des Text côte à côte dans un Box se partageaient la largeur et, la fenêtre étroite,
 // chacun passait à la ligne dans sa colonne (vu le 28/10). Pas de dimColor sur le parent : les enfants en hériteraient.
-function phrase(u: Vue, els: Morceau[]) {
+// `sep` : sur le bureau, le texte est dessiné comme du HTML et des espaces à la suite n'en font qu'un (vu le 28/10) :
+// on y sépare par un espace cadratin, qui ne se fond pas.
+function phrase(u: Vue, els: Morceau[], sep = SEP) {
   const { Text } = u
   return (
     <Text>
       {els.flatMap((el, i) => [
-        <Text key={`${el.cle}-e`} dimColor size="caption">{`${i > 0 ? SEP : ''}${el.etiquette} `}</Text>,
+        <Text key={`${el.cle}-e`} dimColor size="caption">{`${i > 0 ? sep : ''}${el.etiquette} `}</Text>,
         <Text key={`${el.cle}-v`} weight="medium" tabular {...(el.niveau === 'ok' ? {} : { color: COULEUR[el.niveau] })}>{el.valeur}</Text>,
         ...(el.detail ? [<Text key={`${el.cle}-d`} dimColor size="caption">{` (${el.detail})`}</Text>] : []),
       ])}
@@ -366,7 +369,7 @@ export const register: Register = (on, options) => {
     if (e.surface === 'desktop') {
       const u = $.ui.resolve(e)
       const { Text } = u
-      return <Text>{e.props.modes.length > 0 ? <Text dimColor>{`${e.props.modes.join(' & ')} & `}</Text> : null}{phrase(u, pied)}</Text>
+      return <Text>{e.props.modes.length > 0 ? <Text dimColor>{`${e.props.modes.join(' & ')} & `}</Text> : null}{phrase(u, pied, SEP_BUREAU)}</Text>
     }
     return next({ ...e, props: { ...e.props, modes: [...e.props.modes, ligne(pied, '  ')] } })
   }).catch(($, e, next) => next(e))
