@@ -4,13 +4,15 @@ import type { On } from 'claude-code'
 
 type Moteur = Parameters<TestBody>[0]
 // Le moteur estampille `origin` et `presentation` d'une vraie commande ; le test n'en a pas besoin.
-const commande = ($: Moteur, args: string) => $.command.run({ command: 'sonar', args } as never)
+const commande = async ($: Moteur, args: string) => ((await $.command.run({ command: 'sonar', args } as never)) as { text?: string }).text ?? ''
 
 const H = 3_600_000
 const T0 = Date.parse('2026-10-27T12:00:00Z')
 // Les textes attendus sont en français ; un test plus bas vérifie l'anglais.
 const FR = { options: { language: 'fr', clock: '24h' } }
 const iso = (ms: number) => new Date(ms).toISOString()
+// Symboles de l'ancien affichage : plus aucun dans un rendu.
+const SYMBOLES = /[⚠🔥❄❔⎇●→≈↺·]/u
 
 const QUOTAS = [
   { kind: 'five_hour', percentUsed: 23, resetsAt: iso(T0 + 2 * H) },
@@ -24,9 +26,14 @@ const BANDEAU = {
   props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 120, scroll: { offset: 0, bodyRows: 4 }, view: {} },
 } as const
 const INDICE = { plugin: 'sonar', component: 'PromptHint', props: { isDraft: false, isWorking: false, hint: '? for shortcuts' } } as const
+const PANNEAU = {
+  plugin: 'sonar', component: 'Pane', requestId: 'sonar',
+  props: { title: 'Sonar', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+} as const
 
 // Le « moteur » sous le mod : ce que le test répond à ses appels, et le dessin par défaut de chaque composant.
-function moteur(on: On, opts: { git?: 'ok' | 'panne' | 'hors-depot' } = {}) {
+// `panneau` : ce que répond $.ui.open (placé ou non).
+function moteur(on: On, opts: { git?: 'ok' | 'main' | 'panne' | 'hors-depot'; panneau?: boolean } = {}) {
   const horloge = mock.clock(on, { now: T0 })
   mock.store(on)
   on('command.register', () => ({ value: { command: 'sonar' } }))
@@ -35,11 +42,13 @@ function moteur(on: On, opts: { git?: 'ok' | 'panne' | 'hors-depot' } = {}) {
   on('session.repo', () => ({ value: opts.git === 'hors-depot' ? null : { root: 'C:/Code/projet-a', remote: 'git@github.com:octo/projet-a.git', internal: false, name: null } }))
   on('process.run', () => {
     if (opts.git === 'panne') throw new Error('git introuvable')
-    return { value: { exitCode: 0, stdout: '## feat/x...origin/feat/x\n M a.js\n?? b.js\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    const tete = opts.git === 'main' ? '## main...origin/main' : '## feat/x...origin/feat/x'
+    return { value: { exitCode: 0, stdout: `${tete}\n M a.js\n?? b.js\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('session.measure', (_, e) => ({ changed: e.changed }))
   on('session.end', () => ({ sessionId: 's1' }))
   on('ui.status', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: opts.panneau ? { isPlaced: true } : { isPlaced: false, reason: 'pas de surface' } }))
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
     if (e.component === 'SessionMode') return <Text>{(e.props as { modes: string[] }).modes.join(' & ') || '(rien)'}</Text>
@@ -54,27 +63,70 @@ async function demarrer($: Moteur) {
   await $.session.measure(MESURE)
 }
 
-test('pied (défaut) : ligne courte sur terminal et desktop, détail complet dans /sonar', FR, async ($, on) => {
+// Texte du pied tel qu'il s'affiche.
+async function pied($: Moteur, surface: 'terminal' | 'desktop', modes: string[] = []) {
+  const ui = await $.ui.mount({ ...PIED, props: { modes }, surface })
+  const t = (await ui.find({ type: 'Text' }))?.text ?? ''
+  await ui.unmount()
+  return t
+}
+
+test('pied (défaut) : cas normal = la semaine seule, ni contexte ni % des 5 h', FR, async ($, on) => {
   moteur(on)
   await demarrer($)
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ ...PIED, surface })
-    const t = (await ui.find({ type: 'Text', text: /ctx/ }))?.text ?? ''
-    expect(t).toBe('ctx 34% · 5h 23% · 7j 41% · ⎇ feat/x ●2 · 1,23 $')
-    await ui.unmount()
-  }
-  // Sur desktop, notre dessin remplace celui du moteur : un mode natif reste devant.
-  const avecMode = await $.ui.mount({ ...PIED, props: { modes: ['focus'] }, surface: 'desktop' })
-  expect((await avecMode.find({ type: 'Text', text: /ctx/ }))?.text).toBe('focus & ctx 34% · 5h 23% · 7j 41% · ⎇ feat/x ●2 · 1,23 $')
-  await avecMode.unmount()
-  const r = await commande($, '') as { text?: string }
-  const detail = r.text?.split('\n')[0] ?? ''
-  expect(detail).toMatch(/^ctx 34 % · 5 h 23 % → \d\d:\d\d · 7 j 41 % ≈ 20 %\/j → \S+ \d\d:\d\d · projet-a ⎇ feat\/x ●2 · 1,23 \$$/)
-  expect(detail).not.toMatch(/undefined|NaN/)
-  expect(r.text).toContain('Sonar : pied')
+  expect(await pied($, 'terminal')).toBe('sem. 41 %')
+  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  // Sur le bureau, notre dessin remplace celui du moteur : un mode natif reste devant.
+  expect(await pied($, 'desktop', ['focus'])).toBe('focus & sem. 41 %')
 })
 
-test('cache : la réponse du fil principal compte, celle d’un sous-agent non ; froid après 1 h', FR, async ($, on) => {
+test('pied : 5 h « rapide » sans %, branche protégée ; couleur sur la valeur seule', FR, async ($, on) => {
+  moteur(on, { git: 'main' })
+  await demarrer($)
+  // 5 h : 3 h écoulées sur 5, 80 % utilisés = 20 points d'avance (alerte).
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 80 }, QUOTAS[1]!] })
+  // Alertes puis attentions en tête : l'appli coupe la fin du pied quand la fenêtre est étroite.
+  expect(await pied($, 'terminal')).toBe('5 h rapide  branche main  sem. 41 %')
+  const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text' }))?.text).toMatch(/^5 h rapide   branche main   sem\. 41 %$/)
+  expect((await ui.find({ type: 'Text', text: /^rapide$/ }))?.props.color).toBe('error')
+  expect((await ui.find({ type: 'Text', text: /^main$/ }))?.props.color).toBe('warning')
+  // La semaine, dans les clous, n'a pas de couleur.
+  expect((await ui.find({ type: 'Text', text: /^41 %$/ }))?.props.color).toBeUndefined()
+  await ui.unmount()
+})
+
+test('/sonar : le panneau s’ouvre (jauges sur le bureau, texte sur le terminal) ; sinon le détail en texte', FR, async ($, on) => {
+  moteur(on, { panneau: true })
+  await demarrer($)
+  const r = await commande($, '')
+  expect(r).not.toContain('semaine')
+  expect(r).toContain('Sonar : pied')
+  const bureau = await $.ui.mount({ ...PANNEAU, surface: 'desktop' })
+  expect((await bureau.find({ type: 'Text', text: /^semaine/ }))?.text).toMatch(/^semaine 41 % \(20 %\/j, remise \S+ \d\d:\d\d\)$/)
+  expect((await bureau.find({ type: 'Svg' } as never) as { props?: { alt?: string } } | undefined)?.props?.alt).toBe('5 h 23 %')
+  expect(await bureau.find({ type: 'Text', text: /ctx|contexte/ })).toBeUndefined()
+  expect((await bureau.find({ type: 'Text', text: /Sonar : pied/ }))?.text).toContain('durée du cache inconnue')
+  await bureau.unmount()
+  const terminal = await $.ui.mount({ ...PANNEAU, surface: 'terminal' })
+  expect(await terminal.find({ type: 'Text', text: /^branche feat\/x \(projet-a, 2 modifiés\)$/ })).toBeDefined()
+  await terminal.unmount()
+})
+
+test('/sonar sans panneau placé : une ligne par élément, sans contexte ni anciens symboles', FR, async ($, on) => {
+  moteur(on)
+  await demarrer($)
+  const r = await commande($, '')
+  const [l5, l7, branche, cout] = r.split('\n')
+  expect(l5).toMatch(/^5 h 23 % \(remise \d\d:\d\d\)$/)
+  expect(l7).toMatch(/^semaine 41 % \(20 %\/j, remise \S+ \d\d:\d\d\)$/)
+  expect(branche).toBe('branche feat/x (projet-a, 2 modifiés)')
+  expect(cout).toBe('coût 1,23 $')
+  expect(r).not.toMatch(/ctx|contexte|undefined|NaN/)
+  expect(r).not.toMatch(SYMBOLES)
+})
+
+test('cache : la réponse du fil principal compte, celle d’un sous-agent non ; froid après 1 h, alors au pied', FR, async ($, on) => {
   const horloge = moteur(on)
   on('turn.step', async function* (_, e) {
     return {
@@ -88,49 +140,42 @@ test('cache : la réponse du fil principal compte, celle d’un sous-agent non ;
   await demarrer($)
   for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 3 })) { /* rien */ }
   for await (const _ of $.turn.step({ turnId: 't2', index: 0, model: 'claude-haiku-5-5', messageCount: 1, agentId: 'a1' })) { /* rien */ }
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ ...PIED, surface })
-    expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toContain(' · 🔥 · ')
-    await ui.unmount()
-  }
-  // Durée de vie encore inconnue : chaud au moins 5 min (« ≥ ») ; le détail est dans /sonar.
-  expect((await commande($, '') as { text?: string }).text).toMatch(/cache 🔥 92 % → ≥ \d\d:\d\d/)
+  // Cache chaud : rien au pied ; le détail (durée de vie encore inconnue : « au moins ») dans /sonar.
+  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  expect(await commande($, '')).toMatch(/cache chaud \(92 % relu, au moins jusqu'à \d\d:\d\d\)/)
   await horloge.advance(H + 60_000)
-  const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  // Froid = attention : il passe en tête du pied.
-  expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toMatch(/^cache ❄️ · ctx 34%/)
-  await ui.unmount()
-  expect((await commande($, '') as { text?: string }).text).toContain('cache ❄️ froid')
+  expect(await pied($, 'desktop')).toMatch(/^cache froid   sem\. 41 %$/)
+  expect(await pied($, 'terminal')).toBe('cache froid  sem. 41 %')
+  expect(await commande($, '')).toContain('cache froid')
 })
 
-test('/sonar bandeau : une ligne grise, seule la tête du segment en alerte colorée, /sonar masquer puis afficher', FR, async ($, on) => {
+test('/sonar bandeau : jauges sur le bureau, une ligne sur le terminal, couleur sur la valeur en alerte ; masquer puis afficher', FR, async ($, on) => {
   moteur(on)
   await demarrer($)
-  // 7 j très en avance : alerte.
+  // Semaine très en avance : alerte.
   await $.session.measure({ ...MESURE, rateLimits: [QUOTAS[0]!, { ...QUOTAS[1]!, percentUsed: 90 }] })
   await commande($, 'bandeau')
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ ...BANDEAU, surface })
-    // Toute la ligne dans un seul Text : elle ne se découpe pas en colonnes quand la fenêtre est étroite.
-    expect((await ui.find({ type: 'Text', text: /ctx 34/ }))?.text).toMatch(/^ctx 34 % · 5 h 23 % → .* · ⚠️ 7 j 90 % ≈ .* · 1,23 \$$/)
-    // Dedans, seule la tête du segment prend la couleur ; le séparateur et la suite restent gris.
-    expect((await ui.find({ type: 'Text', text: /^⚠️ 7 j 90 %$/ }))?.text).toBe('⚠️ 7 j 90 %')
-    expect((await ui.find({ type: 'Text', text: /^ ≈/ }))?.text).toMatch(/^ ≈ \d+(,\d)? %\/j → \S+ \d\d:\d\d$/)
-    expect(await ui.find({ type: 'Button' })).toBeUndefined()
-    await ui.unmount()
-  }
+  const bureau = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  expect((await bureau.find({ type: 'Text', text: /^semaine/ }))?.text).toMatch(/^semaine 90 % \(.+\)$/)
+  expect((await bureau.find({ type: 'Text', text: /^90 %$/ }))?.props.color).toBe('error')
+  const svg = await bureau.find({ type: 'Svg' } as never) as { props?: { source?: string } } | undefined
+  expect(svg?.props?.source).toMatch(/^<svg [^>]*>.*<\/svg>$/)
+  expect(await bureau.find({ type: 'Button' })).toBeUndefined()
+  await bureau.unmount()
+  const terminal = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
+  expect((await terminal.find({ type: 'Text', text: /^5 h/ }))?.text).toMatch(/^5 h 23 % \(remise \d\d:\d\d\) {3}semaine 90 % \(.+\) {3}branche feat\/x \(projet-a, 2 modifiés\) {3}coût 1,23 \$$/)
+  expect(await terminal.find({ type: 'Svg' } as never)).toBeUndefined()
+  await terminal.unmount()
   await commande($, 'masquer')
-  const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: /ctx/ })).toBeUndefined()
-  await ui.unmount()
+  const cache = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  expect(await cache.find({ type: 'Text', text: /semaine/ })).toBeUndefined()
+  await cache.unmount()
   await commande($, 'afficher')
-  const ui2 = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
-  expect(await ui2.find({ type: 'Text', text: /ctx/ })).toBeDefined()
-  await ui2.unmount()
+  const remis = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  expect(await remis.find({ type: 'Text', text: /semaine/ })).toBeDefined()
+  await remis.unmount()
   // Le pied n'affiche plus rien : l'emplacement est unique.
-  const pied = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await pied.find({ type: 'Text' }))?.text).toBe('(rien)')
-  await pied.unmount()
+  expect(await pied($, 'desktop')).toBe('(rien)')
 })
 
 test('/sonar indice : remplace la ligne d’aide sous la saisie', FR, async ($, on) => {
@@ -139,72 +184,59 @@ test('/sonar indice : remplace la ligne d’aide sous la saisie', FR, async ($, 
   await commande($, 'indice')
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...INDICE, surface })
-    expect((await ui.find({ type: 'Text', text: /ctx 34/ }))?.text).toMatch(/^ctx 34 % · 5 h 23 % → .* · 1,23 \$$/)
+    expect((await ui.find({ type: 'Text', text: /^5 h/ }))?.text).toMatch(/^5 h 23 % .* {3}coût 1,23 \$$/)
     await ui.unmount()
   }
 })
 
-test('git en panne ou hors dépôt : pas de segment dépôt, le reste s’affiche', FR, async ($, on) => {
+test('git en panne ou hors dépôt : pas de branche, le reste s’affiche', FR, async ($, on) => {
   moteur(on, { git: 'panne' })
   await demarrer($)
-  const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  const t = (await ui.find({ type: 'Text', text: /ctx/ }))?.text ?? ''
-  expect(t).toContain('ctx 34%')
-  expect(t).not.toContain('⎇')
-  await ui.unmount()
+  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  expect(await commande($, '')).not.toMatch(/^branche /m)
 })
 
 test('hors dépôt', FR, async ($, on) => {
   moteur(on, { git: 'hors-depot' })
   await demarrer($)
-  const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).not.toContain('⎇')
-  await ui.unmount()
+  expect(await commande($, '')).not.toMatch(/^branche /m)
 })
 
-test('/clear : contexte, quotas et cache oubliés jusqu’à la prochaine mesure', FR, async ($, on) => {
+test('/clear : quotas et cache oubliés jusqu’à la prochaine mesure', FR, async ($, on) => {
   moteur(on, { git: 'hors-depot' })
   await demarrer($)
   await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
-  const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text' }))?.text).toBe('(rien)')
-  await ui.unmount()
+  expect(await pied($, 'desktop')).toBe('(rien)')
 })
 
-test('quota remis à zéro pendant l’attente : « ↺ » au tic suivant', FR, async ($, on) => {
+test('quota remis à zéro pendant l’attente : écrit en toutes lettres au tic suivant', FR, async ($, on) => {
   const horloge = moteur(on, { git: 'hors-depot' })
   await demarrer($)
   await horloge.advance(2 * H + 60_000)
-  const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toContain('5h ↺')
-  expect((await commande($, '') as { text?: string }).text).toContain('5 h ↺ remis à zéro')
-  await ui.unmount()
+  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  expect(await commande($, '')).toContain('5 h remis à zéro')
 })
 
-test('options : anglais, segments choisis, emplacement par défaut « banner »', { options: { language: 'en', clock: '24h', segments: 'context,cost', placement: 'banner' } }, async ($, on) => {
+test('options : anglais, segments choisis (« context » ignoré), emplacement par défaut « banner »', { options: { language: 'en', clock: '24h', segments: 'context,cost', placement: 'banner' } }, async ($, on) => {
   moteur(on)
   await demarrer($)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BANDEAU, surface })
-    expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toBe('ctx 34% · $1.23')
-    expect(await ui.find({ type: 'Text', text: /5h|⎇/ })).toBeUndefined()
+    expect((await ui.find({ type: 'Text', text: /cost/ }))?.text).toBe('cost $1.23')
+    expect(await ui.find({ type: 'Text', text: /5h|week|branch|ctx|34/ })).toBeUndefined()
     await ui.unmount()
   }
   // Rien dans le pied : l'emplacement par défaut vient de l'option.
-  const pied = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await pied.find({ type: 'Text' }))?.text).toBe('(rien)')
-  await pied.unmount()
-  const r = await commande($, 'footer') as { text?: string }
-  expect(r.text).toBe('Sonar shown: footer.')
+  expect(await pied($, 'desktop')).toBe('(rien)')
+  expect(await commande($, 'footer')).toBe('Sonar shown: footer.')
 })
 
-test('hors abonnement : ni quotas ni coût connus, seul le reste s’affiche', FR, async ($, on) => {
+test('hors abonnement : ni quotas ni coût connus, le pied reste vide', FR, async ($, on) => {
   moteur(on, { git: 'hors-depot' })
   await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
   await $.session.measure({ context: { tokens: 20_000, window: 1_000_000, percent: 2 }, rateLimits: [], changed: ['context'] })
-  const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text' }))?.text).toBe('ctx 2%')
-  await ui.unmount()
+  expect(await pied($, 'desktop')).toBe('(rien)')
+  expect(await commande($, '')).toMatch(/^Sonar : pied/)
 })
 
 // Le disque sous le mod : un dictionnaire chemin → texte. Le moteur rend les chemins absolus (antislashs sous Windows).
@@ -234,7 +266,7 @@ test('journal des quotas : désactivé par défaut, rien n’est écrit', FR, as
   await demarrer($)
   await attendre()
   expect(Object.keys(f)).toEqual([])
-  expect((await commande($, '') as { text?: string }).text).not.toContain('Relevés')
+  expect(await commande($, '')).not.toContain('Relevés')
 })
 
 test('journal des quotas : une ligne par changement, chemin par défaut, nommé dans /sonar', { options: { ...FR.options, quotaLog: true } }, async ($, on) => {
@@ -257,7 +289,7 @@ test('journal des quotas : une ligne par changement, chemin par défaut, nommé 
   await attendre()
   expect(lignes(f).map(l => l.five_hour.pct)).toEqual([23, 24])
   expect(lignes(f)[1].ts).toBe(iso(T0 + 60_000))
-  expect((await commande($, '') as { text?: string }).text).toContain(`Relevés de quota : ${JOURNAL}`)
+  expect(await commande($, '')).toContain(`Relevés de quota : ${JOURNAL}`)
 })
 
 test('journal des quotas : chemin choisi, ligne déjà écrite par une autre session non dupliquée, disque en panne sans effet', { options: { ...FR.options, quotaLog: true, quotaLogPath: 'D:/releves/q.jsonl' } }, async ($, on) => {
@@ -271,7 +303,5 @@ test('journal des quotas : chemin choisi, ligne déjà écrite par une autre ses
   await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 30 }] })
   await attendre()
   // L'affichage n'en souffre pas.
-  const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toContain('5h 30%')
-  await ui.unmount()
+  expect(await commande($, '')).toContain('5 h 30 %')
 })

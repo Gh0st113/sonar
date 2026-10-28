@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  rythme, niveauContexte, etatCache, deduireTtl, segments, ligne, ligneCourte, lireStatut, nomDepot, lireCommande, lireConfig,
+  rythme, etatCache, deduireTtl, elementsPied, jauges, ligne, lireStatut, nomDepot, lireCommande, lireConfig,
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
   releve, ajouterReleve, dernierReleve, cheminJournal, cheminArchive, isoUtc, majJournal, besoinMaison, TAILLE_MAX_JOURNAL,
 } from '../hooks/logique.mjs';
@@ -24,10 +24,7 @@ test('config : défauts, langue auto selon la locale, valeurs invalides ignorée
   assert.equal(lireConfig({ language: 'auto' }, 'en-US').horloge, '12h');
   assert.equal(lireConfig({ language: 'auto' }, 'en-GB').horloge, '24h');
   assert.equal(lireConfig({ language: 'en', clock: '24h' }, 'en-US').horloge, '24h');
-  assert.deepEqual(lireConfig({ contextWarn: 60, contextAlert: 90 }).ctx, { attention: 60, alerte: 90 });
-  assert.deepEqual(lireConfig({ contextWarn: 90, contextAlert: 60 }).ctx, DEFAUTS.ctx); // inversés
   assert.deepEqual(lireConfig({ quotaWarn: -5, quotaAlert: 90 }).quota, DEFAUTS.quota); // hors bornes
-  assert.deepEqual(lireConfig({ segments: 'cost, context' }).segments, ['cout', 'ctx']);
   assert.deepEqual(lireConfig({ segments: 'rien' }).segments, SEGMENTS); // aucun reconnu : tout
   assert.deepEqual(lireConfig({ protectedBranches: 'Main, develop' }).branches, ['main', 'develop']);
   assert.deepEqual(lireConfig({ protectedBranches: '' }).branches, []);
@@ -93,15 +90,6 @@ test('quota inconnu (passerelle : spend_limit) ou sans date : seuils absolus seu
   assert.equal(rythme({ kind: 'five_hour', percentUsed: 75 }, T0).niveau, 'attention');
   assert.equal(rythme(undefined, T0), undefined);
   assert.equal(rythme({ kind: 'five_hour', percentUsed: NaN }, T0), undefined);
-});
-
-test('contexte : seuils 50 et 80, réglables', () => {
-  assert.equal(niveauContexte(49), 'ok');
-  assert.equal(niveauContexte(50), 'attention');
-  assert.equal(niveauContexte(80), 'attention');
-  assert.equal(niveauContexte(81), 'alerte');
-  assert.equal(niveauContexte(undefined), undefined);
-  assert.equal(niveauContexte(55, lireConfig({ contextWarn: 60, contextAlert: 90 })), 'ok');
 });
 
 test('cache à durée connue : chaud puis froid, autre modèle, rien avant une lecture/écriture', () => {
@@ -186,61 +174,72 @@ test('formats selon la langue et l’horloge', () => {
 });
 
 const TOUT = {
-  contexte: 34, quotas: [q7(41, 3 * J), q5(23, 2 * H)], cout: 1.234,
+  quotas: [q7(41, 3 * J), q5(23, 2 * H)], cout: 1.234,
   cache: { a: T0 - 60_000, lu: 92, ecrit: 4, neuf: 4, modele: 'm' }, ttlMs: TTL['1h'], modele: 'm',
   depot: { nom: 'projet-a', branche: 'feat/x', modifies: 3 },
 };
+// Symboles de l'ancien affichage : plus aucun dans un rendu.
+const SYMBOLES = /[⚠🔥❄❔⎇●→≈↺·]/u;
+const pied = (d, cfg = FR, m = T0) => ligne(elementsPied(d, m, cfg), '  ');
 
-test('segments (fr) : tout présent, 5 h avant 7 j, sans « undefined » ni « NaN »', () => {
-  const segs = segments(TOUT, T0, FR);
-  assert.deepEqual(segs.map((s) => s.cle), ['ctx', 'five_hour', 'seven_day', 'cache', 'depot', 'cout']);
-  const t = ligne(segs);
-  assert.doesNotMatch(t, /undefined|NaN/);
-  assert.match(t, /^ctx 34 % · 5 h 23 % → \d\d:\d\d · 7 j 41 % ≈ 20 %\/j → \S+ \d\d:\d\d · cache 🔥 92 % → \d\d:\d\d · projet-a ⎇ feat\/x ●3 · 1,23 \$$/);
+test('pied : cas normal = la semaine seule', () => {
+  assert.deepEqual(elementsPied(TOUT, T0, FR), [{ cle: 'seven_day', etiquette: 'sem.', valeur: '41 %', niveau: 'ok' }]);
+  assert.equal(pied(TOUT, EN), 'week 41%');
 });
 
-test('segments (en)', () => {
-  const t = ligne(segments(TOUT, T0, EN));
-  assert.match(t, /^ctx 34% · 5h 23% → \d\d:\d\d · 7d 41% ≈ 20%\/d → [A-Z][a-z]{2} \d\d:\d\d · cache 🔥 92% → \d\d:\d\d · projet-a ⎇ feat\/x ●3 · \$1\.23$/);
+test('pied : 5 h « rapide » sans % seulement en avance ; cache froid, branche protégée, budget', () => {
+  // 5 h : 3 h écoulées, rythme régulier 60 % ; 70 % = +10 (attention), 80 % = +20 (alerte), 64 % = +4 (rien).
+  assert.deepEqual(elementsPied({ quotas: [q5(70, 2 * H)] }, T0, FR), [{ cle: 'five_hour', etiquette: '5 h', valeur: 'rapide', niveau: 'attention' }]);
+  assert.equal(elementsPied({ quotas: [q5(80, 2 * H)] }, T0, FR)[0].niveau, 'alerte');
+  assert.deepEqual(elementsPied({ quotas: [q5(64, 2 * H)] }, T0, FR), []);
+  assert.deepEqual(elementsPied({ quotas: [q5(40, -1)] }, T0, FR), []); // remis : rien
+  // Jamais le % des 5 h au pied (Claude Code l'affiche déjà), même à 95 %.
+  assert.equal(pied({ quotas: [q5(95, 4.5 * H)] }, EN), '5h fast');
+  // 7 points d'avance seulement, mais 97 % : alerte (seuil absolu).
+  assert.equal(elementsPied({ quotas: [q5(97, 0.5 * H)] }, T0, FR)[0].niveau, 'alerte');
+  // Alertes puis attentions en tête : la fin du pied peut être coupée.
+  assert.equal(pied({ quotas: [q7(41, 3 * J), q5(80, 2 * H)], depot: { nom: 'p', branche: 'main', modifies: 0 } }), '5 h rapide  branche main  sem. 41 %');
+  const d = { ...TOUT, quotas: [q7(80, 3 * J), q5(23, 2 * H)], depot: { nom: 'p', branche: 'main', modifies: 0 }, cache: { a: T0 - 2 * H, lu: 9, ecrit: 1, neuf: 0, modele: 'm' } };
+  assert.equal(pied(d), 'sem. 80 %  cache froid  branche main');
+  assert.deepEqual(elementsPied(d, T0, FR).map((x) => x.niveau), ['alerte', 'attention', 'attention']);
+  assert.equal(pied({ quotas: [{ kind: 'spend_limit', percentUsed: 62.8 }] }, EN), 'budget 63%');
+  assert.equal(pied({ quotas: [q7(100, 2 * J)] }), 'sem. épuisé');
+  assert.deepEqual(elementsPied({ quotas: [] }, T0, FR), []);
+  // Segments désactivés : rien ; branches protégées réglables.
+  assert.deepEqual(elementsPied(d, T0, lireConfig({ language: 'fr', segments: 'cost' })), []);
+  assert.equal(pied({ quotas: [], depot: { nom: 'p', branche: 'develop', modifies: 0 } }, lireConfig({ language: 'fr', protectedBranches: 'develop' })), 'branche develop');
+  assert.doesNotMatch(pied(d), SYMBOLES);
 });
 
-test('pied (ligne courte) : sans heures ni budget/jour, alertes en tête, ordre stable sinon', () => {
-  // Écriture serrée dans toutes les langues : « 34% », « 7j », ⚠️ collé.
-  assert.equal(ligneCourte(segments(TOUT, T0, FR)), 'ctx 34% · 5h 23% · 7j 41% · 🔥 · ⎇ feat/x ●3 · 1,23 $');
-  assert.equal(ligneCourte(segments(TOUT, T0, EN)), 'ctx 34% · 5h 23% · 7d 41% · 🔥 · ⎇ feat/x ●3 · $1.23');
-  // 7 j très en avance (alerte) et branche protégée (attention) passent devant ; le reste garde son ordre.
-  const d = { ...TOUT, quotas: [q7(80, 3 * J), q5(23, 2 * H)], depot: { nom: 'p', branche: 'main', modifies: 0 } };
-  assert.equal(ligneCourte(segments(d, T0, FR)), '⚠️7j 80% · ⚠️⎇ main · ctx 34% · 5h 23% · 🔥 · 1,23 $');
-  assert.equal(ligneCourte(segments({ quotas: [q5(40, -1)] }, T0, FR)), '5h ↺');
-  // Coût : arrondi à partir de 10 (les centimes coûtent 3 caractères), exact en dessous.
-  assert.equal(ligneCourte(segments({ quotas: [], cout: 13.34 }, T0, FR)), '13 $');
-  assert.equal(ligneCourte(segments({ quotas: [], cout: 13.34 }, T0, EN)), '$13');
-  assert.equal(ligneCourte(segments({ quotas: [], cout: 0.42 }, T0, EN)), '$0.42');
-  assert.equal(ligneCourte([]), '');
+test('jauges (fr) : tout le détail, sans contexte ni anciens symboles', () => {
+  const j = jauges(TOUT, T0, FR);
+  assert.deepEqual(j.map((x) => x.cle), ['five_hour', 'seven_day', 'cache', 'depot', 'cout']);
+  const t = ligne(j);
+  assert.doesNotMatch(t, /undefined|NaN|ctx|contexte/);
+  assert.doesNotMatch(t, SYMBOLES);
+  assert.match(t, /^5 h 23 % \(remise \d\d:\d\d\) {3}semaine 41 % \(20 %\/j, remise \S+ \d\d:\d\d\) {3}cache chaud \(92 % relu, jusqu'à \d\d:\d\d\) {3}branche feat\/x \(projet-a, 3 modifiés\) {3}coût 1,23 \$$/);
+  // Jauge = usage ; repère = part de fenêtre écoulée ; cache = temps qu'il lui reste ; pas de jauge pour la branche.
+  assert.equal(j[0].part, 0.23);
+  assert.ok(Math.abs(j[0].repere - 0.6) < 1e-9);
+  assert.ok(Math.abs(j[1].repere - 4 / 7) < 1e-9);
+  assert.ok(Math.abs(j[2].part - 59 / 60) < 1e-9);
+  assert.equal(j[3].part, undefined);
 });
 
-test('segments : choix et ordre fixe, branches protégées réglables', () => {
-  const cfg = lireConfig({ language: 'fr', segments: 'cost,context', protectedBranches: 'develop' });
-  assert.equal(ligne(segments(TOUT, T0, cfg)), 'ctx 34 % · 1,23 $');
-  const dev = segments({ quotas: [], depot: { nom: 'p', branche: 'develop', modifies: 0 } }, T0, cfg);
-  assert.equal(dev.length, 0); // dépôt désactivé
-  const avecDepot = lireConfig({ language: 'fr', protectedBranches: 'develop' });
-  assert.equal(ligne(segments({ quotas: [], depot: { nom: 'p', branche: 'develop', modifies: 0 } }, T0, avecDepot)), '⚠️ p ⎇ develop');
-  assert.equal(ligne(segments({ quotas: [], depot: { nom: 'p', branche: 'main', modifies: 0 } }, T0, avecDepot)), 'p ⎇ main');
-});
-
-test('segments : rien de connu, quota remis, épuisé, tête détachée, cache incertain, budget de passerelle', () => {
-  assert.deepEqual(segments({ quotas: [] }, T0, FR), []);
-  const s = segments({ quotas: [q5(40, -1)], depot: { nom: 'pz', branche: 'main', modifies: 0 } }, T0, FR);
-  assert.equal(ligne(s), '5 h ↺ remis à zéro · ⚠️ pz ⎇ main');
-  assert.equal(s[1].niveau, 'attention');
-  assert.equal(ligne(segments({ contexte: 85, quotas: [q7(100, 2 * J)] }, T0, FR)), `⚠️ ctx 85 % · ⚠️ 7 j épuisé → ${echeance(T0 + 2 * J, T0, FR)}`);
-  assert.equal(ligne(segments({ quotas: [], depot: { nom: 'p', detachee: true, modifies: 1 } }, T0, EN)), 'p ⎇ detached HEAD ●1');
-  assert.equal(ligne(segments({ quotas: [], cache: { a: T0, lu: 9, ecrit: 1, neuf: 0 } }, T0 + 10 * 60_000, FR)), 'cache ❔ incertain');
-  assert.match(ligne(segments({ quotas: [], cache: { a: T0, lu: 9, ecrit: 1, neuf: 0 } }, T0 + 60_000, EN)), /^cache 🔥 90% → ≥ \d\d:\d\d$/);
-  const passerelle = segments({ quotas: [{ kind: 'spend_limit', percentUsed: 62.8, resetsAt: iso(T0 + 10 * J) }] }, T0, EN);
-  assert.match(ligne(passerelle), /^budget 63% → \d{1,2}\/\d{1,2}$/); // > 6 jours : la date
-  assert.deepEqual(lireConfig({ contextWarn: 60 }).ctx, { attention: 60, alerte: 80 }); // un seul champ donné
+test('jauges (en) et cas limites', () => {
+  assert.match(ligne(jauges(TOUT, T0, EN)), /^5h 23% \(resets \d\d:\d\d\) {3}week 41% \(20%\/d, resets [A-Z][a-z]{2} \d\d:\d\d\) {3}cache warm \(92% reused, until \d\d:\d\d\) {3}branch feat\/x \(projet-a, 3 modified\) {3}cost \$1\.23$/);
+  assert.equal(ligne(jauges({ quotas: [q5(40, -1)] }, T0, FR)), '5 h remis à zéro');
+  assert.equal(jauges({ quotas: [q5(40, -1)] }, T0, FR)[0].part, 0);
+  assert.equal(ligne(jauges({ quotas: [], depot: { nom: 'p', detachee: true, modifies: 1 } }, T0, EN)), 'branch detached HEAD (p, 1 modified)');
+  assert.equal(ligne(jauges({ quotas: [], depot: { nom: 'p', modifies: 0 } }, T0, FR)), 'branche p');
+  assert.equal(ligne(jauges({ quotas: [], cache: { a: T0, lu: 9, ecrit: 1, neuf: 0 } }, T0 + 10 * 60_000, FR)), 'cache incertain');
+  assert.match(ligne(jauges({ quotas: [], cache: { a: T0, lu: 9, ecrit: 1, neuf: 0 } }, T0 + 60_000, FR)), /^cache chaud \(90 % relu, au moins jusqu'à \d\d:\d\d\)$/);
+  assert.equal(ligne(jauges({ quotas: [], cache: { a: T0, lu: 9, ecrit: 1, neuf: 0, modele: 'a' }, modele: 'b' }, T0, FR)), 'cache autre modèle');
+  assert.match(ligne(jauges({ quotas: [{ kind: 'spend_limit', percentUsed: 62.8, resetsAt: iso(T0 + 10 * J) }] }, T0, EN)), /^budget 63% \(resets \d{1,2}\/\d{1,2}\)$/);
+  assert.match(ligne(jauges({ quotas: [q7(97, 0.5 * J)] }, T0, FR)), /^semaine 97 % \(reste 3 %, remise .+\)$/);
+  assert.deepEqual(jauges({ quotas: [] }, T0, FR), []);
+  // « context » dans l'option segments est ignoré : le contexte n'est affiché nulle part.
+  assert.deepEqual(lireConfig({ segments: 'cost, context' }).segments, ['cout']);
 });
 
 test('journal des quotas : format de ligne, fenêtre absente omise, heure de remise en ISO UTC', () => {

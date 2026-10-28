@@ -13,13 +13,13 @@ const TTL_MAX = TTL['1h'];
 // pied = labels du pied de saisie ; indice = ligne d'aide sous la saisie ; ligne = $.ui.status ; bandeau = au-dessus.
 export const EMPLACEMENTS = ['pied', 'indice', 'ligne', 'bandeau'];
 const ALIAS = { footer: 'pied', hint: 'indice', status: 'ligne', banner: 'bandeau', hide: 'masquer', show: 'afficher' };
-export const SEGMENTS = ['ctx', 'quotas', 'cache', 'depot', 'cout'];
-const ALIAS_SEGMENTS = { context: 'ctx', quota: 'quotas', limits: 'quotas', repo: 'depot', git: 'depot', cost: 'cout' };
+// Pas de contexte : Claude Code l'affiche déjà (comme le % des 5 h). « context » dans l'option est ignoré.
+export const SEGMENTS = ['quotas', 'cache', 'depot', 'cout'];
+const ALIAS_SEGMENTS = { quota: 'quotas', limits: 'quotas', repo: 'depot', git: 'depot', cost: 'cout' };
 
 export const DEFAUTS = {
   langue: 'en',
   horloge: '24h',
-  ctx: { attention: 50, alerte: 80 },
   rythme: { attention: 5, alerte: 15 },
   quota: { attention: 70, alerte: 90 },
   segments: SEGMENTS,
@@ -31,19 +31,25 @@ export const DEFAUTS = {
 
 const TEXTES = {
   fr: {
-    noms: { five_hour: '5 h', seven_day: '7 j', spend_limit: 'budget' },
-    remis: '↺ remis à zéro', epuise: 'épuisé', reste: (p) => `(reste ${p} %)`, parJour: '%/j',
-    froid: 'froid', autreModele: 'autre modèle', incertain: 'incertain', detachee: 'HEAD détachée',
+    noms: { five_hour: '5 h', seven_day: 'semaine', spend_limit: 'budget' },
+    nomsCourts: { seven_day: 'sem.' },
+    remis: 'remis à zéro', epuise: 'épuisé', rapide: 'rapide',
+    parJour: (p) => `${p} %/j`, reste: (p) => `reste ${p} %`, remet: (e) => `remise ${e}`,
+    cache: 'cache', chaud: 'chaud', froid: 'froid', autreModele: 'autre modèle', incertain: 'incertain',
+    relu: (p) => `${p} relu`, jusqua: (h, auMoins) => `${auMoins ? 'au moins ' : ''}jusqu'à ${h}`,
+    branche: 'branche', detachee: 'HEAD détachée', modifies: (n) => `${n} modifié${n > 1 ? 's' : ''}`,
+    nomCout: 'coût', vide: 'Pas encore de mesure : elle arrive avec la prochaine réponse.',
     jours: ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'], decimale: ',',
     cout: (x) => `${x} $`,
     inconnu: (a) => `argument inconnu : « ${a} »`,
     aide: [
+      '/sonar — ouvre le panneau de détail',
       '/sonar pied | indice | ligne | bandeau — où afficher le sonar',
       '/sonar ttl 5m | 1h | auto — durée de vie du cache (auto : déduite des réponses)',
       '/sonar masquer | afficher',
       'Seuils, langue, segments, branches : réglages du plugin (pluginConfigs["sonar@sonar-mods"] dans settings.json).',
     ].join('\n'),
-    etat: (lieu, ttl, force) => `Sonar : ${lieu}, cache ${ttl ?? 'inconnu'}${force ? ' (forcé)' : ''}.`,
+    etat: (lieu, ttl, force) => `Sonar : ${lieu}, durée du cache ${ttl ?? 'inconnue'}${force ? ' (forcée)' : ''}.`,
     affichee: (lieu) => `Sonar affiché : ${lieu}.`,
     ttlAuto: 'Durée du cache : déduite des réponses.',
     ttlForce: (t) => `Durée du cache forcée : ${t}.`,
@@ -52,19 +58,25 @@ const TEXTES = {
     journal: (c) => `Relevés de quota : ${c ?? 'dossier personnel introuvable, aucun relevé'}`,
   },
   en: {
-    noms: { five_hour: '5h', seven_day: '7d', spend_limit: 'budget' },
-    remis: '↺ reset', epuise: 'exhausted', reste: (p) => `(${p}% left)`, parJour: '%/d',
-    froid: 'cold', autreModele: 'other model', incertain: 'uncertain', detachee: 'detached HEAD',
+    noms: { five_hour: '5h', seven_day: 'week', spend_limit: 'budget' },
+    nomsCourts: {},
+    remis: 'reset', epuise: 'exhausted', rapide: 'fast',
+    parJour: (p) => `${p}%/d`, reste: (p) => `${p}% left`, remet: (e) => `resets ${e}`,
+    cache: 'cache', chaud: 'warm', froid: 'cold', autreModele: 'other model', incertain: 'uncertain',
+    relu: (p) => `${p} reused`, jusqua: (h, auMoins) => `${auMoins ? 'at least ' : ''}until ${h}`,
+    branche: 'branch', detachee: 'detached HEAD', modifies: (n) => `${n} modified`,
+    nomCout: 'cost', vide: 'No reading yet: it comes with the next response.',
     jours: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], decimale: '.',
     cout: (x) => `$${x}`,
     inconnu: (a) => `unknown argument: "${a}"`,
     aide: [
+      '/sonar — opens the detail pane',
       '/sonar footer | hint | status | banner — where to show it',
       '/sonar ttl 5m | 1h | auto — prompt cache lifetime (auto: inferred from responses)',
       '/sonar hide | show',
       'Thresholds, language, segments, branches: plugin options (pluginConfigs["sonar@sonar-mods"] in settings.json).',
     ].join('\n'),
-    etat: (lieu, ttl, force) => `Sonar: ${lieu}, cache ${ttl ?? 'unknown'}${force ? ' (forced)' : ''}.`,
+    etat: (lieu, ttl, force) => `Sonar: ${lieu}, cache lifetime ${ttl ?? 'unknown'}${force ? ' (forced)' : ''}.`,
     affichee: (lieu) => `Sonar shown: ${lieu}.`,
     ttlAuto: 'Cache lifetime: inferred from responses.',
     ttlForce: (t) => `Cache lifetime forced: ${t}.`,
@@ -102,7 +114,6 @@ export function lireConfig(options = {}, localeHote = '') {
   return {
     langue,
     horloge,
-    ctx: paire(o.contextWarn, o.contextAlert, DEFAUTS.ctx),
     rythme: paire(o.paceWarn, o.paceAlert, DEFAUTS.rythme),
     quota: paire(o.quotaWarn, o.quotaAlert, DEFAUTS.quota),
     segments: o.segments === undefined || segs.length === 0 ? SEGMENTS : segs,
@@ -125,7 +136,6 @@ export function lireCommande(args) {
 // Au début d'une fenêtre, le moindre usage paraît « en avance » : on accorde d'office
 // une part minimale de la fenêtre (1 h sur 5 h, 1 jour sur 7 j).
 const GRACE = { five_hour: 0.2, seven_day: 1 / 7 };
-const ICONE = { ok: '', attention: '⚠️ ', alerte: '⚠️ ' };
 
 const z = (n) => String(n).padStart(2, '0');
 export const heure = (ms, cfg = DEFAUTS) => {
@@ -153,18 +163,10 @@ export const pct = (x, cfg = DEFAUTS) =>
   (x < 10 && !Number.isInteger(x) ? x.toFixed(1).replace('.', textes(cfg.langue).decimale) : String(entier(x)));
 // « 34 % » en français (espace), « 34% » en anglais.
 const pc = (x, cfg) => (cfg.langue === 'fr' ? `${pct(x, cfg)} %` : `${pct(x, cfg)}%`);
-// Écriture serrée du pied (une vingtaine de caractères visibles) : « 62% », « 7j », ⚠️ collé, dans toutes les langues.
-const pcSerre = (x, cfg) => `${pct(x, cfg)}%`;
-const serre = (nom) => nom.replace(/\s+/g, '');
-const ICONE_SERREE = { ok: '', attention: '⚠️', alerte: '⚠️' };
-
-export function niveauContexte(p, cfg = DEFAUTS) {
-  if (!fini(p)) return undefined;
-  return p > cfg.ctx.alerte ? 'alerte' : p >= cfg.ctx.attention ? 'attention' : 'ok';
-}
 
 // Rythme d'un quota : compare l'usage à la part de fenêtre écoulée.
 // undefined : quota illisible. `remis` : la remise à zéro est passée, le nouveau chiffre arrivera à la prochaine réponse.
+// `part` : part de la fenêtre écoulée (0 à 1) ; `avance` : points d'usage au-delà du rythme régulier (grâce comprise).
 export function rythme(q, maintenant, cfg = DEFAUTS) {
   if (!q || !fini(q.percentUsed)) return undefined;
   const longueur = FENETRES[q.kind];
@@ -185,7 +187,8 @@ export function rythme(q, maintenant, cfg = DEFAUTS) {
     }
   }
   o.epuise = utilise >= 100;
-  const avance = o.attendu === undefined ? 0 : utilise - o.attendu;
+  if (o.attendu !== undefined) o.avance = utilise - o.attendu;
+  const avance = o.avance ?? 0;
   o.niveau = utilise >= cfg.quota.alerte || avance > cfg.rythme.alerte ? 'alerte'
     : avance > cfg.rythme.attention || utilise >= cfg.quota.attention ? 'attention' : 'ok';
   return o;
@@ -222,8 +225,6 @@ export function deduireTtl(avant, apres) {
 }
 
 export const montant = (usd, cfg = DEFAUTS) => textes(cfg.langue).cout(usd.toFixed(2).replace('.', textes(cfg.langue).decimale));
-// Pied : à partir de 10, les centimes n'apportent rien et coûtent 3 caractères.
-const montantCourt = (usd, cfg) => (usd >= 10 ? textes(cfg.langue).cout(String(Math.round(usd))) : montant(usd, cfg));
 
 // Nom court d'un dépôt : la fin de l'URL du remote, sinon le dernier dossier de la racine.
 export function nomDepot(remote, racine) {
@@ -245,63 +246,81 @@ export function lireStatut(sortie) {
 const quotasTries = (quotas) => [...(quotas ?? [])].filter((q) => q && typeof q.kind === 'string')
   .sort((a, b) => (ORDRE_QUOTAS.indexOf(a.kind) + 1 || 99) - (ORDRE_QUOTAS.indexOf(b.kind) + 1 || 99));
 
-// Segments affichés, dans l'ordre ; chacun { cle, texte, niveau }. Un segment sans donnée ou désactivé est absent.
-export function segments(d, maintenant, cfg = DEFAUTS) {
+const protegee = (depot, cfg) => Boolean(depot?.branche && cfg.branches.includes(depot.branche.toLowerCase()));
+const valeurQuota = (r, t, cfg) => (r.remis ? t.remis : r.epuise ? t.epuise : pc(r.utilise, cfg));
+
+// Pied : seulement ce qui mérite un coup d'œil, chacun { cle, etiquette, valeur, niveau }.
+// La semaine toujours ; les 5 h seulement quand leur rythme s'emballe, sans % (Claude Code l'affiche déjà) ;
+// un autre quota (budget d'une passerelle) avec son % ; le cache seulement froid ; la branche seulement protégée.
+export function elementsPied(d, maintenant, cfg = DEFAUTS) {
   const t = textes(cfg.langue);
   const actif = (k) => cfg.segments.includes(k);
-  const s = [];
-  const nc = actif('ctx') ? niveauContexte(d.contexte, cfg) : undefined;
-  if (nc) s.push({ cle: 'ctx', texte: `${ICONE[nc]}ctx ${pc(d.contexte, cfg)}`, court: `${ICONE_SERREE[nc]}ctx ${pcSerre(d.contexte, cfg)}`, niveau: nc });
+  const e = [];
   if (actif('quotas')) {
     for (const q of quotasTries(d.quotas)) {
       const r = rythme(q, maintenant, cfg);
       if (!r) continue;
-      const nom = t.noms[r.kind] ?? r.kind;
-      if (r.remis) {
-        s.push({ cle: r.kind, texte: `${nom} ${t.remis}`, court: `${serre(nom)} ↺`, niveau: 'ok' });
+      const etiquette = t.nomsCourts[r.kind] ?? t.noms[r.kind] ?? r.kind;
+      if (r.kind === 'five_hour') {
+        if (r.remis || !(r.avance > cfg.rythme.attention)) continue;
+        // Le niveau de `rythme` : il tient compte aussi des seuils absolus (97 % avec 7 points d'avance = alerte).
+        e.push({ cle: r.kind, etiquette, valeur: t.rapide, niveau: r.niveau });
         continue;
       }
-      const tete = `${ICONE[r.niveau]}${nom} ${r.epuise ? t.epuise : pc(r.utilise, cfg)}`;
-      let x = tete;
-      const court = `${ICONE_SERREE[r.niveau]}${serre(nom)} ${r.epuise ? t.epuise : pcSerre(r.utilise, cfg)}`;
-      if (r.parJour !== undefined) x += ` ≈ ${pct(r.parJour, cfg)}${cfg.langue === 'fr' ? ' ' : ''}${t.parJour}`;
-      if (r.reste !== undefined) x += ` ${t.reste(pct(r.reste, cfg))}`;
-      if (r.reset !== undefined) x += ` → ${echeance(r.reset, maintenant, cfg)}`;
-      // `tete` : la partie que le bandeau colore (le chiffre en cause), la suite reste grise.
-      s.push({ cle: r.kind, texte: x, tete, court, niveau: r.niveau });
+      e.push({ cle: r.kind, etiquette, valeur: valeurQuota(r, t, cfg), niveau: r.niveau });
     }
   }
   const c = actif('cache') ? etatCache(d.cache, d.ttlMs, maintenant, d.modele) : undefined;
-  if (c && c.etat !== 'rien') {
-    if (c.etat === 'chaud') {
-      const taux = c.taux !== undefined ? ` ${pc(entier(100 * c.taux), cfg)}` : '';
-      s.push({ cle: 'cache', texte: `cache 🔥${taux} → ${c.auMoins ? '≥ ' : ''}${heure(c.expire, cfg)}`, court: '🔥', niveau: 'ok' });
-    } else if (c.etat === 'incertain') {
-      s.push({ cle: 'cache', texte: `cache ❔ ${t.incertain}`, court: 'cache ❔', niveau: 'ok' });
-    } else {
-      s.push({ cle: 'cache', texte: `cache ❄️ ${c.autreModele ? t.autreModele : t.froid}`, court: 'cache ❄️', niveau: 'attention' });
+  if (c?.etat === 'froid') e.push({ cle: 'cache', etiquette: t.cache, valeur: t.froid, niveau: 'attention' });
+  if (actif('depot') && protegee(d.depot, cfg)) e.push({ cle: 'depot', etiquette: t.branche, valeur: d.depot.branche, niveau: 'attention' });
+  // L'appli coupe la fin du pied quand la fenêtre est étroite : alertes, puis attentions, puis le reste (tri stable).
+  return e.sort((a, b) => PRIORITE[a.niveau] - PRIORITE[b.niveau]);
+}
+const PRIORITE = { alerte: 0, attention: 1, ok: 2 };
+
+// Bandeau et panneau : tout le détail, chacun { cle, etiquette, valeur, detail, niveau, part?, repere? }.
+// `part` (0 à 1) remplit la jauge ; `repere` marque la part de fenêtre écoulée (le rythme régulier). Sans `part`, pas de jauge.
+export function jauges(d, maintenant, cfg = DEFAUTS) {
+  const t = textes(cfg.langue);
+  const actif = (k) => cfg.segments.includes(k);
+  const j = [];
+  if (actif('quotas')) {
+    for (const q of quotasTries(d.quotas)) {
+      const r = rythme(q, maintenant, cfg);
+      if (!r) continue;
+      const detail = [];
+      if (r.parJour !== undefined) detail.push(t.parJour(pct(r.parJour, cfg)));
+      if (r.reste !== undefined) detail.push(t.reste(pct(r.reste, cfg)));
+      if (r.reset !== undefined) detail.push(t.remet(echeance(r.reset, maintenant, cfg)));
+      j.push({
+        cle: r.kind, etiquette: t.noms[r.kind] ?? r.kind, valeur: valeurQuota(r, t, cfg), detail: detail.join(', '),
+        niveau: r.niveau, part: r.remis ? 0 : Math.min(1, r.utilise / 100), repere: r.part,
+      });
     }
+  }
+  const c = actif('cache') ? etatCache(d.cache, d.ttlMs, maintenant, d.modele) : undefined;
+  if (c?.etat === 'chaud') {
+    // La jauge du cache se vide à mesure que son expiration approche.
+    const duree = fini(d.ttlMs) ? d.ttlMs : TTL_MIN;
+    const detail = [c.taux !== undefined ? t.relu(pc(entier(100 * c.taux), cfg)) : '', t.jusqua(heure(c.expire, cfg), c.auMoins)];
+    j.push({ cle: 'cache', etiquette: t.cache, valeur: t.chaud, detail: detail.filter(Boolean).join(', '), niveau: 'ok', part: Math.min(1, Math.max(0, (c.expire - maintenant) / duree)) });
+  } else if (c?.etat === 'incertain') {
+    j.push({ cle: 'cache', etiquette: t.cache, valeur: t.incertain, detail: '', niveau: 'ok' });
+  } else if (c?.etat === 'froid') {
+    j.push({ cle: 'cache', etiquette: t.cache, valeur: c.autreModele ? t.autreModele : t.froid, detail: '', niveau: 'attention', part: 0 });
   }
   if (actif('depot') && d.depot?.nom) {
     const b = d.depot.detachee ? t.detachee : d.depot.branche;
-    const garde = Boolean(d.depot.branche && cfg.branches.includes(d.depot.branche.toLowerCase()));
-    let x = `${garde ? '⚠️ ' : ''}${d.depot.nom}`;
-    if (b) x += ` ⎇ ${b}`;
-    if (d.depot.modifies) x += ` ●${d.depot.modifies}`;
-    s.push({ cle: 'depot', texte: x, court: `${garde ? '⚠️' : ''}${b ? `⎇ ${b}` : d.depot.nom}${d.depot.modifies ? ` ●${d.depot.modifies}` : ''}`, niveau: garde ? 'attention' : 'ok' });
+    const detail = [b ? d.depot.nom : '', d.depot.modifies ? t.modifies(d.depot.modifies) : ''];
+    j.push({ cle: 'depot', etiquette: t.branche, valeur: b ?? d.depot.nom, detail: detail.filter(Boolean).join(', '), niveau: protegee(d.depot, cfg) ? 'attention' : 'ok' });
   }
-  if (actif('cout') && fini(d.cout)) s.push({ cle: 'cout', texte: montant(d.cout, cfg), court: montantCourt(d.cout, cfg), niveau: 'ok' });
-  return s;
+  if (actif('cout') && fini(d.cout)) j.push({ cle: 'cout', etiquette: t.nomCout, valeur: montant(d.cout, cfg), detail: '', niveau: 'ok' });
+  return j;
 }
 
-export const ligne = (segs) => segs.map((x) => x.texte).join(' · ');
-
-// Pied : la place est courte et l'appli coupe la fin de la ligne ; la largeur n'est pas mesurable (police proportionnelle),
-// donc on trie par priorité : alertes, puis attentions, puis le reste dans l'ordre des segments (tri stable).
-const PRIORITE = { alerte: 0, attention: 1, ok: 2 };
-export const ligneCourte = (segs) => [...segs]
-  .sort((a, b) => (PRIORITE[a.niveau] ?? 2) - (PRIORITE[b.niveau] ?? 2))
-  .map((x) => x.court ?? x.texte).join(' · ');
+// Repli texte (terminal, ligne d'état, réponse de /sonar) : « semaine 41 % (20 %/j, remise ven. 12:00) ».
+export const texte = (el) => `${el.etiquette} ${el.valeur}${el.detail ? ` (${el.detail})` : ''}`;
+export const ligne = (els, sep = '   ') => els.map(texte).join(sep);
 
 // ——— Journal des relevés de quota (option quotaLog, désactivée par défaut) ———
 // Une ligne JSON par changement du % ou de l'heure de remise à zéro de five_hour / seven_day ; aucun appel au modèle.
