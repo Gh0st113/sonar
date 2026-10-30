@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	depot     = "Gh0st113/sonar"
-	nomExe    = "cercle.exe"
-	nomSig    = "cercle.exe.sig"
-	tailleMax = 64 << 20 // un exe de plus de 64 Mio n'est pas le nôtre
+	depot = "Gh0st113/sonar"
+	// L'installeur signé de la release : c'est lui que cercle télécharge, vérifie, puis lance.
+	nomExe    = "cercle-setup.exe"
+	nomSig    = "cercle-setup.exe.sig"
+	tailleMax = 64 << 20 // un installeur de plus de 64 Mio n'est pas le nôtre
 )
 
 var apiGitHub = "https://api.github.com"

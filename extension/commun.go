@@ -31,27 +31,12 @@ func parExplorateur(cible string) bool {
 	return strings.HasPrefix(strings.ToLower(cible), "shell:")
 }
 
-// ps : une chaîne entre guillemets simples PowerShell. PowerShell prend aussi ‘ ’ ‚ ‛ pour des guillemets simples :
-// tous sont doublés.
-func ps(s string) string {
-	var b strings.Builder
-	b.WriteByte('\'')
-	for _, r := range s {
-		if r == '\'' || (r >= '‘' && r <= '‛') {
-			b.WriteRune(r)
-		}
-		b.WriteRune(r)
-	}
-	b.WriteByte('\'')
-	return b.String()
-}
-
 // nettoyer : un texte venu du réseau, sans caractère de contrôle (séquences d'échappement du terminal comprises),
 // lignes gardées, longueur bornée.
 func nettoyer(s string, max int) string {
 	var b strings.Builder
 	for _, r := range s {
-		if r == '\n' || (r != '\t' && !unicode.IsControl(r) && r != '‮' && r != '‭') {
+		if r == '\n' || (r != '\t' && !unicode.IsControl(r) && r != '\u202E' && r != '\u202D') {
 			b.WriteRune(r)
 		}
 		if b.Len() >= max {

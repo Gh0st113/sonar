@@ -288,9 +288,6 @@ func TestLiensEtManifesteDuplique(t *testing.T) {
 }
 
 func TestPetitesFonctions(t *testing.T) {
-	if got := ps("C:\\Users\\O’Brien'x"); got != "'C:\\Users\\O’’Brien''x'" {
-		t.Errorf("ps : %s", got)
-	}
 	if got := nettoyer("Ok\x1b[31m rouge\x1b]8;;http://x\x07\nligne 2\u202e", 100); got != "Ok[31m rouge]8;;http://x\nligne 2" {
 		t.Errorf("nettoyer : %q", got)
 	}
@@ -324,18 +321,14 @@ func TestVersionDansExe(t *testing.T) {
 	}
 }
 
-func TestRemplacerFichier(t *testing.T) {
-	d := t.TempDir()
-	exe := filepath.Join(d, "cercle.exe")
-	if err := remplacerFichier(exe, []byte("v1")); err != nil {
-		t.Fatal(err)
+func TestOptionsApresArguments(t *testing.T) {
+	// « version » ne touche à rien : on vérifie seulement que l'analyse accepte des options après les arguments.
+	if c := executer([]string{"version", "--silencieux"}); c != okCode {
+		t.Fatalf("version --silencieux : %d", c)
 	}
-	if err := remplacerFichier(exe, []byte("v2")); err != nil {
-		t.Fatal(err)
-	}
-	b, _ := os.ReadFile(exe)
-	a, _ := os.ReadFile(exe + ".ancien")
-	if string(b) != "v2" || string(a) != "v1" {
-		t.Fatalf("%s %s", b, a)
+	silencieux = false
+	// signer doit échouer plus loin (fichier « a » introuvable : code 4), pas sur l'analyse des options (code 1).
+	if c := executer([]string{"signer", "a", "--exe", "b", "cle"}); c != codeEcriture {
+		t.Fatalf("signer a --exe b cle : %d", c)
 	}
 }

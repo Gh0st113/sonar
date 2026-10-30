@@ -7,3 +7,4 @@ node_modules/
 extension/*.exe
 extension/*.sig
 *.cle
+extension/installeur/sortie/

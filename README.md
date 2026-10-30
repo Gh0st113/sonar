@@ -39,7 +39,7 @@ placements exist for the terminal; the desktop app does not draw them.
 
 **The circle extension** (Windows, optional): cache · branch · cost in the **usage circle**'s popover and below
 "Customize" in the sidebar, with the limits' pace from [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude).
-Install it with `cercle.exe`, from the [releases](https://github.com/Gh0st113/sonar/releases/latest): see
+Install it with `cercle-setup.exe`, from the [releases](https://github.com/Gh0st113/sonar/releases/latest): see
 [Circle extension (Windows)](#circle-extension-windows).
 
 *(Like a ship's sonar: it keeps sounding what lies around you — limits, cache, branch — so you never hit bottom by surprise.)*
@@ -151,55 +151,62 @@ default `footer` placement, which only shows what deserves a glance (if you pick
 `/sonar footer` to avoid seeing things twice). The data still flows with `/sonar hide`, which only hides sonar's own
 display. The sonar mod (0.5.0 or later) must be installed.
 
-Install: download `cercle.exe` from the [latest release](https://github.com/Gh0st113/sonar/releases/latest),
-double-click it, pick **1 Installer**. The exe copies itself to `%LOCALAPPDATA%\sonar-cercle\` and creates the
-**"Claude (cercle)"** Start menu shortcut. Then **quit Claude completely** (notification area > Quit) and start it from
-that shortcut. Claude started any other way does **not** load the extension: on purpose. Windows may show a SmartScreen
-warning (the exe has no paid code-signing certificate): "More info > Run anyway".
+Install: download **`cercle-setup.exe`** from the [latest release](https://github.com/Gh0st113/sonar/releases/latest)
+and run it: a classic wizard, **no administrator rights**. It installs the program into
+`%LOCALAPPDATA%\Programs\sonar-cercle`, adds **"Claude (cercle)"** to the Start menu and an entry to **Settings > Apps**
+(uninstall), then copies the extension into Claude's profile. Windows may show a SmartScreen warning (installer without a
+paid code-signing certificate): "More info > Run anyway". Then **quit Claude completely** (notification area > Quit) and
+start it from "Claude (cercle)". Claude started any other way does **not** load the extension: on purpose. No black
+window: a normal launch shows nothing; a question or a problem shows in a Windows dialog.
 
 Why a launcher: Claude loads the extension when `REACT_PROFILE=1` at startup, and that folder can be written by any
-program running under your account. So the variable is **never** left set. On every launch, `cercle.exe`:
+program running under your account. So the variable is **never** left set. On every launch, "Claude (cercle)":
 - **locks** the extension's files (nobody can change, replace or delete them until Claude has started), then **compares**
-  them with the ones it embeds: same bytes, real files (no links), nothing extra; otherwise it offers to reinstall, or
-  refuses. With several `claude_*` profiles it checks every extension folder, since the variable applies to all of them;
-- sets `REACT_PROFILE=1`, starts Claude, waits for it, then puts the variable back. Window closed or Ctrl+C: it is put
-  back at once; if that fails, the previous value is recorded outside the folder and restored by the next `cercle.exe`
-  command. If it was already set to 1 permanently, it offers to remove it;
+  them with the ones `cercle.exe` embeds: same bytes, real files (no links), nothing extra; otherwise it offers to
+  reinstall, or refuses. With several `claude_*` profiles it checks every extension folder, since the variable applies to
+  all of them;
+- sets `REACT_PROFILE=1`, starts Claude, waits for it, then puts the variable back. Interrupted: it is put back at once;
+  if that fails, the previous value is recorded outside the folder and restored on the next launch. If it was already
+  set to 1 permanently, it offers to remove it; an empty variable (left over by an older tool) is removed at install;
 - recognises Claude Desktop by its program's path: an open Claude Code (also `claude.exe`) does not count.
 
-Updates: on every launch, `cercle.exe` looks at the latest GitHub release. It only offers a version that is **newer** than
-its own and **signed** with the maintainer's key (ed25519; the public key is embedded in the exe, the private key is never
-on GitHub), and only installs it **with your consent**. A badly signed release is reported and ignored: a hijacked GitHub
-account is not enough to push code into Claude. The release notes shown come from GitHub and are **not** signed.
+Updates: on every launch, "Claude (cercle)" looks at the latest GitHub release. It only offers a version that is
+**newer** than its own and **signed** with the maintainer's key (ed25519; the public key is embedded in `cercle.exe`, the
+private key is never on GitHub), and only installs it **with your consent**: it downloads the signed installer, checks
+it, runs it without the wizard, then starts Claude again. A badly signed release is reported and ignored: a hijacked
+GitHub account is not enough to push code into Claude. The release notes shown come from GitHub and are **not** signed.
 Offline, Claude starts with the current version.
 
-Command line (`%LOCALAPPDATA%\sonar-cercle\cercle.exe <action>`): `installer`, `lancer`, `etat` (files intact or not,
-variable state), `maj` (looks for a signed version and installs it with your consent, without starting Claude),
-`retirer` (removes the extension and the shortcut), `version`; options `--profil <claude_…>` with
-several profiles, `--lanceur <claude.exe or shell:AppsFolder\…>` if Claude is not found. Exit codes: 0 success,
-1 unknown action, 2 profile missing or ambiguous, 3 folder used by something else (React DevTools?), 4 write error,
-5 Claude still open, 6 installed files changed, 7 Claude not found, 8 update refused.
+From a terminal (`%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe <action>`): `lancer` (what the shortcut does), `etat`
+(files intact or not, variable state), `maj` (looks for a signed version and installs it with your consent, without
+starting Claude), `installer` / `retirer` (called by the installer and the uninstaller), `version`; options
+`--profil <claude_…>` with several profiles, `--lanceur <claude.exe or shell:AppsFolder\…>` if Claude is not found. Exit
+codes: 0 success, 1 unknown action, 2 profile missing or ambiguous, 3 folder used by something else (React DevTools?),
+4 write error, 5 Claude still open, 6 installed files changed, 7 Claude not found, 8 update refused.
 
 Publishing a version (maintainer):
-1. once: take a trial `cercle.exe` (repository **Actions** tab > latest "cercle" run > **Artifacts** > `cercle-exe-essai`;
-   a trial exe is not signed: for yourself only, never to hand out), then `cercle cle <file>`: it creates the key
-   (encrypted with a passphrase; keep it off GitHub, e.g. in a password manager) and prints the public key, to put in
-   `extension/cle-publique.txt` and commit. Without it, CI refuses to build a release;
+1. once: take a trial installer (repository **Actions** tab > latest "cercle" run > **Artifacts** > `cercle-setup-essai`;
+   a trial installer is not signed: for yourself only, never to hand out), install it, then in a terminal
+   `%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe cle <file>`: it creates the key (encrypted with a passphrase; keep it
+   off GitHub, e.g. in a password manager) and prints the public key, to put in `extension/cle-publique.txt` and commit.
+   Without it, CI refuses to build a release;
 2. bump `version` in `extension/manifest.json`, commit, push the `vX.Y.Z` tag: GitHub Actions tests, builds `cercle.exe`
-   and creates a **draft** release;
-3. download `cercle.exe` from the draft; to avoid trusting GitHub Actions, rebuild it locally (reproducible build:
-   `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags=-buildid= -o cercle.exe .` in
-   the tag's `extension/`, Go 1.24.7) and compare the SHA-256;
-4. `cercle signer cercle.exe <key file>` (the signed version is read from the exe; the key must match
-   `cle-publique.txt`), add `cercle.exe.sig` to the draft, publish.
+   (Linux) then `cercle-setup.exe` (Inno Setup, Windows), checks that the setup holds the exe as is, and creates a
+   **draft** release;
+3. to avoid trusting GitHub Actions, rebuild `cercle.exe` locally (reproducible build:
+   `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-buildid= -H windowsgui"
+   -o cercle.exe .` in the tag's `extension/`, Go 1.24.7);
+4. download `cercle-setup.exe` from the draft, then `cercle signer cercle-setup.exe <key file> --exe <rebuilt
+   cercle.exe>`: it checks that the setup holds exactly your exe, reads the version, checks that the key matches
+   `cle-publique.txt`, and writes `cercle-setup.exe.sig`. Add it to the draft, publish.
 
 Limits:
 - loading goes through a **development hook** of Claude Desktop (`REACT_PROFILE=1` loads the React DevTools folder,
   `%LOCALAPPDATA%\Claude-Data\claude_<id>\extensions\fmkadmapgofadopljbjfkapdkoienihi`): Anthropic does not
-  guarantee it; if React DevTools already uses that folder, `cercle.exe` refuses;
+  guarantee it; if React DevTools already uses that folder, installing refuses;
 - malware already running under your account can still replace `cercle.exe` itself: the check protects against changes
   to the extension folder and against tampered updates, not against an already compromised machine;
-- if `REACT_PROFILE` is set to 1 **permanently** on your account (older tool, probe), `cercle.exe` says so: remove it;
+- if `REACT_PROFILE` is set to 1 **permanently** on your account (older tool, probe), "Claude (cercle)" offers to remove it;
 - audit and provenance of the code taken from UI+: `extension/PROVENANCE.md`;
 - every change needs a **full restart** of Claude;
 - the carrier is invisible but **not silent**: a screen reader may read its text (`sonar:1 {…}`) in the footer;

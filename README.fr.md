@@ -39,7 +39,7 @@ Dans le terminal, le bandeau et le panneau s'écrivent en texte (le terminal ne 
 
 **L'extension cercle** (Windows, en option) : cache · branche · coût dans le popover du **cercle d'usage** et sous
 « Personnalisation » dans la barre latérale, avec le rythme des limites de [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude).
-Elle s'installe avec `cercle.exe`, à télécharger dans les [releases](https://github.com/Gh0st113/sonar/releases/latest) :
+Elle s'installe avec `cercle-setup.exe`, à télécharger dans les [releases](https://github.com/Gh0st113/sonar/releases/latest) :
 voir [Extension cercle (Windows)](#extension-cercle-windows).
 
 *(Comme le sonar d'un navire : il sonde en continu ce qui vous entoure — quotas, cache, branche — pour ne jamais toucher le fond par surprise.)*
@@ -151,60 +151,66 @@ en français ou en anglais, selon la langue de l'appli. Rien n'est masqué, le b
 revenez-y avec `/sonar pied` pour ne pas voir les infos en double). Les données partent même avec `/sonar masquer`, qui
 cache seulement l'affichage de sonar. Le mod sonar (0.5.0 ou plus) doit être installé.
 
-Installation : téléchargez `cercle.exe` depuis la [dernière release](https://github.com/Gh0st113/sonar/releases/latest),
-double-cliquez, choisissez **1 Installer**. L'exe se copie dans `%LOCALAPPDATA%\sonar-cercle\` et crée le raccourci
-**« Claude (cercle) »** dans le menu Démarrer. Ensuite, **quitter complètement Claude** (zone de notification > Quitter)
-et le lancer par ce raccourci. Un Claude lancé autrement ne charge **pas** l'extension : c'est voulu. Windows peut
-afficher un avertissement SmartScreen (exe non signé par un certificat payant) : « Informations complémentaires >
-Exécuter quand même ».
+Installation : téléchargez **`cercle-setup.exe`** depuis la [dernière release](https://github.com/Gh0st113/sonar/releases/latest)
+et lancez-le : un assistant classique, **sans droits administrateur**. Il installe le programme dans
+`%LOCALAPPDATA%\Programs\sonar-cercle`, ajoute **« Claude (cercle) »** au menu Démarrer et une entrée dans
+**Paramètres > Applications** (désinstallation), puis copie l'extension dans le profil de Claude. Windows peut afficher un
+avertissement SmartScreen (installeur non signé par un certificat payant) : « Informations complémentaires > Exécuter
+quand même ». Ensuite, **quitter complètement Claude** (zone de notification > Quitter) et le lancer par
+« Claude (cercle) ». Un Claude lancé autrement ne charge **pas** l'extension : c'est voulu. Pas de fenêtre noire : un
+lancement normal n'affiche rien, une question ou un problème s'affiche dans une fenêtre de dialogue Windows.
 
 Pourquoi un lanceur : Claude charge l'extension quand `REACT_PROFILE=1` à son démarrage, et ce dossier est modifiable par
 tout programme lancé sous votre compte. La variable n'est donc **jamais** laissée en place. À chaque lancement,
-`cercle.exe` :
+« Claude (cercle) » :
 - **verrouille** les fichiers de l'extension (plus personne ne peut les modifier, les remplacer ou les supprimer jusqu'au
-  démarrage de Claude), puis les **compare** à ceux qu'il embarque : mêmes octets, vrais fichiers (pas de liens), rien en
-  trop ; sinon il propose de réinstaller, ou refuse. Avec plusieurs profils `claude_*`, il vérifie tous les dossiers
-  d'extension, car la variable vaut pour tous ;
-- pose `REACT_PROFILE=1`, démarre Claude, attend son démarrage, puis remet la variable comme avant. Fenêtre fermée ou
-  Ctrl+C : elle est remise aussitôt ; si ce n'est pas possible, la valeur d'avant est notée hors du dossier et remise par
-  la prochaine commande de `cercle.exe`. Si elle valait déjà 1 en permanence, il propose de la retirer.
+  démarrage de Claude), puis les **compare** à ceux qu'embarque `cercle.exe` : mêmes octets, vrais fichiers (pas de
+  liens), rien en trop ; sinon il propose de réinstaller, ou refuse. Avec plusieurs profils `claude_*`, il vérifie tous
+  les dossiers d'extension, car la variable vaut pour tous ;
+- pose `REACT_PROFILE=1`, démarre Claude, attend son démarrage, puis remet la variable comme avant. Interruption : elle
+  est remise aussitôt ; si ce n'est pas possible, la valeur d'avant est notée hors du dossier et remise au lancement
+  suivant. Si elle valait déjà 1 en permanence, il propose de la retirer ; une variable vide (reste d'un ancien outil)
+  est retirée à l'installation ;
 - reconnaît Claude Desktop par le chemin de son programme : un Claude Code ouvert (lui aussi `claude.exe`) ne compte pas.
 
-Mises à jour : à chaque lancement, `cercle.exe` regarde la dernière release GitHub. Il ne propose une version que si elle
-est **plus récente** que la sienne et **signée** par la clé du mainteneur (ed25519 ; la clé publique est embarquée dans
-l'exe, la clé privée n'est jamais sur GitHub), et ne l'installe **que sur votre accord**. Une release mal signée est
-signalée et ignorée : un compte GitHub piraté ne suffit pas à pousser du code dans Claude. Les notes de version affichées
-viennent de GitHub et ne sont **pas** signées. Sans réseau, Claude se lance avec la version actuelle.
+Mises à jour : à chaque lancement, « Claude (cercle) » regarde la dernière release GitHub. Il ne propose une version que si
+elle est **plus récente** que la sienne et **signée** par la clé du mainteneur (ed25519 ; la clé publique est embarquée
+dans `cercle.exe`, la clé privée n'est jamais sur GitHub), et ne l'installe **que sur votre accord** : il télécharge
+l'installeur signé, le vérifie, l'exécute sans assistant, puis relance Claude. Une release mal signée est signalée et
+ignorée : un compte GitHub piraté ne suffit pas à pousser du code dans Claude. Les notes de version affichées viennent de
+GitHub et ne sont **pas** signées. Sans réseau, Claude se lance avec la version actuelle.
 
-En ligne de commande (`%LOCALAPPDATA%\sonar-cercle\cercle.exe <action>`) : `installer`, `lancer`, `etat` (fichiers
-intacts ou non, état de la variable), `maj` (cherche une version signée et l'installe sur accord, sans lancer Claude),
-`retirer` (supprime l'extension et le raccourci), `version` ; options
+Depuis un terminal (`%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe <action>`) : `lancer` (ce que fait le raccourci),
+`etat` (fichiers intacts ou non, état de la variable), `maj` (cherche une version signée et l'installe sur accord, sans
+lancer Claude), `installer` / `retirer` (appelés par l'installeur et la désinstallation), `version` ; options
 `--profil <claude_…>` s'il y a plusieurs profils, `--lanceur <claude.exe ou shell:AppsFolder\…>` si Claude n'est pas
 trouvé. Codes de retour : 0 réussi, 1 action inconnue, 2 profil introuvable ou ambigu, 3 dossier occupé par autre chose
 (React DevTools ?), 4 écriture, 5 Claude encore ouvert, 6 fichiers installés modifiés, 7 Claude introuvable, 8 mise à jour
 refusée.
 
 Publier une version (mainteneur) :
-1. une fois : prendre un `cercle.exe` d'essai (onglet **Actions** du dépôt > dernière exécution « cercle » > **Artifacts** >
-   `cercle-exe-essai` ; un exe d'essai n'est pas signé : pour soi seulement, jamais à distribuer), puis
-   `cercle cle <fichier>` : il crée la clé (chiffrée par une phrase de passe ; à garder hors de GitHub, par exemple dans un
-   gestionnaire de mots de passe) et affiche la clé publique, à mettre dans `extension/cle-publique.txt` et à commiter.
-   Sans elle, la CI refuse de construire une release ;
+1. une fois : prendre un installeur d'essai (onglet **Actions** du dépôt > dernière exécution « cercle » > **Artifacts** >
+   `cercle-setup-essai` ; un installeur d'essai n'est pas signé : pour soi seulement, jamais à distribuer), l'installer,
+   puis dans un terminal `%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe cle <fichier>` : il crée la clé (chiffrée par
+   une phrase de passe ; à garder hors de GitHub, par exemple dans un gestionnaire de mots de passe) et affiche la clé
+   publique, à mettre dans `extension/cle-publique.txt` et à commiter. Sans elle, la CI refuse de construire une release ;
 2. monter `version` dans `extension/manifest.json`, commiter, pousser le tag `vX.Y.Z` : GitHub Actions teste, construit
-   `cercle.exe` et crée une release **en brouillon** ;
-3. télécharger `cercle.exe` du brouillon ; pour ne pas faire confiance à GitHub Actions, le recompiler chez soi (build
-   reproductible : `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags=-buildid= -o
-   cercle.exe .` dans `extension/` du tag, Go 1.24.7) et comparer l'empreinte SHA-256 ;
-4. `cercle signer cercle.exe <fichier de clé>` (la version signée est lue dans l'exe ; la clé doit être celle de
-   `cle-publique.txt`), ajouter `cercle.exe.sig` au brouillon, publier.
+   `cercle.exe` (Linux) puis `cercle-setup.exe` (Inno Setup, Windows), vérifie que le setup contient l'exe tel quel, et
+   crée une release **en brouillon** ;
+3. pour ne pas faire confiance à GitHub Actions, recompiler `cercle.exe` chez soi (build reproductible :
+   `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-buildid= -H windowsgui"
+   -o cercle.exe .` dans `extension/` du tag, Go 1.24.7) ;
+4. télécharger `cercle-setup.exe` du brouillon, puis `cercle signer cercle-setup.exe <fichier de clé> --exe <cercle.exe
+   recompilé>` : il vérifie que le setup contient exactement votre exe, lit la version, vérifie que la clé est celle de
+   `cle-publique.txt`, et écrit `cercle-setup.exe.sig`. L'ajouter au brouillon, publier.
 
 Limites :
 - le chargement passe par un **crochet de développement** de Claude Desktop (`REACT_PROFILE=1` charge le dossier
   de React DevTools, `%LOCALAPPDATA%\Claude-Data\claude_<id>\extensions\fmkadmapgofadopljbjfkapdkoienihi`) :
-  rien ne garantit qu'Anthropic le garde ; si React DevTools occupe déjà ce dossier, `cercle.exe` refuse ;
+  rien ne garantit qu'Anthropic le garde ; si React DevTools occupe déjà ce dossier, l'installation refuse ;
 - un programme malveillant déjà lancé sous votre compte peut toujours remplacer `cercle.exe` lui-même : la vérification
   protège des modifications du dossier de l'extension et des mises à jour piégées, pas d'un poste déjà compromis ;
-- si `REACT_PROFILE` vaut 1 **en permanence** sur votre compte (ancien outil, sonde), `cercle.exe` le signale : retirez-la ;
+- si `REACT_PROFILE` vaut 1 **en permanence** sur votre compte (ancien outil, sonde), « Claude (cercle) » propose de la retirer ;
 - audit et provenance du code repris de UI+ : `extension/PROVENANCE.md` ;
 - tout changement demande un **redémarrage complet** de Claude ;
 - le porteur est invisible mais **pas muet** : un lecteur d'écran peut annoncer son texte (`sonar:1 {…}`) dans le pied ;

@@ -1,24 +1,28 @@
-// Commandes de cercle.exe. Double-clic (sans argument) : un petit menu.
+// cercle.exe, le moteur de l'installeur « Claude (cercle) » (installeur/cercle.iss). L'installeur le copie dans
+// %LOCALAPPDATA%\Programs\sonar-cercle, crée le raccourci du menu Démarrer (= cercle.exe sans argument = lancer) et
+// l'entrée de Paramètres > Applications, et appelle « installer » / « retirer ».
 //
-//	cercle installer [--profil <nom>] [--lanceur <cible>]  copie l'extension, installe cercle.exe dans
-//	                                     %LOCALAPPDATA%\sonar-cercle, crée le raccourci « Claude (cercle) »
-//	cercle lancer [--profil] [--lanceur] propose une mise à jour signée, verrouille et vérifie les fichiers installés,
-//	                                     puis lance Claude avec REACT_PROFILE=1 le temps du démarrage seulement
-//	cercle retirer                       supprime l'extension et le raccourci
+//	cercle [lancer] [--profil <nom>] [--lanceur <cible>]  propose une mise à jour signée, verrouille et vérifie les
+//	                                     fichiers de l'extension, puis lance Claude avec REACT_PROFILE=1 le temps du
+//	                                     démarrage seulement
+//	cercle installer                     copie l'extension dans le profil de Claude (appelé par l'installeur)
+//	cercle retirer                       la supprime (appelé à la désinstallation)
 //	cercle etat                          ce qui est installé, fichiers intacts ou non
 //	cercle maj                           cherche une mise à jour signée et l'installe sur accord (sans lancer Claude)
 //	cercle cle <fichier>                 crée la clé de signature (à garder hors de GitHub)
-//	cercle signer <exe> <clé>            écrit <exe>.sig pour la version embarquée dans cet exe
+//	cercle signer <setup> <clé> [--exe <cercle.exe recompilé>]   écrit <setup>.sig
 //	cercle version
+//
+// Option commune : --silencieux (aucune fenêtre sauf les erreurs ; pour l'installeur).
 //
 // Sécurité : Claude charge le dossier de l'extension quand REACT_PROFILE=1 à son démarrage, et ce dossier est
 // modifiable par tout programme lancé sous le compte. La variable n'est donc jamais laissée en place : « lancer »
 // verrouille le dossier, le compare aux fichiers embarqués dans l'exe, arme la variable le temps du démarrage, puis
-// la remet (même si la fenêtre est fermée : signal, puis fichier de reprise relu par chaque action).
+// la remet (même si le processus est interrompu : signal, puis fichier de reprise relu par chaque action).
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -35,6 +39,7 @@ import (
 type options struct {
 	profil   string
 	lanceur  string
+	exe      string
 	sansMaj  bool
 	positifs []string
 }
@@ -44,36 +49,41 @@ func main() {
 }
 
 func executer(args []string) int {
-	if len(args) == 0 {
-		return menu()
+	action := "lancer"
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		action, args = args[0], args[1:]
 	}
-	action := args[0]
 	fs := flag.NewFlagSet(action, flag.ContinueOnError)
 	var o options
 	fs.StringVar(&o.profil, "profil", "", "dossier claude_* à utiliser s'il y en a plusieurs")
 	fs.StringVar(&o.lanceur, "lanceur", "", `claude.exe, ou shell:AppsFolder\<AppID>`)
+	fs.StringVar(&o.exe, "exe", "", "signer : cercle.exe recompilé chez soi, qui doit se trouver tel quel dans le setup")
 	fs.BoolVar(&o.sansMaj, "sans-maj", false, "ne pas chercher de mise à jour")
-	if err := fs.Parse(args[1:]); err != nil {
-		return codeAction
-	}
-	o.positifs = fs.Args()
-	if strings.Contains(o.profil+o.lanceur, `"`) {
-		fmt.Fprintln(os.Stderr, `Erreur : --profil et --lanceur ne peuvent pas contenir de guillemet double (").`)
-		return codeAction
+	fs.BoolVar(&silencieux, "silencieux", false, "aucune fenêtre sauf les erreurs")
+	// Options avant, entre ou après les arguments (le paquet flag s'arrête au premier argument).
+	for {
+		if err := fs.Parse(args); err != nil {
+			return codeAction
+		}
+		if args = fs.Args(); len(args) == 0 {
+			break
+		}
+		o.positifs, args = append(o.positifs, args[0]), args[1:]
 	}
 	if action != "version" && action != "cle" && action != "signer" {
 		reparerLancement()
 	}
 	var err error
 	switch action {
-	case "installer":
-		err = actionInstaller(o)
 	case "lancer":
 		err = actionLancer(o)
+	case "installer":
+		err = actionInstaller(o)
 	case "retirer":
 		err = actionRetirer(o)
 	case "etat":
 		err = actionEtat(o)
+		vider(boiteInfo, true)
 	case "maj":
 		err = actionMaj(o)
 	case "cle":
@@ -81,19 +91,21 @@ func executer(args []string) int {
 	case "signer":
 		err = actionSigner(o)
 	case "version":
-		fmt.Println(version())
+		dire("%s", version())
+		vider(boiteInfo, true)
 	default:
-		fmt.Fprintf(os.Stderr, "action inconnue « %s » : installer | lancer | retirer | etat | maj | cle | signer | version\n", action)
-		return codeAction
+		err = echec(codeAction, "action inconnue « %s » : lancer | installer | retirer | etat | maj | cle | signer | version", action)
 	}
 	return terminer(err)
 }
 
 func terminer(err error) int {
 	if err == nil {
+		vider(boiteAlerte, false)
 		return okCode
 	}
-	fmt.Fprintln(os.Stderr, "Erreur : "+err.Error())
+	alerter("Erreur : %s", err.Error())
+	vider(boiteErreur, true)
 	var e *erreurCode
 	if errors.As(err, &e) {
 		return e.code
@@ -101,53 +113,12 @@ func terminer(err error) int {
 	return codeEcriture
 }
 
-// Double-clic : l'état, puis un choix ; la fenêtre attend Entrée avant de se fermer.
-func menu() int {
-	reparerLancement()
-	_ = actionEtat(options{})
-	fmt.Println()
-	fmt.Println("  1  Installer ou réinstaller l'extension (et le raccourci « Claude (cercle) »)")
-	fmt.Println("  2  Lancer Claude avec l'extension")
-	fmt.Println("  3  Retirer l'extension")
-	fmt.Println("  Q  Quitter")
-	code := okCode
-	switch strings.ToLower(demander("Choix : ")) {
-	case "1":
-		code = terminer(actionInstaller(options{}))
-	case "2":
-		code = terminer(actionLancer(options{}))
-	case "3":
-		code = terminer(actionRetirer(options{}))
-	}
-	demander("Entrée pour fermer.")
-	return code
-}
-
-var entree = bufio.NewReader(os.Stdin)
-
-func demander(invite string) string {
-	fmt.Print(invite)
-	l, _ := entree.ReadString('\n')
-	return strings.TrimSpace(l)
-}
-
-func oui(question string) bool {
-	r := strings.ToLower(demander(question + " (o/N) "))
-	return r == "o" || r == "oui" || r == "y" || r == "yes"
-}
-
+// Données de cercle (fichier de reprise, téléchargements), à part du dossier du programme.
 func dossierCercle() string { return filepath.Join(dossierLocal(), "sonar-cercle") }
 
-func verifierWindows() error {
-	if dossierLocal() == "" {
-		return echec(codeProfil, "LOCALAPPDATA n'est pas défini : cercle.exe ne sert que sous Windows, avec Claude Desktop installé.")
-	}
-	return nil
-}
-
 func dossierDe(o options) (string, error) {
-	if err := verifierWindows(); err != nil {
-		return "", err
+	if dossierLocal() == "" {
+		return "", echec(codeProfil, "LOCALAPPDATA n'est pas défini : cercle ne sert que sous Windows, avec Claude Desktop installé.")
 	}
 	p, err := trouverProfil(dossierLocal(), o.profil)
 	if err != nil {
@@ -158,21 +129,9 @@ func dossierDe(o options) (string, error) {
 
 // La variable posée en permanence (ancien outil, sonde) arme le crochet pour tout lancement de Claude.
 func avertirVariable() {
-	if v, err := lireReactProfile(); err == nil && v.Existe && v.Valeur == "1" {
-		fmt.Println("Attention : REACT_PROFILE vaut 1 en permanence pour votre compte : tout lancement de Claude charge")
-		fmt.Println("l'extension sans vérification. « cercle lancer » propose de la retirer.")
+	if v, err := lireReactProfile(); err == nil && v.Existe && strings.TrimSpace(v.Valeur) == "1" {
+		alerter("Attention : REACT_PROFILE vaut 1 en permanence pour votre compte : tout lancement de Claude charge l'extension sans vérification. Le prochain lancement par « Claude (cercle) » propose de la retirer.")
 	}
-}
-
-func argsRaccourci(o options) string {
-	args := "lancer"
-	if o.profil != "" {
-		args += fmt.Sprintf(` --profil "%s"`, o.profil)
-	}
-	if o.lanceur != "" {
-		args += fmt.Sprintf(` --lanceur "%s"`, o.lanceur)
-	}
-	return args
 }
 
 func actionInstaller(o options) error {
@@ -183,65 +142,14 @@ func actionInstaller(o options) error {
 	if err := installer(dossier, time.Now()); err != nil {
 		return err
 	}
-	fmt.Printf("Extension %s installée dans %s.\n", version(), dossier)
-	exe, err := installerExe()
-	if err != nil {
-		return err
+	dire("Extension %s installée dans %s.", version(), dossier)
+	// Une REACT_PROFILE vide (reste d'un ancien outil) n'arme rien, mais traîne : on la retire.
+	if v, err := lireReactProfile(); err == nil && v.Existe && strings.TrimSpace(v.Valeur) == "" {
+		if poserReactProfile(valeurVariable{}) == nil {
+			dire("REACT_PROFILE vide retirée.")
+		}
 	}
-	if err := creerRaccourci(cheminRaccourci(), exe, argsRaccourci(o), filepath.Dir(exe)); err != nil {
-		return echec(codeEcriture, "raccourci impossible : %v", err)
-	}
-	fmt.Println("Raccourci « Claude (cercle) » créé dans le menu Démarrer.")
 	avertirVariable()
-	fmt.Println("Quittez complètement Claude (zone de notification > Quitter), puis lancez-le par « Claude (cercle) ».")
-	fmt.Println("Un Claude lancé autrement ne charge pas l'extension : c'est voulu.")
-	return nil
-}
-
-// installerExe : cercle.exe copié dans %LOCALAPPDATA%\sonar-cercle (sauf s'il y tourne déjà) ; renvoie son chemin.
-func installerExe() (string, error) {
-	moi, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	cible := filepath.Join(dossierCercle(), nomExe)
-	if strings.EqualFold(filepath.Clean(moi), filepath.Clean(cible)) {
-		return cible, nil
-	}
-	b, err := os.ReadFile(moi)
-	if err == nil {
-		err = os.MkdirAll(dossierCercle(), 0o755)
-	}
-	if err == nil {
-		err = remplacerFichier(cible, b)
-	}
-	if err != nil {
-		return "", echec(codeEcriture, "copie de cercle.exe impossible : %v", err)
-	}
-	return cible, nil
-}
-
-// remplacerFichier : écrit à côté, puis échange ; un exe en cours d'exécution peut être renommé, pas écrasé. En cas
-// d'échec, l'ancien est remis à sa place.
-func remplacerFichier(chemin string, contenu []byte) error {
-	nouveau, ancien := chemin+".nouveau", chemin+".ancien"
-	if err := os.WriteFile(nouveau, contenu, 0o755); err != nil {
-		return err
-	}
-	_ = os.Remove(ancien)
-	_, existait := os.Stat(chemin)
-	if existait == nil {
-		if err := os.Rename(chemin, ancien); err != nil {
-			_ = os.Remove(nouveau)
-			return err
-		}
-	}
-	if err := os.Rename(nouveau, chemin); err != nil {
-		if existait == nil {
-			_ = os.Rename(ancien, chemin)
-		}
-		return err
-	}
 	return nil
 }
 
@@ -267,7 +175,7 @@ func reparerLancement() {
 	}
 	if poserReactProfile(v) == nil {
 		_ = os.Remove(fichierLancement())
-		fmt.Println("Lancement précédent interrompu : REACT_PROFILE remise comme avant.")
+		alerter("Lancement précédent interrompu : REACT_PROFILE remise comme avant.")
 	}
 }
 
@@ -277,16 +185,16 @@ func actionLancer(o options) error {
 		return err
 	}
 	if !o.sansMaj {
-		if fait, code := proposerMaj(o, true); fait {
-			return codeVersErreur(code)
+		if fait, err := proposerMaj(true); fait || err != nil {
+			return err
 		}
 	}
 	if oc := occupant(dossier); oc != "nôtre" {
-		return echec(codeVerif, "l'extension n'est pas installée (%s) : « cercle installer » d'abord.", oc)
+		return echec(codeVerif, "l'extension n'est pas installée (%s) : réinstallez « Claude (cercle) ».", oc)
 	}
 	// Claude ouvert : un nouveau lancement ne ferait que le ramener devant, sans charger l'extension.
 	if claudeOuvert() {
-		return echec(codeOuvert, "Claude est encore ouvert : quittez-le complètement (zone de notification > Quitter), puis relancez.")
+		return echec(codeOuvert, "Claude est encore ouvert : quittez-le complètement (zone de notification > Quitter), puis relancez « Claude (cercle) ».")
 	}
 	cible, err := trouverClaude(o.lanceur)
 	if err != nil {
@@ -300,7 +208,7 @@ func actionLancer(o options) error {
 		case oc == "absent":
 			continue
 		case d != dossier && oc != "nôtre":
-			return echec(codeVerif, "%s (%s) serait chargé aussi : retirez-le, ou lancez Claude sans cercle.", d, oc)
+			return echec(codeVerif, "%s (%s) serait chargé aussi : retirez-le, ou lancez Claude normalement.", d, oc)
 		}
 		aVerrouiller = append(aVerrouiller, d)
 		for _, f := range append(append([]string{}, fichiers...), fichierEtat) {
@@ -310,7 +218,7 @@ func actionLancer(o options) error {
 	// Verrouiller AVANT de vérifier : ce qui est vérifié ne peut plus changer jusqu'au démarrage de Claude.
 	liberer, err := verrouiller(aVerrouiller)
 	if err != nil {
-		return echec(codeVerif, "verrouillage impossible (fichier manquant ou déjà ouvert ailleurs) : %v. « cercle etat » pour voir.", err)
+		return echec(codeVerif, "verrouillage impossible (fichier manquant ou ouvert ailleurs) : %v", err)
 	}
 	defer func() { liberer() }()
 	for _, d := range aVerrouiller {
@@ -321,12 +229,12 @@ func actionLancer(o options) error {
 		if len(e) == 0 {
 			continue
 		}
-		fmt.Println("Les fichiers installés dans " + d + " ne sont plus ceux de cercle.exe :")
+		alerter("Les fichiers de l'extension (%s) ne sont plus ceux de cercle :", d)
 		for _, x := range e {
-			fmt.Println("  " + x)
+			dire("  %s", x)
 		}
-		if d != dossier || !oui("Les réinstaller depuis cercle.exe avant de lancer ?") {
-			return echec(codeVerif, "lancement refusé : fichiers installés modifiés.")
+		if d != dossier || !oui("Les réinstaller depuis cercle avant de lancer Claude ?") {
+			return echec(codeVerif, "lancement refusé : fichiers de l'extension modifiés.")
 		}
 		liberer()
 		liberer = func() {}
@@ -338,13 +246,13 @@ func actionLancer(o options) error {
 	if err := lancerArme(cible); err != nil {
 		return err
 	}
-	fmt.Printf("Claude lancé avec l'extension %s (fichiers vérifiés).\n", version())
+	dire("Claude lancé avec l'extension %s (fichiers vérifiés).", version())
 	return nil
 }
 
 // lancerArme : REACT_PROFILE=1 le temps que Claude démarre, puis la valeur d'avant, quoi qu'il arrive (retour,
-// erreur, fenêtre fermée ou Ctrl+C ; sinon le fichier de reprise). Lancé directement (claude.exe), Claude reçoit la
-// variable dans son seul environnement : le registre n'est pas touché.
+// erreur, interruption ; sinon le fichier de reprise). Lancé directement (claude.exe), Claude reçoit la variable dans
+// son seul environnement : le registre n'est pas touché.
 func lancerArme(cible string) (err error) {
 	if !parExplorateur(cible) {
 		if err := demarrerClaude(cible); err != nil {
@@ -358,7 +266,7 @@ func lancerArme(cible string) (err error) {
 	}
 	remettre := avant
 	if avant.Existe && strings.TrimSpace(avant.Valeur) == "1" {
-		fmt.Println("REACT_PROFILE vaut déjà 1 en permanence : tout Claude lancé autrement charge l'extension sans vérification.")
+		alerter("REACT_PROFILE vaut déjà 1 en permanence : tout Claude lancé autrement charge l'extension sans vérification.")
 		if oui("La retirer après ce lancement (recommandé) ?") {
 			remettre = valeurVariable{}
 		}
@@ -377,7 +285,7 @@ func lancerArme(cible string) (err error) {
 		_ = os.Remove(fichierLancement())
 		return nil
 	}
-	// Fenêtre fermée ou Ctrl+C : Go reçoit un signal et a quelques secondes pour remettre la variable.
+	// Interruption (Ctrl+C, fermeture, arrêt de session) : Go reçoit un signal et a quelques secondes pour remettre.
 	signaux := make(chan os.Signal, 1)
 	signal.Notify(signaux, os.Interrupt, syscall.SIGTERM)
 	fini := make(chan struct{})
@@ -408,93 +316,65 @@ func lancerArme(cible string) (err error) {
 func attendreClaude(cible string) error {
 	for limite := time.Now().Add(30 * time.Second); !claudeOuvert(); time.Sleep(500 * time.Millisecond) {
 		if time.Now().After(limite) {
-			return echec(codeIntrouv, "Claude n'a pas démarré en 30 s avec « %s » : essayez --lanceur.", cible)
+			return echec(codeIntrouv, "Claude n'a pas démarré en 30 s avec « %s ».", cible)
 		}
 	}
 	time.Sleep(10 * time.Second)
 	return nil
 }
 
-func codeVersErreur(code int) error {
-	if code == okCode {
-		return nil
-	}
-	return &erreurCode{code, "voir ci-dessus"}
-}
-
-// proposerMaj : avant un lancement. S'il y a une version signée plus récente et que l'utilisateur l'accepte, l'installe
-// et (si lancer) relance Claude avec elle : fait = true, avec le code. Toute autre issue laisse lancer la version
-// actuelle ; une release mal signée est signalée fort.
-func proposerMaj(o options, lancer bool) (fait bool, code int) {
-	m, err := chercherAvecDelai()
+// proposerMaj : s'il y a une version signée plus récente et que l'utilisateur l'accepte, lance son installeur (qui
+// relance Claude si lancer) et renvoie fait = true. Une release mal signée est signalée ; une panne réseau, ignorée.
+func proposerMaj(lancer bool) (bool, error) {
+	ctx, fin := contexteCourt(3 * time.Minute)
+	defer fin()
+	m, err := chercherMiseAJour(ctx, version())
 	if err != nil {
 		var e *erreurCode
 		if errors.As(err, &e) && e.code == codeMiseAJour {
-			fmt.Println("ATTENTION : " + e.msg)
+			alerter("ATTENTION : %s", e.msg)
 		} else {
-			fmt.Println("Mise à jour : " + err.Error() + " — lancement avec la version actuelle.")
+			dire("Mise à jour : %v — version actuelle gardée.", err)
 		}
-		return false, okCode
+		return false, nil
 	}
 	if m == nil {
-		return false, okCode
+		return false, nil
 	}
-	return appliquerMaj(m, o, lancer)
+	return appliquerMaj(m, lancer)
 }
 
-func chercherAvecDelai() (*miseAJour, error) {
-	ctx, fin := contexteCourt(3 * time.Minute)
-	defer fin()
-	return chercherMiseAJour(ctx, version())
-}
-
-func appliquerMaj(m *miseAJour, o options, lancer bool) (bool, int) {
-	fmt.Printf("Version %s disponible (actuelle : %s), signature vérifiée.\n", m.Version, version())
-	if notes := nettoyer(m.Notes, 2000); notes != "" {
-		fmt.Println("Notes de la release (texte de GitHub, NON signé) :")
-		fmt.Println(notes)
+func appliquerMaj(m *miseAJour, lancer bool) (bool, error) {
+	alerter("Version %s disponible (actuelle : %s), signature vérifiée.", m.Version, version())
+	if notes := nettoyer(m.Notes, 1500); notes != "" {
+		dire("Notes de la release (texte de GitHub, non signé) :\n%s", notes)
 	}
 	if !oui("Installer la version " + m.Version + " ?") {
-		return false, okCode
+		return false, nil
 	}
-	exe := filepath.Join(dossierCercle(), nomExe)
-	if err := os.MkdirAll(dossierCercle(), 0o755); err == nil {
-		err = remplacerFichier(exe, m.Exe)
-		if err != nil {
-			fmt.Println("Erreur : remplacement de cercle.exe impossible : " + err.Error())
-			return true, codeEcriture
-		}
+	if err := os.MkdirAll(dossierCercle(), 0o755); err != nil {
+		return true, echec(codeEcriture, "%v", err)
 	}
-	fmt.Println("cercle.exe mis à jour : réinstallation de l'extension avec la nouvelle version.")
-	var base []string
-	if o.profil != "" {
-		base = append(base, "--profil", o.profil)
+	setup := filepath.Join(dossierCercle(), "cercle-setup-"+m.Version+".exe")
+	if err := os.WriteFile(setup, m.Exe, 0o755); err != nil {
+		return true, echec(codeEcriture, "écriture de l'installeur impossible : %v", err)
 	}
-	if o.lanceur != "" {
-		base = append(base, "--lanceur", o.lanceur)
+	args := []string{"/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"}
+	if lancer {
+		args = append(args, "/LANCER=oui")
 	}
-	if c := relancer(exe, append([]string{"installer"}, base...)); c != okCode || !lancer {
-		return true, c
+	// L'installeur remplace cercle.exe : on le démarre et on s'arrête (il ferme ce qui le gênerait encore).
+	if err := exec.Command(setup, args...).Start(); err != nil {
+		return true, echec(codeEcriture, "lancement de l'installeur impossible : %v", err)
 	}
-	return true, relancer(exe, append([]string{"lancer", "--sans-maj"}, base...))
-}
-
-func relancer(exe string, args []string) int {
-	c := exec.Command(exe, args...)
-	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := c.Run(); err != nil {
-		var e *exec.ExitError
-		if errors.As(err, &e) {
-			return e.ExitCode()
-		}
-		fmt.Println("Erreur : " + err.Error())
-		return codeEcriture
-	}
-	return okCode
+	dire("Installation de la version %s en cours.", m.Version)
+	return true, nil
 }
 
 func actionMaj(o options) error {
-	m, err := chercherAvecDelai()
+	ctx, fin := contexteCourt(3 * time.Minute)
+	defer fin()
+	m, err := chercherMiseAJour(ctx, version())
 	if err != nil {
 		var e *erreurCode
 		if errors.As(err, &e) {
@@ -503,19 +383,14 @@ func actionMaj(o options) error {
 		return echec(codeMiseAJour, "%v", err)
 	}
 	if m == nil {
-		fmt.Println("Déjà à jour (version " + version() + ").")
+		alerter("Déjà à jour (version %s).", version())
 		return nil
 	}
-	_, code := appliquerMaj(m, o, false)
-	return codeVersErreur(code)
+	_, err = appliquerMaj(m, false)
+	return err
 }
 
 func actionRetirer(o options) error {
-	if r := cheminRaccourci(); r != "" {
-		if err := os.Remove(r); err == nil {
-			fmt.Println("Raccourci supprimé.")
-		}
-	}
 	dossier, err := dossierDe(o)
 	if err != nil {
 		return err
@@ -525,42 +400,41 @@ func actionRetirer(o options) error {
 		return err
 	}
 	if supprime {
-		fmt.Println("Extension retirée de " + dossier + ".")
+		dire("Extension retirée de %s.", dossier)
 	} else {
-		fmt.Println("Rien à retirer : " + dossier + " n'existe pas.")
+		dire("Rien à retirer : %s n'existe pas.", dossier)
 	}
 	avertirVariable()
-	fmt.Println("cercle.exe reste dans " + dossierCercle() + " : supprimez ce dossier pour l'enlever aussi.")
 	return nil
 }
 
 func actionEtat(o options) error {
-	fmt.Println("cercle " + version())
+	dire("cercle %s", version())
 	if pub, err := clePublique(); pub == nil || err != nil {
-		fmt.Println("Mises à jour : désactivées (aucune clé publique embarquée).")
+		dire("Mises à jour : désactivées (aucune clé publique embarquée).")
 	}
 	dossier, err := dossierDe(o)
 	if err != nil {
 		return err
 	}
 	oc := occupant(dossier)
-	fmt.Println("Dossier : " + dossier)
-	fmt.Println("Occupant : " + oc)
+	dire("Dossier : %s", dossier)
+	dire("Occupant : %s", oc)
 	if v, err := lireReactProfile(); err != nil {
-		fmt.Println("REACT_PROFILE : " + err.Error())
+		dire("REACT_PROFILE : %v", err)
 	} else if v.Existe {
-		fmt.Printf("REACT_PROFILE (utilisateur) : « %s »\n", v.Valeur)
+		dire("REACT_PROFILE (utilisateur) : « %s »", v.Valeur)
 	} else {
-		fmt.Println("REACT_PROFILE (utilisateur) : absente (bien : rien ne se charge hors « lancer »)")
+		dire("REACT_PROFILE (utilisateur) : absente (bien : rien ne se charge hors « Claude (cercle) »)")
 	}
 	if e := lireEtat(dossier); e != nil {
-		fmt.Printf("Installée : version %s, le %s\n", e.Version, e.Installe)
+		dire("Installée : version %s, le %s", e.Version, e.Installe)
 	}
 	if oc == "nôtre" || oc == "nôtre sans état" {
 		if e := ecarts(dossier); len(e) == 0 {
-			fmt.Println("Fichiers installés identiques à ceux de cercle.exe.")
+			dire("Fichiers de l'extension identiques à ceux de cercle.")
 		} else {
-			fmt.Println("ÉCARTS avec cercle.exe : " + strings.Join(e, " ; "))
+			alerter("ÉCARTS avec cercle : %s", strings.Join(e, " ; "))
 		}
 	}
 	avertirVariable()
@@ -570,6 +444,9 @@ func actionEtat(o options) error {
 func actionCle(o options) error {
 	if len(o.positifs) != 1 {
 		return echec(codeAction, "usage : cercle cle <fichier de clé privée à créer>")
+	}
+	if !enConsole {
+		return echec(codeAction, "à lancer depuis un terminal.")
 	}
 	chemin := o.positifs[0]
 	if _, err := os.Stat(chemin); err == nil {
@@ -593,25 +470,39 @@ func actionCle(o options) error {
 	if err := os.WriteFile(chemin, fichier, 0o600); err != nil {
 		return echec(codeEcriture, "%v", err)
 	}
-	fmt.Println("Clé privée chiffrée écrite dans " + chemin + " : gardez-la hors de GitHub (gestionnaire de mots de passe).")
-	fmt.Println("Clé publique, à mettre dans extension/cle-publique.txt puis à commiter :")
-	fmt.Println(pub)
+	dire("Clé privée chiffrée écrite dans %s : gardez-la hors de GitHub (gestionnaire de mots de passe).", chemin)
+	dire("Clé publique, à mettre dans extension/cle-publique.txt puis à commiter :\n%s", fmt.Sprint(pub))
 	return nil
 }
 
 func actionSigner(o options) error {
 	if len(o.positifs) != 2 {
-		return echec(codeAction, "usage : cercle signer <cercle.exe à signer> <fichier de clé privée>")
+		return echec(codeAction, "usage : cercle signer <cercle-setup.exe> <fichier de clé privée> [--exe <cercle.exe recompilé>]")
 	}
-	exe, cle := o.positifs[0], o.positifs[1]
-	contenu, err := os.ReadFile(exe)
+	if !enConsole {
+		return echec(codeAction, "à lancer depuis un terminal.")
+	}
+	setup, cle := o.positifs[0], o.positifs[1]
+	contenu, err := os.ReadFile(setup)
 	if err != nil {
 		return err
 	}
-	// La version signée est celle embarquée dans l'exe, pas une version tapée à la main.
+	// La version signée est celle de cercle.exe, stocké non compressé dans le setup : lue telle quelle.
 	v := versionDansExe(contenu)
 	if parts(v) == nil {
-		return echec(codeAction, "%s ne ressemble pas à un cercle.exe (version introuvable).", exe)
+		return echec(codeAction, "%s ne contient pas de cercle.exe lisible (version introuvable).", setup)
+	}
+	if o.exe != "" {
+		local, err := os.ReadFile(o.exe)
+		if err != nil {
+			return err
+		}
+		if !bytes.Contains(contenu, local) {
+			return echec(codeAction, "le cercle.exe recompilé (%s) ne se trouve pas tel quel dans %s : ne signez pas.", o.exe, setup)
+		}
+		dire("Le setup contient exactement le cercle.exe recompilé.")
+	} else {
+		alerter("Conseil : recompilez cercle.exe chez vous et passez-le avec --exe pour vérifier le setup avant de signer.")
 	}
 	fichierCle, err := os.ReadFile(cle)
 	if err != nil {
@@ -631,11 +522,11 @@ func actionSigner(o options) error {
 			return echec(codeAction, "cette clé n'est pas celle de cle-publique.txt : signature refusée.")
 		}
 	} else {
-		fmt.Println("Attention : ce cercle.exe n'embarque pas de clé publique ; vérifiez qu'elle est bien commitée.")
+		alerter("Attention : ce cercle n'embarque pas de clé publique ; vérifiez qu'elle est bien commitée.")
 	}
-	if err := os.WriteFile(exe+".sig", []byte(sig), 0o644); err != nil {
+	if err := os.WriteFile(setup+".sig", []byte(sig), 0o644); err != nil {
 		return echec(codeEcriture, "%v", err)
 	}
-	fmt.Printf("%s.sig écrit (version %s). Ajoutez-le à la release v%s, puis publiez-la.\n", exe, v, v)
+	dire("%s.sig écrit (version %s). Ajoutez-le à la release v%s, puis publiez-la.", setup, v, v)
 	return nil
 }

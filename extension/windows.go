@@ -1,8 +1,8 @@
 //go:build windows
 
-// La partie propre à Windows, sans module externe (appels système de la bibliothèque standard) : variable
-// d'environnement utilisateur REACT_PROFILE, processus de Claude, verrous sur les fichiers, lancement, raccourci,
-// saisie sans écho.
+// La partie propre à Windows, sans module externe (appels système de la bibliothèque standard) : console ou fenêtres
+// de dialogue, variable d'environnement utilisateur REACT_PROFILE, processus de Claude, verrous sur les fichiers,
+// lancement, saisie sans écho. Le raccourci et la désinstallation sont l'affaire de l'installeur (installeur/cercle.iss).
 package main
 
 import (
@@ -25,7 +25,42 @@ var (
 	kernel32               = syscall.NewLazyDLL("kernel32.dll")
 	procSetConsoleMode     = kernel32.NewProc("SetConsoleMode")
 	procQueryFullImageName = kernel32.NewProc("QueryFullProcessImageNameW")
+	procAttachConsole      = kernel32.NewProc("AttachConsole")
+	procGetConsoleWindow   = kernel32.NewProc("GetConsoleWindow")
+	procMessageBoxW        = user32.NewProc("MessageBoxW")
 )
+
+// L'exe est construit « windowsgui » (pas de fenêtre noire) : lancé avec une commande depuis un terminal, il se
+// rattache à la console de ce terminal pour y écrire ; sinon (menu Démarrer, installeur), fenêtres de dialogue.
+func init() {
+	if r, _, _ := procGetConsoleWindow.Call(); r != 0 {
+		enConsole = true
+		return
+	}
+	enConsole = false
+	if len(os.Args) < 2 {
+		return
+	}
+	if r, _, _ := procAttachConsole.Call(uintptr(^uint32(0))); r == 0 { // ATTACH_PARENT_PROCESS
+		return
+	}
+	sortie, err1 := os.OpenFile("CONOUT$", os.O_WRONLY, 0)
+	entreeConsole, err2 := os.OpenFile("CONIN$", os.O_RDWR, 0)
+	if err1 != nil || err2 != nil {
+		return
+	}
+	os.Stdout, os.Stderr, os.Stdin = sortie, sortie, entreeConsole
+	enConsole = true
+	fmt.Println()
+}
+
+// boite : une fenêtre de dialogue Windows ; renvoie le bouton choisi.
+func boite(texte string, style uint32) int {
+	t, _ := syscall.UTF16PtrFromString(texte)
+	titre, _ := syscall.UTF16PtrFromString(titreFenetre)
+	r, _, _ := procMessageBoxW.Call(0, uintptr(unsafe.Pointer(t)), uintptr(unsafe.Pointer(titre)), uintptr(style|0x10000)) // MB_SETFOREGROUND
+	return int(r)
+}
 
 const (
 	nomVariable  = "REACT_PROFILE"
@@ -221,18 +256,6 @@ func verrouiller(chemins []string) (func(), error) {
 	return liberer, nil
 }
 
-func cheminRaccourci() string {
-	return filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "Claude (cercle).lnk")
-}
-
-func creerRaccourci(chemin, cible, args, travail string) error {
-	_, err := powershell(fmt.Sprintf(
-		"$r = (New-Object -ComObject WScript.Shell).CreateShortcut(%s); $r.TargetPath = %s; $r.Arguments = %s; "+
-			"$r.WorkingDirectory = %s; $r.Description = %s; $r.Save()",
-		ps(chemin), ps(cible), ps(args), ps(travail), ps("Lance Claude avec l'extension cercle, après vérification des fichiers")))
-	return err
-}
-
 // lirePhrase : une phrase de passe tapée sans écho.
 func lirePhrase(invite string) (string, error) {
 	fmt.Print(invite)
@@ -242,7 +265,7 @@ func lirePhrase(invite string) (string, error) {
 		procSetConsoleMode.Call(uintptr(h), uintptr(mode&^0x0004)) // sans ENABLE_ECHO_INPUT
 		defer procSetConsoleMode.Call(uintptr(h), uintptr(mode))
 	}
-	l, err := entree.ReadString('\n')
+	l, err := lecteur().ReadString('\n')
 	fmt.Println()
 	return strings.TrimRight(l, "\r\n"), err
 }
