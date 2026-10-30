@@ -1,12 +1,12 @@
 // Lecteur des données de sonar : fonctions pures, sans DOM, chargées avant widget.js et testées sous Node
-// (test/sonar-lecture.test.mjs). Sur le bureau, le mod sonar ajoute à son pied (à côté du nom du modèle)
+// (test/sonar-lecture.test.mjs). Sur le bureau, le mod sonar (0.5.1 ou plus) ajoute à son bandeau (au-dessus de la saisie)
 // une image transparente de 1 pixel dont le texte alternatif vaut « sonar:1 {json} » (sonar/hooks/logique.mjs,
 // chargeExtension), dans le shadowRoot ouvert d'un hôte `[data-plugin-drawn]`. Le JSON est sans langue (nombres,
 // heures en ms) : ce module le vérifie et le met en mots, en français ou en anglais.
 (function (racine) {
   // Sélecteurs vérifiés contre les relevés de Claude Desktop Windows (test/fixtures, 30/10/2026).
   const SELECTEURS = {
-    // Tout hôte de dessin d'un mod : relevé pour le bandeau (« AbovePrompt »), supposé pour le pied (« SessionMode »).
+    // Tout hôte de dessin d'un mod : relevé pour le bandeau (« AbovePrompt ») ; le pied n'en est pas un (essai du 30/10).
     hote: '[data-plugin-drawn]',
     cercle: 'button[aria-haspopup="dialog"]',
     // Début de l'aria-label du cercle : « Utilisation : Hebdomadaire · … » (fr), « Usage: … » (en).
