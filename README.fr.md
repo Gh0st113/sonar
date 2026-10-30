@@ -141,20 +141,29 @@ en français ou en anglais, selon la langue de l'appli. Rien n'est masqué, le b
 revenez-y avec `/sonar pied` pour ne pas voir les infos en double). Les données partent même avec `/sonar masquer`, qui
 cache seulement l'affichage de sonar. Le mod sonar (0.5.0 ou plus) doit être installé.
 
-Installation (PowerShell 7, depuis la racine du dépôt), puis **quitter complètement Claude** (zone de notification >
-Quitter) et le relancer :
+Installation (PowerShell 7, depuis la racine du dépôt, dépôt sans modification non commitée) :
 
 ```powershell
 pwsh -NoProfile -File .\extension\install.ps1 installer
+pwsh -NoProfile -File .\extension\install.ps1 raccourci
 ```
 
-État, sans rien changer :
+Ensuite, **quitter complètement Claude** (zone de notification > Quitter) et le lancer par le raccourci « Claude (cercle) »
+du menu Démarrer, ou par `install.ps1 lancer`. Un Claude lancé autrement ne charge **pas** l'extension : c'est voulu.
+
+Pourquoi un lanceur : Claude charge l'extension quand `REACT_PROFILE=1` à son démarrage, et ce dossier est modifiable par
+tout programme lancé sous votre compte. La variable n'est donc **jamais** laissée en place : `lancer` vérifie d'abord que
+les fichiers installés sont identiques au dépôt (SHA-256, rien en trop, dépôt sans modification non commitée), pose
+`REACT_PROFILE=1`, démarre Claude, puis remet la variable comme avant quelques secondes plus tard (même si le lancement
+est interrompu : la valeur d'avant est notée et remise au passage suivant du script).
+
+État et vérification des fichiers, sans rien changer :
 
 ```powershell
 pwsh -NoProfile -File .\extension\install.ps1 etat
 ```
 
-Retrait (supprime seulement le dossier de cette extension et remet `REACT_PROFILE` comme avant), puis redémarrage complet :
+Retrait (supprime seulement le dossier de cette extension et le raccourci), puis redémarrage complet :
 
 ```powershell
 pwsh -NoProfile -File .\extension\install.ps1 retirer
@@ -164,17 +173,13 @@ Limites :
 - le chargement passe par un **crochet de développement** de Claude Desktop (`REACT_PROFILE=1` charge le dossier
   de React DevTools, `%LOCALAPPDATA%\Claude-Data\claude_<id>\extensions\fmkadmapgofadopljbjfkapdkoienihi`) :
   rien ne garantit qu'Anthropic le garde ; si React DevTools occupe déjà ce dossier, le script refuse ;
-- `REACT_PROFILE` est une variable **utilisateur** : toutes les applis lancées ensuite la voient ;
-- **sécurité** : tant que `REACT_PROFILE=1`, Claude charge sans rien montrer ce que contient ce dossier, dans votre session
-  claude.ai ; tout programme lancé sous votre compte peut y écrire. `install.ps1 etat` compare les empreintes des
-  fichiers installés aux sources ; retirez l'extension quand vous ne vous en servez pas. Audit et provenance du code
-  repris de UI+ : `extension/PROVENANCE.md` ;
-- `install.ps1 installer` refuse des modifications non commitées dans `extension/` et note le commit installé ;
-- avec plusieurs organisations, le cercle peut montrer l'usage d'une autre que celle affichée (comportement de UI+) ;
-- le bouton « Compacter » du bloc contexte de UI+ n'est cherché qu'en anglais et en allemand : en français, il n'apparaît pas ;
+- si `REACT_PROFILE` vaut 1 **en permanence** sur votre compte (ancien outil, sonde), le script le signale : retirez-la ;
+- audit et provenance du code repris de UI+ : `extension/PROVENANCE.md` ;
 - tout changement demande un **redémarrage complet** de Claude ;
 - le porteur est invisible mais **pas muet** : un lecteur d'écran peut annoncer son texte (`sonar:1 {…}`) dans le pied ;
 - l'hôte du pied n'a pas encore été relevé dans l'appli (seul celui du bandeau l'a été) : à confirmer à l'essai ;
+- avec plusieurs organisations, le cercle peut montrer l'usage d'une autre que celle affichée (comportement de UI+) ;
+- le bouton « Compacter » du bloc contexte de UI+ n'est cherché qu'en anglais et en allemand : en français, il n'apparaît pas ;
 - s'il y a plusieurs dossiers `claude_*` (après une réinstallation de Claude), le script s'arrête : précisez lequel avec `-Profil <nom>` ;
 - les sélecteurs viennent de relevés de Claude Desktop Windows en français (`extension/test/fixtures`) : une mise à
   jour de Claude peut les casser.

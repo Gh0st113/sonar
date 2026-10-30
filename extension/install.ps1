@@ -1,35 +1,46 @@
 #Requires -Version 7
 <#
 .SYNOPSIS
-  Installe, retire ou décrit l'extension « cercle » (UI+ for Claude adapté à sonar) dans Claude Desktop pour Windows.
+  Installe, lance, retire ou décrit l'extension « cercle » (UI+ for Claude adapté à sonar) dans Claude Desktop pour Windows.
 
 .DESCRIPTION
-  Claude Desktop charge une extension de navigateur quand la variable d'environnement REACT_PROFILE vaut 1 :
-  celle du dossier %LOCALAPPDATA%\Claude-Data\claude_<id>\extensions\fmkadmapgofadopljbjfkapdkoienihi
-  (l'identifiant de React DevTools). C'est un crochet de développement, non garanti par Anthropic.
+  Claude Desktop charge une extension quand la variable d'environnement REACT_PROFILE vaut 1 à son démarrage : celle du
+  dossier %LOCALAPPDATA%\Claude-Data\claude_<id>\extensions\fmkadmapgofadopljbjfkapdkoienihi (l'identifiant de React
+  DevTools). C'est un crochet de développement, non garanti par Anthropic.
 
-  installer : copie l'extension dans ce dossier et pose REACT_PROFILE=1 pour l'utilisateur, en notant la valeur
-              précédente dans .sonar-etat.json (dans le dossier de l'extension).
-  retirer   : supprime ce dossier s'il est le nôtre et remet REACT_PROFILE comme avant (ou la retire si elle
-              n'existait pas).
-  etat      : dit ce qui est installé, sans rien changer.
+  Sécurité : ce dossier est modifiable par tout programme lancé sous votre compte, et Claude le charge sans rien montrer.
+  Ce script ne laisse donc JAMAIS REACT_PROFILE posée en permanence : un Claude lancé normalement ne charge rien. Seule
+  l'action « lancer » arme le crochet, quelques secondes, après avoir vérifié que les fichiers installés sont identiques
+  aux sources du dépôt (sans modification non commitée).
 
-  Après installer ou retirer : quitter complètement Claude (icône de la zone de notification > Quitter) puis le relancer.
+  installer : copie l'extension dans ce dossier (sources sans modification non commitée). Ne touche pas REACT_PROFILE.
+  lancer    : Claude doit être complètement fermé. Vérifie les fichiers installés, pose REACT_PROFILE=1, lance Claude,
+              attend son démarrage, puis remet REACT_PROFILE comme avant (même en cas d'erreur ou d'interruption :
+              la valeur d'avant est notée et remise au prochain passage du script).
+  raccourci : crée dans le menu Démarrer un raccourci « Claude (cercle) » qui exécute « lancer ».
+  retirer   : supprime ce dossier s'il est le nôtre, et le raccourci.
+  etat      : dit ce qui est installé et si les fichiers sont intacts, sans rien changer.
 
-  S'il y a plusieurs dossiers claude_* (après une réinstallation de Claude), -Profil désigne celui à utiliser.
+  Plusieurs dossiers claude_* (après une réinstallation de Claude) : -Profil désigne celui à utiliser.
+  Claude introuvable par « lancer » : -Lanceur donne l'exécutable ou l'identifiant « shell:AppsFolder\… ».
 
-  Codes de retour : 0 réussi ; 1 action inconnue ; 2 dossier Claude-Data introuvable ou ambigu ;
-  3 dossier d'extension occupé par autre chose (React DevTools ?) ; 4 échec de copie, de suppression, d'écriture
-  ou erreur imprévue.
+  Codes de retour : 0 réussi ; 1 action inconnue ; 2 dossier Claude-Data introuvable ou ambigu ; 3 dossier d'extension
+  occupé par autre chose (React DevTools ?) ; 4 échec de copie, de suppression, d'écriture ou erreur imprévue ;
+  5 Claude est encore ouvert ; 6 vérification des fichiers refusée ; 7 Claude introuvable.
 
 .EXAMPLE
   pwsh -NoProfile -File .\extension\install.ps1 installer
+  pwsh -NoProfile -File .\extension\install.ps1 lancer
 #>
 param(
   [Parameter(Position = 0)]
   [string] $Action = 'etat',
   # Dossier claude_* à utiliser quand il y en a plusieurs (nom seul ou chemin complet).
-  [string] $Profil
+  [string] $Profil,
+  # Exécutable de Claude, ou « shell:AppsFolder\<AppID> », si « lancer » ne le trouve pas seul.
+  [string] $Lanceur,
+  # Attendre Entrée avant de fermer en cas d'erreur (pour le raccourci, dont la fenêtre se fermerait sinon).
+  [switch] $Attendre
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,6 +48,7 @@ Set-StrictMode -Version Latest
 # Toute erreur imprévue sort en code 4, jamais en 1 (réservé à « action inconnue »).
 trap {
   Write-Host "Erreur imprévue : $($_.Exception.Message)" -ForegroundColor Red
+  if ($Attendre) { Read-Host 'Entrée pour fermer' | Out-Null }
   exit 4
 }
 
@@ -45,9 +57,14 @@ $Marque = 'sonar-cercle'
 $NomManifeste = 'UI+ for Claude (sonar, Windows)'
 $FichierEtat = '.sonar-etat.json'
 $Fichiers = @('manifest.json', 'sonar-lecture.js', 'widget.js', 'widget.css', 'LICENSE-UI-PLUS')
+$NomRaccourci = 'Claude (cercle).lnk'
+# Hors du dossier chargé par Claude : la valeur de REACT_PROFILE à remettre si un lancement a été interrompu.
+$DossierScript = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'sonar-cercle' } else { $null }
+$FichierLancement = if ($DossierScript) { Join-Path $DossierScript 'lancement-en-cours.json' } else { $null }
 
 function Sortir([int] $Code, [string] $Message) {
   if ($Code -eq 0) { Write-Host $Message } else { Write-Host "Erreur : $Message" -ForegroundColor Red }
+  if ($Attendre -and $Code -ne 0) { Read-Host 'Entrée pour fermer' | Out-Null }
   exit $Code
 }
 
@@ -94,35 +111,73 @@ function Lire-Etat([string] $Dossier) {
   if (-not (Test-Path -LiteralPath $chemin)) { return $null }
   try { $etat = Get-Content -LiteralPath $chemin -Raw | ConvertFrom-Json } catch { return $null }
   $props = $etat.PSObject.Properties
-  if ($props['marque']?.Value -ne $Marque -or -not $props['existait']) { return $null }
-  [pscustomobject]@{ existait = [bool] $props['existait'].Value; valeur = $props['valeur']?.Value }
+  if ($props['marque']?.Value -ne $Marque) { return $null }
+  [pscustomobject]@{ commit = $props['commit']?.Value; installe = $props['installe']?.Value }
 }
 
 function Valeur-Utilisateur { [Environment]::GetEnvironmentVariable('REACT_PROFILE', 'User') }
 
-# Commit des sources, et refus d'installer des modifications locales non commitées : ce qui part dans Claude doit être
-# ce qui a été relu. Sans git (copie hors dépôt), on installe et on le dit.
+# Un lancement interrompu (fenêtre fermée, panne) a pu laisser REACT_PROFILE=1 : on remet la valeur notée.
+function Reparer-Lancement {
+  if (-not $FichierLancement -or -not (Test-Path -LiteralPath $FichierLancement)) { return }
+  $l = Get-Content -LiteralPath $FichierLancement -Raw | ConvertFrom-Json
+  $valeur = if ($l.PSObject.Properties['existait']?.Value) { [string] $l.valeur } else { $null }
+  [Environment]::SetEnvironmentVariable('REACT_PROFILE', $valeur, 'User')
+  Remove-Item -LiteralPath $FichierLancement -Force
+  Write-Host 'Lancement précédent interrompu : REACT_PROFILE remise comme avant.' -ForegroundColor Yellow
+}
+
+# La variable posée en permanence (ancienne installation, sonde, autre outil) arme le crochet pour tout lancement.
+function Avertir-Variable {
+  if ((Valeur-Utilisateur) -eq '1') {
+    Write-Host 'Attention : REACT_PROFILE vaut 1 en permanence pour votre compte : tout lancement de Claude charge ce dossier' -ForegroundColor Yellow
+    Write-Host 'sans vérification. Si aucun autre outil n''en a besoin, retirez-la :' -ForegroundColor Yellow
+    Write-Host "  [Environment]::SetEnvironmentVariable('REACT_PROFILE', `$null, 'User')"
+  }
+}
+
+# Commit des sources ; refuse des modifications locales non commitées : ce qui part dans Claude doit être ce qui a
+# été relu. Sans git ni dépôt, rien n'est vérifiable : refus.
 function Commit-Sources {
-  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return $null }
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Sortir 6 'git est introuvable : impossible de vérifier les sources.' }
   $commit = git -C $PSScriptRoot rev-parse HEAD 2>$null
-  if ($LASTEXITCODE -ne 0) { return $null }
+  if ($LASTEXITCODE -ne 0) { Sortir 6 "$PSScriptRoot n'est pas dans un dépôt git : impossible de vérifier les sources." }
   $modifs = git -C $PSScriptRoot status --porcelain -- . 2>$null
-  if ($modifs) { Sortir 4 "modifications non commitées dans $PSScriptRoot : commitez-les ou annulez-les avant d'installer.`n$($modifs -join "`n")" }
+  if ($modifs) { Sortir 6 "modifications non commitées dans $PSScriptRoot : commitez-les ou annulez-les.`n$($modifs -join "`n")" }
   $commit
 }
 
-# Empreintes SHA-256 des fichiers installés comparées aux sources : un fichier changé après coup se voit.
-function Comparer([string] $Dossier) {
+# Le manifeste installé porte en plus version_name (estampille d'installation, cf. « Désinstaller… » de UI+).
+function Manifeste-Sans-Estampille([string] $Chemin) {
+  $m = Get-Content -LiteralPath $Chemin -Raw | ConvertFrom-Json
+  $m.PSObject.Properties.Remove('version_name')
+  $m | ConvertTo-Json -Depth 10 -Compress
+}
+
+# Compare le dossier installé aux sources : mêmes fichiers, mêmes octets (SHA-256), rien de plus. Renvoie la liste
+# des écarts (vide = identique) ; avec -Afficher, écrit chaque empreinte.
+function Ecarts([string] $Dossier, [switch] $Afficher) {
+  $ecarts = @()
+  $attendus = @($Fichiers + $FichierEtat)
+  foreach ($en_trop in @(Get-ChildItem -LiteralPath $Dossier -Recurse -Force -File | Where-Object {
+        [IO.Path]::GetRelativePath($Dossier, $_.FullName) -notin $attendus })) {
+    $ecarts += "fichier en trop : $([IO.Path]::GetRelativePath($Dossier, $en_trop.FullName))"
+  }
   foreach ($f in $Fichiers) {
     $installe = Join-Path $Dossier $f
     $source = Join-Path $PSScriptRoot $f
-    if (-not (Test-Path -LiteralPath $installe)) { Write-Host "  $f : absent du dossier installé" -ForegroundColor Red; continue }
-    $h = (Get-FileHash -LiteralPath $installe -Algorithm SHA256).Hash
-    # manifest.json est réécrit à l'installation (version_name) : on ne compare que les autres.
-    if ($f -eq 'manifest.json') { Write-Host "  $f : $h (réécrit à l'installation)"; continue }
-    $ok = (Test-Path -LiteralPath $source) -and $h -eq (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
-    Write-Host ("  $f : $h " + $(if ($ok) { '(identique aux sources)' } else { 'DIFFÉRENT DES SOURCES' })) -ForegroundColor $(if ($ok) { 'Gray' } else { 'Red' })
+    if (-not (Test-Path -LiteralPath $installe)) { $ecarts += "absent : $f"; continue }
+    if ($f -eq 'manifest.json') {
+      $ok = (Manifeste-Sans-Estampille $installe) -eq (Manifeste-Sans-Estampille $source)
+      $h = '(estampille d''installation exclue)'
+    } else {
+      $h = (Get-FileHash -LiteralPath $installe -Algorithm SHA256).Hash
+      $ok = $h -eq (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+    }
+    if (-not $ok) { $ecarts += "différent des sources : $f" }
+    if ($Afficher) { Write-Host ("  $f : $h " + $(if ($ok) { 'identique' } else { 'DIFFÉRENT' })) -ForegroundColor $(if ($ok) { 'Gray' } else { 'Red' }) }
   }
+  , $ecarts
 }
 
 function Installer([string] $Dossier) {
@@ -134,19 +189,6 @@ function Installer([string] $Dossier) {
     if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot $f))) { Sortir 4 "fichier source absent : $f" }
   }
   $commit = Commit-Sources
-
-  # Valeur de REACT_PROFILE à remettre au retrait. Réinstallation : on garde celle notée la première fois.
-  # Après la sonde, qui avait posé la variable elle-même, elle compte comme « n'existait pas » ; de même pour
-  # notre propre dossier dont l'état s'est perdu (la valeur actuelle, 1, est la nôtre).
-  $ancien = if ($occupant -eq 'nôtre') { Lire-Etat $Dossier } else { $null }
-  if ($ancien) {
-    $precedent = $ancien
-  } elseif ($occupant -in @('sonde', 'nôtre sans état')) {
-    $precedent = [pscustomobject]@{ existait = $false; valeur = $null }
-  } else {
-    $v = Valeur-Utilisateur
-    $precedent = [pscustomobject]@{ existait = $null -ne $v; valeur = $v }
-  }
 
   # Copie dans un dossier voisin, puis échange : jamais d'extension à moitié copiée.
   $temp = "$Dossier.nouveau"
@@ -160,7 +202,7 @@ function Installer([string] $Dossier) {
     $m = Get-Content -LiteralPath $manifeste -Raw | ConvertFrom-Json
     $m | Add-Member -NotePropertyName version_name -NotePropertyValue ("$($m.version) " + (Get-Date -Format 'yyyyMMddHHmmss')) -Force
     $m | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifeste -Encoding utf8NoBOM
-    [pscustomobject]@{ marque = $Marque; existait = $precedent.existait; valeur = $precedent.valeur; installe = (Get-Date -Format o); commit = $commit } |
+    [pscustomobject]@{ marque = $Marque; commit = $commit; installe = (Get-Date -Format o) } |
       ConvertTo-Json | Set-Content -LiteralPath (Join-Path $temp $FichierEtat) -Encoding utf8NoBOM
     if (Test-Path -LiteralPath $Dossier) { Remove-Item -LiteralPath $Dossier -Recurse -Force }
     New-Item -ItemType Directory -Path (Split-Path $Dossier) -Force | Out-Null
@@ -168,46 +210,100 @@ function Installer([string] $Dossier) {
   } catch {
     Sortir 4 "copie impossible : $($_.Exception.Message)"
   }
+  Avertir-Variable
+  Sortir 0 "Installée dans $Dossier (commit $commit). REACT_PROFILE n'est pas touchée : lancez Claude avec « install.ps1 lancer » ou le raccourci (« install.ps1 raccourci »)."
+}
 
-  try { [Environment]::SetEnvironmentVariable('REACT_PROFILE', '1', 'User') } catch {
-    Sortir 4 "extension copiée, mais REACT_PROFILE n'a pas pu être posée : $($_.Exception.Message)"
+# Comment démarrer Claude : -Lanceur, sinon l'appli du menu Démarrer (paquet MSIX), sinon l'installation classique.
+function Trouver-Claude {
+  if ($Lanceur) { return $Lanceur }
+  try {
+    $app = @(Get-StartApps | Where-Object { $_.Name -eq 'Claude' }) | Select-Object -First 1
+    if ($app) { return "shell:AppsFolder\$($app.AppID)" }
+  } catch { }
+  $classique = Join-Path $env:LOCALAPPDATA 'AnthropicClaude\claude.exe'
+  if (Test-Path -LiteralPath $classique) { return $classique }
+  Sortir 7 'Claude introuvable. Donnez-le avec -Lanceur (chemin de claude.exe, ou shell:AppsFolder\<AppID> : voir Get-StartApps).'
+}
+
+function Lancer([string] $Dossier) {
+  $occupant = Occupant $Dossier
+  if ($occupant -ne 'nôtre') { Sortir 6 "l'extension n'est pas installée ($occupant) : « install.ps1 installer » d'abord." }
+  # Claude ouvert : un nouveau lancement ne ferait que le ramener devant, sans recharger l'extension.
+  if (Get-Process -Name 'claude' -ErrorAction SilentlyContinue) {
+    Sortir 5 'Claude est encore ouvert : quittez-le complètement (zone de notification > Quitter), puis relancez.'
   }
-  $avant = if ($precedent.existait) { "« $($precedent.valeur) »" } else { 'absente' }
-  $source = if ($commit) { "commit $commit" } else { 'hors dépôt git, sources non vérifiées' }
-  Sortir 0 "Installée dans $Dossier ($source). REACT_PROFILE=1 (avant : $avant). Quittez complètement Claude puis relancez-le."
+  $commit = Commit-Sources
+  $ecarts = Ecarts $Dossier
+  if ($ecarts.Count -gt 0) {
+    Sortir 6 ("les fichiers installés ne sont pas ceux du dépôt (commit $commit) : lancement refusé.`n  " + ($ecarts -join "`n  ") +
+      "`nRéinstallez avec « install.ps1 installer » après avoir vérifié le dépôt.")
+  }
+  $cible = Trouver-Claude
+
+  # Valeur d'avant notée HORS du dossier chargé, pour la remettre même si ce script est interrompu.
+  $avant = Valeur-Utilisateur
+  New-Item -ItemType Directory -Path $DossierScript -Force | Out-Null
+  [pscustomobject]@{ existait = $null -ne $avant; valeur = $avant } | ConvertTo-Json |
+    Set-Content -LiteralPath $FichierLancement -Encoding utf8NoBOM
+  # Pas de Sortir (exit) dans le try : la remise de la variable, dans finally, doit toujours passer d'abord.
+  $demarre = $false
+  try {
+    [Environment]::SetEnvironmentVariable('REACT_PROFILE', '1', 'User')
+    $env:REACT_PROFILE = '1'
+    if ($cible -like 'shell:*') { Start-Process -FilePath 'explorer.exe' -ArgumentList $cible } else { Start-Process -FilePath $cible }
+    # Claude lit son environnement au démarrage : on attend son processus, puis un peu de marge.
+    $limite = (Get-Date).AddSeconds(30)
+    while (-not $demarre -and (Get-Date) -lt $limite) {
+      $demarre = [bool] (Get-Process -Name 'claude' -ErrorAction SilentlyContinue)
+      if (-not $demarre) { Start-Sleep -Milliseconds 500 }
+    }
+    if ($demarre) { Start-Sleep -Seconds 5 }
+  } finally {
+    [Environment]::SetEnvironmentVariable('REACT_PROFILE', $avant, 'User')
+    $env:REACT_PROFILE = $null
+    Remove-Item -LiteralPath $FichierLancement -Force -ErrorAction SilentlyContinue
+  }
+  if (-not $demarre) { Sortir 7 "Claude n'a pas démarré en 30 s avec « $cible » : essayez -Lanceur. REACT_PROFILE remise comme avant." }
+  Sortir 0 "Claude lancé avec l'extension (commit $commit, fichiers vérifiés). REACT_PROFILE remise comme avant."
+}
+
+function Chemin-Raccourci {
+  Join-Path ([Environment]::GetFolderPath('Programs')) $NomRaccourci
+}
+
+function Raccourci {
+  $pwsh = (Get-Command pwsh -ErrorAction SilentlyContinue)?.Source
+  if (-not $pwsh) { Sortir 4 'pwsh introuvable dans le PATH.' }
+  $lnk = Chemin-Raccourci
+  $shell = New-Object -ComObject WScript.Shell
+  $r = $shell.CreateShortcut($lnk)
+  $r.TargetPath = $pwsh
+  $profilArg = if ($Profil) { " -Profil `"$Profil`"" } else { '' }
+  $lanceurArg = if ($Lanceur) { " -Lanceur `"$Lanceur`"" } else { '' }
+  $r.Arguments = "-NoProfile -File `"$(Join-Path $PSScriptRoot 'install.ps1')`" lancer -Attendre$profilArg$lanceurArg"
+  $r.WorkingDirectory = $PSScriptRoot
+  $r.Description = 'Lance Claude avec l''extension cercle, après vérification des fichiers'
+  $r.Save()
+  Sortir 0 "Raccourci créé : $lnk (menu Démarrer, « Claude (cercle) »)."
 }
 
 function Retirer([string] $Dossier) {
   $occupant = Occupant $Dossier
+  $lnk = Chemin-Raccourci
+  if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force; Write-Host "Raccourci supprimé : $lnk" }
   if ($occupant -eq 'absent') {
-    # Le crochet reste armé si la variable est encore posée : tout ce qui serait déposé plus tard dans ce dossier
-    # serait chargé par Claude. Valeur d'avant inconnue : on ne la touche pas, on le signale.
-    if ((Valeur-Utilisateur) -eq '1') {
-      Write-Host "Attention : REACT_PROFILE vaut encore 1. Si personne d'autre n'en a besoin, retirez-la :" -ForegroundColor Yellow
-      Write-Host "  [Environment]::SetEnvironmentVariable('REACT_PROFILE', `$null, 'User')"
-    }
-    Sortir 0 "Rien à retirer : $Dossier n'existe pas. REACT_PROFILE n'a pas été touchée."
+    Avertir-Variable
+    Sortir 0 "Rien à retirer : $Dossier n'existe pas."
   }
   if ($occupant -notin @('nôtre', 'nôtre sans état')) {
-    Sortir 3 "$Dossier n'est pas cette extension ($occupant) : rien n'a été supprimé ni changé."
+    Sortir 3 "$Dossier n'est pas cette extension ($occupant) : rien n'a été supprimé."
   }
-  # État perdu : la valeur d'avant est inconnue ; on retire la variable, que nous avions posée.
-  $etat = (Lire-Etat $Dossier) ?? [pscustomobject]@{ existait = $false; valeur = $null }
   try { Remove-Item -LiteralPath $Dossier -Recurse -Force } catch {
     Sortir 4 "suppression impossible (Claude est-il encore ouvert ?) : $($_.Exception.Message)"
   }
-  try {
-    if ($etat.existait) {
-      [Environment]::SetEnvironmentVariable('REACT_PROFILE', [string] $etat.valeur, 'User')
-      $apres = "remise à « $($etat.valeur) »"
-    } else {
-      [Environment]::SetEnvironmentVariable('REACT_PROFILE', $null, 'User')
-      $apres = "retirée (elle n'existait pas avant)"
-    }
-  } catch {
-    Sortir 4 "extension supprimée, mais REACT_PROFILE n'a pas pu être remise : $($_.Exception.Message)"
-  }
-  Sortir 0 "Retirée de $Dossier. REACT_PROFILE $apres. Quittez complètement Claude puis relancez-le."
+  Avertir-Variable
+  Sortir 0 "Retirée de $Dossier. Quittez complètement Claude puis relancez-le normalement."
 }
 
 function Etat([string] $Dossier) {
@@ -215,26 +311,30 @@ function Etat([string] $Dossier) {
   $v = Valeur-Utilisateur
   Write-Host "Dossier : $Dossier"
   Write-Host "Occupant : $occupant"
-  Write-Host ("REACT_PROFILE (utilisateur) : " + $(if ($null -eq $v) { 'absente' } else { "« $v »" }))
+  Write-Host ("REACT_PROFILE (utilisateur) : " + $(if ($null -eq $v) { 'absente (bien : rien ne se charge hors « lancer »)' } else { "« $v »" }))
+  Write-Host ("Raccourci : " + $(if (Test-Path -LiteralPath (Chemin-Raccourci)) { Chemin-Raccourci } else { 'aucun' }))
   if ($occupant -eq 'nôtre') {
     $etat = Lire-Etat $Dossier
-    Write-Host ("Valeur à remettre au retrait : " + $(if ($etat.existait) { "« $($etat.valeur) »" } else { 'aucune (variable retirée)' }))
-    $props = (Get-Content -LiteralPath (Join-Path $Dossier $FichierEtat) -Raw | ConvertFrom-Json).PSObject.Properties
-    Write-Host ("Installée depuis : " + $(if ($props['commit']?.Value) { "commit $($props['commit'].Value)" } else { 'commit inconnu' }))
+    Write-Host ("Installée depuis : " + $(if ($etat.commit) { "commit $($etat.commit)" } else { 'commit inconnu' }))
   }
   if ($occupant -in @('nôtre', 'nôtre sans état')) {
-    Write-Host 'Empreintes SHA-256 :'
-    Comparer $Dossier
+    Write-Host 'Comparaison avec les sources (SHA-256) :'
+    $ecarts = Ecarts $Dossier -Afficher
+    Write-Host $(if ($ecarts.Count -eq 0) { 'Fichiers installés identiques aux sources.' } else { 'ÉCARTS : ' + ($ecarts -join ' ; ') })
   }
+  Avertir-Variable
   exit 0
 }
 
-if ($Action -notin @('installer', 'retirer', 'etat')) {
-  Sortir 1 "action inconnue « $Action ». Utilisation : install.ps1 installer | retirer | etat"
+if ($Action -notin @('installer', 'lancer', 'raccourci', 'retirer', 'etat')) {
+  Sortir 1 "action inconnue « $Action ». Utilisation : install.ps1 installer | lancer | raccourci | retirer | etat"
 }
+Reparer-Lancement
+if ($Action -eq 'raccourci') { Raccourci }
 $dossier = Join-Path (Join-Path (Trouver-Profil) 'extensions') $IdExtension
 switch ($Action) {
   'installer' { Installer $dossier }
+  'lancer' { Lancer $dossier }
   'retirer' { Retirer $dossier }
   'etat' { Etat $dossier }
 }

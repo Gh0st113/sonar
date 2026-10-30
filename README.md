@@ -141,20 +141,29 @@ default `footer` placement, which only shows what deserves a glance (if you pick
 `/sonar footer` to avoid seeing things twice). The data still flows with `/sonar hide`, which only hides sonar's own
 display. The sonar mod (0.5.0 or later) must be installed.
 
-Install (PowerShell 7, from the repository root), then **quit Claude completely** (notification area > Quit) and
-start it again:
+Install (PowerShell 7, from the repository root, with no uncommitted change):
 
 ```powershell
 pwsh -NoProfile -File .\extension\install.ps1 installer
+pwsh -NoProfile -File .\extension\install.ps1 raccourci
 ```
 
-Status, changing nothing:
+Then **quit Claude completely** (notification area > Quit) and start it from the "Claude (cercle)" Start menu shortcut, or
+with `install.ps1 lancer`. Claude started any other way does **not** load the extension: on purpose.
+
+Why a launcher: Claude loads the extension when `REACT_PROFILE=1` at startup, and that folder can be written by any
+program running under your account. So the variable is **never** left set: `lancer` first checks that the installed
+files match the repository (SHA-256, nothing extra, no uncommitted change), sets `REACT_PROFILE=1`, starts Claude, then
+puts the variable back a few seconds later (even if launching is interrupted: the previous value is recorded and restored
+the next time the script runs).
+
+Status and file check, changing nothing:
 
 ```powershell
 pwsh -NoProfile -File .\extension\install.ps1 etat
 ```
 
-Removal (deletes only this extension's folder and restores `REACT_PROFILE` as it was), then a full restart:
+Removal (deletes only this extension's folder and the shortcut), then a full restart:
 
 ```powershell
 pwsh -NoProfile -File .\extension\install.ps1 retirer
@@ -164,17 +173,13 @@ Limits:
 - loading goes through a **development hook** of Claude Desktop (`REACT_PROFILE=1` loads the React DevTools folder,
   `%LOCALAPPDATA%\Claude-Data\claude_<id>\extensions\fmkadmapgofadopljbjfkapdkoienihi`): Anthropic does not
   guarantee it; if React DevTools already uses that folder, the script refuses;
-- `REACT_PROFILE` is a **user** variable: every app started afterwards sees it;
-- **security**: while `REACT_PROFILE=1`, Claude silently loads whatever that folder holds, inside your claude.ai session;
-  any program running under your account can write there. `install.ps1 etat` compares the installed files' hashes with
-  the sources; remove the extension when you do not use it. Audit and provenance of the code taken from UI+:
-  `extension/PROVENANCE.md`;
-- `install.ps1 installer` refuses uncommitted changes in `extension/` and records the installed commit;
-- with several organizations, the circle may show another one's usage than the one displayed (UI+ behaviour);
-- the "Compact" button of UI+'s context block is only looked up in English and German: in French it does not show;
+- if `REACT_PROFILE` is set to 1 **permanently** on your account (older tool, probe), the script says so: remove it;
+- audit and provenance of the code taken from UI+: `extension/PROVENANCE.md`;
 - every change needs a **full restart** of Claude;
 - the carrier is invisible but **not silent**: a screen reader may read its text (`sonar:1 {…}`) in the footer;
 - the footer's host has not been captured in the app yet (only the banner's was): to be confirmed when trying it;
+- with several organizations, the circle may show another one's usage than the one displayed (UI+ behaviour);
+- the "Compact" button of UI+'s context block is only looked up in English and German: in French it does not show;
 - with several `claude_*` folders (after reinstalling Claude) the script stops: name the right one with `-Profil <name>`;
 - the selectors come from captures of Claude Desktop for Windows in French (`extension/test/fixtures`): a Claude
   update can break them.
