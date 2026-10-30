@@ -1,11 +1,11 @@
 //go:build windows
 
 // La partie propre à Windows, sans module externe (appels système de la bibliothèque standard) : variable
-// d'environnement utilisateur REACT_PROFILE, processus de Claude, lancement, raccourci, saisie sans écho.
+// d'environnement utilisateur REACT_PROFILE, processus de Claude, verrous sur les fichiers, lancement, raccourci,
+// saisie sans écho.
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"os"
@@ -17,18 +17,38 @@ import (
 )
 
 var (
-	advapi32            = syscall.NewLazyDLL("advapi32.dll")
-	procRegSetValueExW  = advapi32.NewProc("RegSetValueExW")
-	procRegDeleteValueW = advapi32.NewProc("RegDeleteValueW")
-	user32              = syscall.NewLazyDLL("user32.dll")
-	procSendMessageTO   = user32.NewProc("SendMessageTimeoutW")
-	kernel32            = syscall.NewLazyDLL("kernel32.dll")
-	procSetConsoleMode  = kernel32.NewProc("SetConsoleMode")
+	advapi32               = syscall.NewLazyDLL("advapi32.dll")
+	procRegSetValueExW     = advapi32.NewProc("RegSetValueExW")
+	procRegDeleteValueW    = advapi32.NewProc("RegDeleteValueW")
+	user32                 = syscall.NewLazyDLL("user32.dll")
+	procSendMessageTO      = user32.NewProc("SendMessageTimeoutW")
+	kernel32               = syscall.NewLazyDLL("kernel32.dll")
+	procSetConsoleMode     = kernel32.NewProc("SetConsoleMode")
+	procQueryFullImageName = kernel32.NewProc("QueryFullProcessImageNameW")
 )
 
-const nomVariable = "REACT_PROFILE"
+const (
+	nomVariable  = "REACT_PROFILE"
+	regExpandSz  = 2
+	processQuery = 0x1000 // PROCESS_QUERY_LIMITED_INFORMATION
+)
 
 func dossierLocal() string { return os.Getenv("LOCALAPPDATA") }
+
+// systeme : un programme de Windows par son chemin absolu, jamais cherché dans le PATH ou le dossier courant.
+func systeme(nom string) string {
+	racine := os.Getenv("SystemRoot")
+	if racine == "" {
+		racine = `C:\Windows`
+	}
+	if nom == "powershell.exe" {
+		return filepath.Join(racine, "System32", "WindowsPowerShell", "v1.0", nom)
+	}
+	if nom == "explorer.exe" {
+		return filepath.Join(racine, nom)
+	}
+	return filepath.Join(racine, "System32", nom)
+}
 
 func cleEnvironnement(acces uint32) (syscall.Handle, error) {
 	var h syscall.Handle
@@ -39,42 +59,53 @@ func cleEnvironnement(acces uint32) (syscall.Handle, error) {
 	return h, nil
 }
 
-// lireReactProfile : la valeur de la variable utilisateur, et si elle existe.
-func lireReactProfile() (string, bool, error) {
+// lireReactProfile : la variable utilisateur, avec son type (texte simple ou à développer). Un autre type est refusé :
+// on ne saurait pas la remettre telle quelle.
+func lireReactProfile() (valeurVariable, error) {
 	h, err := cleEnvironnement(syscall.KEY_READ)
 	if err != nil {
-		return "", false, err
+		return valeurVariable{}, err
 	}
 	defer syscall.RegCloseKey(h)
 	nom, _ := syscall.UTF16PtrFromString(nomVariable)
 	var typ, n uint32
 	err = syscall.RegQueryValueEx(h, nom, nil, &typ, nil, &n)
 	if errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) {
-		return "", false, nil
+		return valeurVariable{}, nil
 	}
 	if err != nil {
-		return "", false, err
+		return valeurVariable{}, err
+	}
+	if typ != syscall.REG_SZ && typ != regExpandSz {
+		return valeurVariable{}, fmt.Errorf("REACT_PROFILE a un type inattendu (%d) : retirez-la ou corrigez-la à la main", typ)
 	}
 	buf := make([]uint16, n/2+1)
 	if err := syscall.RegQueryValueEx(h, nom, nil, &typ, (*byte)(unsafe.Pointer(&buf[0])), &n); err != nil {
-		return "", false, err
+		return valeurVariable{}, err
 	}
-	return syscall.UTF16ToString(buf), true, nil
+	return valeurVariable{Existe: true, Valeur: syscall.UTF16ToString(buf), Type: typ}, nil
 }
 
-// poserReactProfile : pose la variable utilisateur (ou la retire si !existe), puis prévient Windows pour que les
+// poserReactProfile : pose la variable utilisateur avec son type (ou la retire), puis prévient Windows pour que les
 // programmes lancés ensuite (l'Explorateur, donc Claude) la voient.
-func poserReactProfile(valeur string, existe bool) error {
+func poserReactProfile(v valeurVariable) error {
 	h, err := cleEnvironnement(syscall.KEY_READ | syscall.KEY_WRITE)
 	if err != nil {
 		return err
 	}
 	defer syscall.RegCloseKey(h)
 	nom, _ := syscall.UTF16PtrFromString(nomVariable)
-	if existe {
-		v, _ := syscall.UTF16FromString(valeur)
-		r, _, _ := procRegSetValueExW.Call(uintptr(h), uintptr(unsafe.Pointer(nom)), 0, syscall.REG_SZ,
-			uintptr(unsafe.Pointer(&v[0])), uintptr(len(v)*2))
+	if v.Existe {
+		texte, err := syscall.UTF16FromString(v.Valeur)
+		if err != nil {
+			return fmt.Errorf("valeur de REACT_PROFILE illisible : %v", err)
+		}
+		typ := v.Type
+		if typ != regExpandSz {
+			typ = syscall.REG_SZ
+		}
+		r, _, _ := procRegSetValueExW.Call(uintptr(h), uintptr(unsafe.Pointer(nom)), 0, uintptr(typ),
+			uintptr(unsafe.Pointer(&texte[0])), uintptr(len(texte)*2))
 		if r != 0 {
 			return syscall.Errno(r)
 		}
@@ -91,7 +122,23 @@ func poserReactProfile(valeur string, existe bool) error {
 	return nil
 }
 
-// claudeOuvert : un processus claude.exe tourne.
+func cheminProcessus(pid uint32) string {
+	h, err := syscall.OpenProcess(processQuery, false, pid)
+	if err != nil {
+		return ""
+	}
+	defer syscall.CloseHandle(h)
+	buf := make([]uint16, 1024)
+	n := uint32(len(buf))
+	r, _, _ := procQueryFullImageName.Call(uintptr(h), 0, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&n)))
+	if r == 0 {
+		return ""
+	}
+	return syscall.UTF16ToString(buf[:n])
+}
+
+// claudeOuvert : un processus de Claude Desktop tourne. Claude Code s'appelle aussi claude.exe : on regarde le chemin
+// de l'image (paquet du Microsoft Store, ou installation classique). Chemin illisible : on le compte, par prudence.
 func claudeOuvert() bool {
 	snap, err := syscall.CreateToolhelp32Snapshot(syscall.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
@@ -101,7 +148,7 @@ func claudeOuvert() bool {
 	var p syscall.ProcessEntry32
 	p.Size = uint32(unsafe.Sizeof(p))
 	for err = syscall.Process32First(snap, &p); err == nil; err = syscall.Process32Next(snap, &p) {
-		if strings.EqualFold(syscall.UTF16ToString(p.ExeFile[:]), "claude.exe") {
+		if strings.EqualFold(syscall.UTF16ToString(p.ExeFile[:]), "claude.exe") && estClaudeDesktop(cheminProcessus(p.ProcessID)) {
 			return true
 		}
 	}
@@ -109,21 +156,22 @@ func claudeOuvert() bool {
 }
 
 func powershell(script string) (string, error) {
-	c := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+	c := exec.Command(systeme("powershell.exe"), "-NoProfile", "-NonInteractive", "-Command", script)
 	c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := c.Output()
 	return strings.TrimSpace(string(out)), err
 }
 
-// guillemets simples PowerShell : ' doublé.
-func ps(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
-
-// trouverClaude : --lanceur, sinon l'appli « Claude » du menu Démarrer (paquet MSIX), sinon l'installation classique.
+// trouverClaude : --lanceur, sinon l'appli « Claude » du menu Démarrer dont l'identifiant est celui d'Anthropic (paquet
+// du Microsoft Store ou installation classique ; pas une appli web du navigateur ni un raccourci quelconque nommé
+// « Claude »), sinon l'installation classique.
 func trouverClaude(lanceur string) (string, error) {
 	if lanceur != "" {
 		return lanceur, nil
 	}
-	if id, err := powershell("(Get-StartApps | Where-Object Name -eq 'Claude' | Select-Object -First 1).AppID"); err == nil && id != "" {
+	id, err := powershell(`(Get-StartApps | Where-Object { $_.Name -eq 'Claude' -and ($_.AppID -like 'Claude_*!*' -or ` +
+		`$_.AppID -like 'Anthropic*!*' -or $_.AppID -like 'com.squirrel.AnthropicClaude.*') } | Select-Object -First 1).AppID`)
+	if err == nil && id != "" && !strings.ContainsAny(id, `"&|<>^`) {
 		return `shell:AppsFolder\` + id, nil
 	}
 	classique := filepath.Join(dossierLocal(), "AnthropicClaude", "claude.exe")
@@ -133,15 +181,44 @@ func trouverClaude(lanceur string) (string, error) {
 	return "", echec(codeIntrouv, `Claude introuvable : donnez-le avec --lanceur (chemin de claude.exe, ou shell:AppsFolder\<AppID> : voir Get-StartApps).`)
 }
 
+// demarrerClaude : par l'Explorateur pour une appli du menu Démarrer (elle prend l'environnement de l'Explorateur, d'où
+// la variable utilisateur), ou directement avec REACT_PROFILE=1 dans son seul environnement.
 func demarrerClaude(cible string) error {
 	var c *exec.Cmd
-	if strings.HasPrefix(strings.ToLower(cible), "shell:") {
-		c = exec.Command("explorer.exe", cible)
+	if parExplorateur(cible) {
+		c = exec.Command(systeme("explorer.exe"), cible)
 	} else {
 		c = exec.Command(cible)
+		c.Env = append(os.Environ(), nomVariable+"=1")
 	}
-	c.Env = append(os.Environ(), nomVariable+"=1")
 	return c.Start()
+}
+
+// verrouiller : ouvre le dossier et chaque fichier sans partage en écriture ni en suppression. Tant que les handles
+// sont ouverts, personne ne peut modifier, remplacer, renommer ou supprimer ce qui vient d'être vérifié.
+func verrouiller(chemins []string) (func(), error) {
+	var handles []syscall.Handle
+	liberer := func() {
+		for _, h := range handles {
+			syscall.CloseHandle(h)
+		}
+	}
+	for _, c := range chemins {
+		p, err := syscall.UTF16PtrFromString(c)
+		if err != nil {
+			liberer()
+			return nil, err
+		}
+		// FILE_FLAG_BACKUP_SEMANTICS pour ouvrir un dossier ; FILE_FLAG_OPEN_REPARSE_POINT pour ne pas suivre un lien.
+		h, err := syscall.CreateFile(p, syscall.GENERIC_READ, syscall.FILE_SHARE_READ, nil, syscall.OPEN_EXISTING,
+			syscall.FILE_FLAG_BACKUP_SEMANTICS|0x00200000, 0)
+		if err != nil {
+			liberer()
+			return nil, fmt.Errorf("%s : %v", c, err)
+		}
+		handles = append(handles, h)
+	}
+	return liberer, nil
 }
 
 func cheminRaccourci() string {
@@ -165,7 +242,7 @@ func lirePhrase(invite string) (string, error) {
 		procSetConsoleMode.Call(uintptr(h), uintptr(mode&^0x0004)) // sans ENABLE_ECHO_INPUT
 		defer procSetConsoleMode.Call(uintptr(h), uintptr(mode))
 	}
-	l, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	l, err := entree.ReadString('\n')
 	fmt.Println()
 	return strings.TrimRight(l, "\r\n"), err
 }

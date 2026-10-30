@@ -159,33 +159,44 @@ afficher un avertissement SmartScreen (exe non signé par un certificat payant) 
 Exécuter quand même ».
 
 Pourquoi un lanceur : Claude charge l'extension quand `REACT_PROFILE=1` à son démarrage, et ce dossier est modifiable par
-tout programme lancé sous votre compte. La variable n'est donc **jamais** laissée en place : à chaque lancement,
-`cercle.exe` compare le dossier installé aux fichiers qu'il embarque (mêmes octets, rien en trop ; sinon il propose de
-réinstaller ou refuse), pose `REACT_PROFILE=1`, démarre Claude, puis remet la variable comme avant quelques secondes plus
-tard (même si le lancement est interrompu : la valeur d'avant est notée hors du dossier et remise au passage suivant).
+tout programme lancé sous votre compte. La variable n'est donc **jamais** laissée en place. À chaque lancement,
+`cercle.exe` :
+- **verrouille** les fichiers de l'extension (plus personne ne peut les modifier, les remplacer ou les supprimer jusqu'au
+  démarrage de Claude), puis les **compare** à ceux qu'il embarque : mêmes octets, vrais fichiers (pas de liens), rien en
+  trop ; sinon il propose de réinstaller, ou refuse. Avec plusieurs profils `claude_*`, il vérifie tous les dossiers
+  d'extension, car la variable vaut pour tous ;
+- pose `REACT_PROFILE=1`, démarre Claude, attend son démarrage, puis remet la variable comme avant. Fenêtre fermée ou
+  Ctrl+C : elle est remise aussitôt ; si ce n'est pas possible, la valeur d'avant est notée hors du dossier et remise par
+  la prochaine commande de `cercle.exe`. Si elle valait déjà 1 en permanence, il propose de la retirer.
+- reconnaît Claude Desktop par le chemin de son programme : un Claude Code ouvert (lui aussi `claude.exe`) ne compte pas.
 
 Mises à jour : à chaque lancement, `cercle.exe` regarde la dernière release GitHub. Il ne propose une version que si elle
-est **plus récente** et **signée** par la clé du mainteneur (ed25519 ; la clé publique est embarquée dans l'exe, la clé
-privée n'est jamais sur GitHub), et ne l'installe **que sur votre accord**. Une release mal signée est signalée et ignorée :
-un compte GitHub piraté ne suffit pas à pousser du code dans Claude. Sans réseau, Claude se lance avec la version actuelle.
+est **plus récente** que la sienne et **signée** par la clé du mainteneur (ed25519 ; la clé publique est embarquée dans
+l'exe, la clé privée n'est jamais sur GitHub), et ne l'installe **que sur votre accord**. Une release mal signée est
+signalée et ignorée : un compte GitHub piraté ne suffit pas à pousser du code dans Claude. Les notes de version affichées
+viennent de GitHub et ne sont **pas** signées. Sans réseau, Claude se lance avec la version actuelle.
 
 En ligne de commande (`%LOCALAPPDATA%\sonar-cercle\cercle.exe <action>`) : `installer`, `lancer`, `etat` (fichiers
-intacts ou non, état de la variable), `maj`, `retirer` (supprime l'extension et le raccourci), `version` ; options
+intacts ou non, état de la variable), `maj` (cherche une version signée et l'installe sur accord, sans lancer Claude),
+`retirer` (supprime l'extension et le raccourci), `version` ; options
 `--profil <claude_…>` s'il y a plusieurs profils, `--lanceur <claude.exe ou shell:AppsFolder\…>` si Claude n'est pas
 trouvé. Codes de retour : 0 réussi, 1 action inconnue, 2 profil introuvable ou ambigu, 3 dossier occupé par autre chose
 (React DevTools ?), 4 écriture, 5 Claude encore ouvert, 6 fichiers installés modifiés, 7 Claude introuvable, 8 mise à jour
 refusée.
 
 Publier une version (mainteneur) :
-1. une fois : `cercle cle <fichier>` crée la clé (chiffrée par une phrase de passe ; à garder hors de GitHub, par exemple
-   dans un gestionnaire de mots de passe) et affiche la clé publique, à mettre dans `extension/cle-publique.txt` et à
-   commiter ;
+1. une fois : prendre un `cercle.exe` d'essai (onglet **Actions** du dépôt > dernière exécution « cercle » > **Artifacts** >
+   `cercle-exe-essai` ; un exe d'essai n'est pas signé : pour soi seulement, jamais à distribuer), puis
+   `cercle cle <fichier>` : il crée la clé (chiffrée par une phrase de passe ; à garder hors de GitHub, par exemple dans un
+   gestionnaire de mots de passe) et affiche la clé publique, à mettre dans `extension/cle-publique.txt` et à commiter.
+   Sans elle, la CI refuse de construire une release ;
 2. monter `version` dans `extension/manifest.json`, commiter, pousser le tag `vX.Y.Z` : GitHub Actions teste, construit
    `cercle.exe` et crée une release **en brouillon** ;
 3. télécharger `cercle.exe` du brouillon ; pour ne pas faire confiance à GitHub Actions, le recompiler chez soi (build
-   reproductible : `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags=-buildid= -o cercle.exe .` dans
-   `extension/`, Go 1.24.7) et comparer l'empreinte SHA-256 ;
-4. `cercle signer cercle.exe <fichier de clé> X.Y.Z`, ajouter `cercle.exe.sig` au brouillon, publier.
+   reproductible : `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags=-buildid= -o
+   cercle.exe .` dans `extension/` du tag, Go 1.24.7) et comparer l'empreinte SHA-256 ;
+4. `cercle signer cercle.exe <fichier de clé>` (la version signée est lue dans l'exe ; la clé doit être celle de
+   `cle-publique.txt`), ajouter `cercle.exe.sig` au brouillon, publier.
 
 Limites :
 - le chargement passe par un **crochet de développement** de Claude Desktop (`REACT_PROFILE=1` charge le dossier
@@ -198,6 +209,9 @@ Limites :
 - tout changement demande un **redémarrage complet** de Claude ;
 - le porteur est invisible mais **pas muet** : un lecteur d'écran peut annoncer son texte (`sonar:1 {…}`) dans le pied ;
 - l'hôte du pied n'a pas encore été relevé dans l'appli (seul celui du bandeau l'a été) : à confirmer à l'essai ;
+- les verrous tiennent jusqu'au démarrage de Claude (+10 s) : si Claude relit l'extension plus tard (nouvelle fenêtre), ce
+  n'est plus couvert. À vérifier à l'essai (Process Monitor) ; l'AppID du paquet de Claude, cherché dans le menu Démarrer,
+  aussi (sinon `--lanceur`) ;
 - avec plusieurs organisations, le cercle peut montrer l'usage d'une autre que celle affichée (comportement de UI+) ;
 - le bouton « Compacter » du bloc contexte de UI+ n'est cherché qu'en anglais et en allemand : en français, il n'apparaît pas ;
 - les sélecteurs viennent de relevés de Claude Desktop Windows en français (`extension/test/fixtures`) : une mise à

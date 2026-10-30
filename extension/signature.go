@@ -126,7 +126,7 @@ func nouvelleCle(phrase string) ([]byte, string, error) {
 // ouvrirCle : la clé privée, déchiffrée par la phrase de passe.
 func ouvrirCle(fichier []byte, phrase string) (ed25519.PrivateKey, error) {
 	var f clePrivee
-	if json.Unmarshal(fichier, &f) != nil || f.Format != "sonar-cercle-cle-v1" || f.Iterations < 100_000 {
+	if json.Unmarshal(fichier, &f) != nil || f.Format != "sonar-cercle-cle-v1" || f.Iterations < 100_000 || f.Iterations > 10_000_000 {
 		return nil, errors.New("fichier de clé illisible")
 	}
 	sel, e1 := base64.StdEncoding.DecodeString(f.Sel)

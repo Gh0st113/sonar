@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"os"
@@ -14,16 +13,17 @@ import (
 var seulementWindows = errors.New("seulement sous Windows")
 
 func dossierLocal() string                                { return os.Getenv("LOCALAPPDATA") }
-func lireReactProfile() (string, bool, error)             { return "", false, seulementWindows }
-func poserReactProfile(string, bool) error                { return seulementWindows }
+func lireReactProfile() (valeurVariable, error)           { return valeurVariable{}, seulementWindows }
+func poserReactProfile(valeurVariable) error              { return seulementWindows }
 func claudeOuvert() bool                                  { return false }
 func trouverClaude(string) (string, error)                { return "", echec(codeIntrouv, "seulement sous Windows") }
 func demarrerClaude(string) error                         { return seulementWindows }
+func verrouiller([]string) (func(), error)                { return func() {}, nil }
 func cheminRaccourci() string                             { return "" }
 func creerRaccourci(string, string, string, string) error { return seulementWindows }
 
 func lirePhrase(invite string) (string, error) {
 	fmt.Print(invite)
-	l, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	l, err := entree.ReadString('\n')
 	return strings.TrimRight(l, "\r\n"), err
 }

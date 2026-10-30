@@ -1,8 +1,8 @@
 // cercle.exe : installe, vérifie et lance l'extension « cercle » dans Claude Desktop pour Windows.
 //
-// Ce fichier : la partie portable (testée sous Linux par installation_test.go) — fichiers embarqués, dossier de
-// profil, occupant du dossier, comparaison du dossier installé avec les fichiers embarqués. La partie propre à
-// Windows (variable d'environnement, processus, lancement, raccourci, jeton chiffré) est dans windows.go.
+// Ce fichier : la partie portable (testée sous Linux par cercle_test.go) — fichiers embarqués, dossiers de profil,
+// occupant du dossier, comparaison octet par octet du dossier installé avec les fichiers embarqués. La partie propre à
+// Windows (variable d'environnement, processus, verrous, lancement, raccourci) est dans windows.go.
 package main
 
 import (
@@ -14,7 +14,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -68,6 +67,10 @@ func echec(code int, format string, a ...any) error {
 // version : celle du manifeste embarqué, seule source de vérité (le tag de release doit valoir « v » + version).
 func version() string {
 	b, _ := embarques.ReadFile("manifest.json")
+	return versionManifeste(b)
+}
+
+func versionManifeste(b []byte) string {
 	var m struct {
 		Version string `json:"version"`
 	}
@@ -75,17 +78,26 @@ func version() string {
 	return m.Version
 }
 
-// trouverProfil : exactement un dossier claude_* sous <base>\Claude-Data, ou celui que désigne `choix`.
-func trouverProfil(base, choix string) (string, error) {
+// tousLesProfils : les dossiers claude_* sous <base>\Claude-Data.
+func tousLesProfils(base string) []string {
 	racine := filepath.Join(base, "Claude-Data")
 	entrees, _ := os.ReadDir(racine)
 	var profils []string
 	for _, e := range entrees {
 		if e.IsDir() && strings.HasPrefix(e.Name(), "claude_") {
-			p := filepath.Join(racine, e.Name())
-			if choix == "" || choix == e.Name() || choix == p {
-				profils = append(profils, p)
-			}
+			profils = append(profils, filepath.Join(racine, e.Name()))
+		}
+	}
+	return profils
+}
+
+// trouverProfil : exactement un dossier claude_* sous <base>\Claude-Data, ou celui que désigne `choix`.
+func trouverProfil(base, choix string) (string, error) {
+	racine := filepath.Join(base, "Claude-Data")
+	var profils []string
+	for _, p := range tousLesProfils(base) {
+		if choix == "" || choix == filepath.Base(p) || choix == p {
+			profils = append(profils, p)
 		}
 	}
 	switch {
@@ -108,9 +120,10 @@ func dossierExtension(profil string) string {
 }
 
 type etatInstallation struct {
-	Marque   string `json:"marque"`
-	Version  string `json:"version"`
-	Installe string `json:"installe"`
+	Marque     string `json:"marque"`
+	Version    string `json:"version"`
+	Installe   string `json:"installe"`
+	Estampille string `json:"estampille"` // version_name écrit dans le manifeste installé
 }
 
 func lireEtat(dossier string) *etatInstallation {
@@ -128,7 +141,7 @@ func lireEtat(dossier string) *etatInstallation {
 // occupant du dossier de l'extension : absent | nôtre | nôtre sans état | sonde | autre.
 // « nôtre sans état » : notre manifeste, mais le fichier d'état perdu (suppression interrompue, par exemple).
 func occupant(dossier string) string {
-	if _, err := os.Stat(dossier); errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Lstat(dossier); errors.Is(err, fs.ErrNotExist) {
 		return "absent"
 	}
 	if lireEtat(dossier) != nil {
@@ -148,9 +161,10 @@ func occupant(dossier string) string {
 	return "autre"
 }
 
-// manifesteInstalle : le manifeste embarqué, estampillé d'un version_name propre à l'installation : « Désinstaller… »
-// dans le popover masque l'extension jusqu'à la prochaine installation (comme UI+).
-func manifesteInstalle(maintenant time.Time) ([]byte, error) {
+// manifesteAvec : le manifeste embarqué, avec ce version_name. Chaque installation estampille le sien : « Désinstaller… »
+// dans le popover masque l'extension jusqu'à la prochaine installation (comme UI+). Sortie déterministe : le manifeste
+// installé se recompare octet par octet.
+func manifesteAvec(estampille string) ([]byte, error) {
 	b, err := embarques.ReadFile("manifest.json")
 	if err != nil {
 		return nil, err
@@ -159,27 +173,32 @@ func manifesteInstalle(maintenant time.Time) ([]byte, error) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		return nil, err
 	}
-	m["version_name"] = fmt.Sprintf("%v %s", m["version"], maintenant.Format("20060102150405"))
+	m["version_name"] = estampille
 	return json.MarshalIndent(m, "", "  ")
+}
+
+// attendu : le contenu que doit avoir chaque fichier installé, pour cette estampille.
+func attendu(f, estampille string) ([]byte, error) {
+	if f == "manifest.json" {
+		return manifesteAvec(estampille)
+	}
+	return embarques.ReadFile(f)
 }
 
 // installer : copie les fichiers embarqués dans un dossier voisin, puis l'échange avec l'ancien (jamais d'extension
 // à moitié copiée). Refuse un dossier étranger.
 func installer(dossier string, maintenant time.Time) error {
-	switch occupant(dossier) {
-	case "autre":
+	if occupant(dossier) == "autre" {
 		return echec(codeEtranger, "%s existe et n'est ni cette extension ni la sonde (React DevTools ?). Rien n'a été touché.", dossier)
 	}
+	estampille := version() + " " + maintenant.Format("20060102150405")
 	temp := dossier + ".nouveau"
 	_ = os.RemoveAll(temp)
 	if err := os.MkdirAll(temp, 0o755); err != nil {
 		return echec(codeEcriture, "copie impossible : %v", err)
 	}
 	for _, f := range fichiers {
-		b, err := embarques.ReadFile(f)
-		if f == "manifest.json" {
-			b, err = manifesteInstalle(maintenant)
-		}
+		b, err := attendu(f, estampille)
 		if err == nil {
 			err = os.WriteFile(filepath.Join(temp, f), b, 0o644)
 		}
@@ -187,7 +206,7 @@ func installer(dossier string, maintenant time.Time) error {
 			return echec(codeEcriture, "copie impossible (%s) : %v", f, err)
 		}
 	}
-	etat, _ := json.MarshalIndent(etatInstallation{marque, version(), maintenant.Format(time.RFC3339)}, "", "  ")
+	etat, _ := json.MarshalIndent(etatInstallation{marque, version(), maintenant.Format(time.RFC3339), estampille}, "", "  ")
 	if err := os.WriteFile(filepath.Join(temp, fichierEtat), etat, 0o644); err != nil {
 		return echec(codeEcriture, "écriture impossible : %v", err)
 	}
@@ -215,39 +234,58 @@ func retirer(dossier string) (bool, error) {
 	}
 }
 
-// ecarts : le dossier installé comparé aux fichiers embarqués — mêmes fichiers, mêmes octets, rien en trop.
-// Le manifeste est comparé sans son estampille version_name. Vide = identique.
+// ecarts : le dossier installé comparé aux fichiers embarqués — un vrai dossier (pas un lien), des fichiers ordinaires
+// (pas des liens), mêmes octets, rien en trop ; le manifeste aussi, avec l'estampille notée à l'installation.
+// Vide = identique.
 func ecarts(dossier string) []string {
+	info, err := os.Lstat(dossier)
+	if err != nil {
+		return []string{"dossier absent ou illisible : " + err.Error()}
+	}
+	if !info.IsDir() || info.Mode()&fs.ModeSymlink != 0 {
+		return []string{"le dossier de l'extension n'est pas un vrai dossier (lien ou jonction ?)"}
+	}
 	var r []string
 	attendus := map[string]bool{fichierEtat: true}
 	for _, f := range fichiers {
 		attendus[f] = true
 	}
 	_ = filepath.WalkDir(dossier, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || p == dossier {
-			return err
-		}
 		rel, _ := filepath.Rel(dossier, p)
-		if !attendus[filepath.ToSlash(rel)] {
-			r = append(r, "en trop : "+filepath.ToSlash(rel))
+		rel = filepath.ToSlash(rel)
+		if err != nil {
+			r = append(r, "illisible : "+rel)
+			return nil
+		}
+		if p == dossier {
+			return nil
+		}
+		if !attendus[rel] {
+			r = append(r, "en trop : "+rel)
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
 		}
 		return nil
 	})
+	estampille := ""
+	if e := lireEtat(dossier); e != nil {
+		estampille = e.Estampille
+	}
 	for _, f := range fichiers {
-		installe, err := os.ReadFile(filepath.Join(dossier, f))
+		chemin := filepath.Join(dossier, f)
+		fi, err := os.Lstat(chemin)
 		if err != nil {
 			r = append(r, "absent : "+f)
 			continue
 		}
-		reference, _ := embarques.ReadFile(f)
-		identique := bytes.Equal(installe, reference)
-		if f == "manifest.json" {
-			identique = memeManifeste(installe, reference)
+		if !fi.Mode().IsRegular() {
+			r = append(r, "pas un fichier ordinaire (lien ?) : "+f)
+			continue
 		}
-		if !identique {
+		installe, err := os.ReadFile(chemin)
+		reference, err2 := attendu(f, estampille)
+		if err != nil || err2 != nil || !bytes.Equal(installe, reference) {
 			r = append(r, "différent : "+f)
 		}
 	}
@@ -255,12 +293,30 @@ func ecarts(dossier string) []string {
 	return r
 }
 
-func memeManifeste(a, b []byte) bool {
-	var x, y map[string]any
-	if json.Unmarshal(a, &x) != nil || json.Unmarshal(b, &y) != nil {
-		return false
+// versionDansExe : la version du manifeste embarqué dans un cercle.exe (sans l'exécuter), pour que « signer » signe
+// la version réelle de l'exe et non une version tapée à la main.
+func versionDansExe(exe []byte) string {
+	i := bytes.Index(exe, []byte(`"name": "`+nomManifeste+`"`))
+	if i < 0 {
+		return ""
 	}
-	delete(x, "version_name")
-	delete(y, "version_name")
-	return reflect.DeepEqual(x, y)
+	debut := bytes.LastIndexByte(exe[:i], '{')
+	fin := bytes.IndexByte(exe[i:], '}')
+	if debut < 0 || fin < 0 {
+		return ""
+	}
+	// Le manifeste a un objet imbriqué (content_scripts) : on prend jusqu'à l'accolade fermante de premier niveau.
+	profondeur := 0
+	for j := debut; j < len(exe); j++ {
+		switch exe[j] {
+		case '{':
+			profondeur++
+		case '}':
+			profondeur--
+			if profondeur == 0 {
+				return versionManifeste(exe[debut : j+1])
+			}
+		}
+	}
+	return ""
 }

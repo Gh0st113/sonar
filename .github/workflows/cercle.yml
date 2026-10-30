@@ -9,6 +9,7 @@ on:
     tags: ['v*']
   pull_request:
 
+# Actions épinglées par empreinte de commit (et non par tag, qu'on peut déplacer) : le job release a le droit d'écrire.
 permissions:
   contents: read
 
@@ -16,11 +17,11 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: '1.24.7'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
       - name: Tests de l'extension (Node)
@@ -35,10 +36,11 @@ jobs:
           GOOS=windows GOARCH=amd64 go vet ./...
           go test ./...
       # Un cercle.exe d'essai à chaque push et PR (onglet Actions > l'exécution > Artifacts), avant toute release.
+      # Exe d'ESSAI, non signé, construit depuis n'importe quelle PR : pour soi seulement, jamais à distribuer.
       - name: Construire cercle.exe (essai)
         working-directory: extension
-        run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags=-buildid= -o cercle.exe .
-      - uses: actions/upload-artifact@v4
+        run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags=-buildid= -o cercle.exe .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cercle-exe-essai
           path: extension/cercle.exe
@@ -51,10 +53,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: '1.24.7'
+          cache: false
+      - name: Une clé publique est embarquée (sinon les mises à jour seraient désactivées pour toujours)
+        run: test -s extension/cle-publique.txt
       - name: Le tag suit la version du manifeste
         run: |
           v=$(node -p "require('./extension/manifest.json').version")
@@ -64,12 +69,12 @@ jobs:
       - name: Construire cercle.exe
         working-directory: extension
         run: |
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags=-buildid= -o cercle.exe .
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags=-buildid= -o cercle.exe .
           sha256sum cercle.exe | tee cercle.exe.sha256
       - name: Release en brouillon
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" --draft --verify-tag --title "${GITHUB_REF_NAME}" \
-            --notes "À signer avant de publier : cercle signer cercle.exe <clé> ${GITHUB_REF_NAME#v}" \
+            --notes "À signer avant de publier : cercle signer cercle.exe <fichier de clé>" \
             extension/cercle.exe extension/cercle.exe.sha256

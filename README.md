@@ -158,31 +158,40 @@ that shortcut. Claude started any other way does **not** load the extension: on 
 warning (the exe has no paid code-signing certificate): "More info > Run anyway".
 
 Why a launcher: Claude loads the extension when `REACT_PROFILE=1` at startup, and that folder can be written by any
-program running under your account. So the variable is **never** left set: on every launch, `cercle.exe` compares the
-installed folder with the files it embeds (same bytes, nothing extra; otherwise it offers to reinstall or refuses), sets
-`REACT_PROFILE=1`, starts Claude, then puts the variable back a few seconds later (even if launching is interrupted: the
-previous value is recorded outside the folder and restored on the next run).
+program running under your account. So the variable is **never** left set. On every launch, `cercle.exe`:
+- **locks** the extension's files (nobody can change, replace or delete them until Claude has started), then **compares**
+  them with the ones it embeds: same bytes, real files (no links), nothing extra; otherwise it offers to reinstall, or
+  refuses. With several `claude_*` profiles it checks every extension folder, since the variable applies to all of them;
+- sets `REACT_PROFILE=1`, starts Claude, waits for it, then puts the variable back. Window closed or Ctrl+C: it is put
+  back at once; if that fails, the previous value is recorded outside the folder and restored by the next `cercle.exe`
+  command. If it was already set to 1 permanently, it offers to remove it;
+- recognises Claude Desktop by its program's path: an open Claude Code (also `claude.exe`) does not count.
 
-Updates: on every launch, `cercle.exe` looks at the latest GitHub release. It only offers a version that is **newer** and
-**signed** with the maintainer's key (ed25519; the public key is embedded in the exe, the private key is never on
-GitHub), and only installs it **with your consent**. A badly signed release is reported and ignored: a hijacked GitHub
-account is not enough to push code into Claude. Offline, Claude starts with the current version.
+Updates: on every launch, `cercle.exe` looks at the latest GitHub release. It only offers a version that is **newer** than
+its own and **signed** with the maintainer's key (ed25519; the public key is embedded in the exe, the private key is never
+on GitHub), and only installs it **with your consent**. A badly signed release is reported and ignored: a hijacked GitHub
+account is not enough to push code into Claude. The release notes shown come from GitHub and are **not** signed.
+Offline, Claude starts with the current version.
 
 Command line (`%LOCALAPPDATA%\sonar-cercle\cercle.exe <action>`): `installer`, `lancer`, `etat` (files intact or not,
-variable state), `maj`, `retirer` (removes the extension and the shortcut), `version`; options `--profil <claude_…>` with
+variable state), `maj` (looks for a signed version and installs it with your consent, without starting Claude),
+`retirer` (removes the extension and the shortcut), `version`; options `--profil <claude_…>` with
 several profiles, `--lanceur <claude.exe or shell:AppsFolder\…>` if Claude is not found. Exit codes: 0 success,
 1 unknown action, 2 profile missing or ambiguous, 3 folder used by something else (React DevTools?), 4 write error,
 5 Claude still open, 6 installed files changed, 7 Claude not found, 8 update refused.
 
 Publishing a version (maintainer):
-1. once: `cercle cle <file>` creates the key (encrypted with a passphrase; keep it off GitHub, e.g. in a password
-   manager) and prints the public key, to put in `extension/cle-publique.txt` and commit;
+1. once: take a trial `cercle.exe` (repository **Actions** tab > latest "cercle" run > **Artifacts** > `cercle-exe-essai`;
+   a trial exe is not signed: for yourself only, never to hand out), then `cercle cle <file>`: it creates the key
+   (encrypted with a passphrase; keep it off GitHub, e.g. in a password manager) and prints the public key, to put in
+   `extension/cle-publique.txt` and commit. Without it, CI refuses to build a release;
 2. bump `version` in `extension/manifest.json`, commit, push the `vX.Y.Z` tag: GitHub Actions tests, builds `cercle.exe`
    and creates a **draft** release;
 3. download `cercle.exe` from the draft; to avoid trusting GitHub Actions, rebuild it locally (reproducible build:
-   `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags=-buildid= -o cercle.exe .` in `extension/`,
-   Go 1.24.7) and compare the SHA-256;
-4. `cercle signer cercle.exe <key file> X.Y.Z`, add `cercle.exe.sig` to the draft, publish.
+   `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags=-buildid= -o cercle.exe .` in
+   the tag's `extension/`, Go 1.24.7) and compare the SHA-256;
+4. `cercle signer cercle.exe <key file>` (the signed version is read from the exe; the key must match
+   `cle-publique.txt`), add `cercle.exe.sig` to the draft, publish.
 
 Limits:
 - loading goes through a **development hook** of Claude Desktop (`REACT_PROFILE=1` loads the React DevTools folder,
@@ -195,6 +204,9 @@ Limits:
 - every change needs a **full restart** of Claude;
 - the carrier is invisible but **not silent**: a screen reader may read its text (`sonar:1 {…}`) in the footer;
 - the footer's host has not been captured in the app yet (only the banner's was): to be confirmed when trying it;
+- the locks hold until Claude has started (+10 s): if Claude reads the extension again later (new window), that is not
+  covered. To be checked when trying it (Process Monitor); so is the AppID of Claude's package looked up in the Start
+  menu (otherwise `--lanceur`);
 - with several organizations, the circle may show another one's usage than the one displayed (UI+ behaviour);
 - the "Compact" button of UI+'s context block is only looked up in English and German: in French it does not show;
 - the selectors come from captures of Claude Desktop for Windows in French (`extension/test/fixtures`): a Claude

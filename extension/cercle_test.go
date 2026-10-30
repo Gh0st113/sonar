@@ -250,3 +250,92 @@ func TestChercherMiseAJour(t *testing.T) {
 		}
 	}
 }
+
+func TestLiensEtManifesteDuplique(t *testing.T) {
+	racine := t.TempDir()
+	dossier := filepath.Join(racine, idExtension)
+	if err := installer(dossier, instant); err != nil {
+		t.Fatal(err)
+	}
+	// Un fichier remplacé par un lien vers une copie identique : refusé quand même.
+	copie := filepath.Join(racine, "copie.js")
+	b, _ := os.ReadFile(filepath.Join(dossier, "widget.js"))
+	os.WriteFile(copie, b, 0o644)
+	os.Remove(filepath.Join(dossier, "widget.js"))
+	if err := os.Symlink(copie, filepath.Join(dossier, "widget.js")); err != nil {
+		t.Skip("liens symboliques indisponibles")
+	}
+	if e := ecarts(dossier); !slices.Equal(e, []string{"pas un fichier ordinaire (lien ?) : widget.js"}) {
+		t.Fatalf("fichier lien : %v", e)
+	}
+	// Le dossier lui-même remplacé par un lien vers une installation propre : refusé.
+	propre := filepath.Join(racine, "propre")
+	installer(propre, instant)
+	os.RemoveAll(dossier)
+	os.Symlink(propre, dossier)
+	if e := ecarts(dossier); len(e) != 1 || !strings.Contains(e[0], "pas un vrai dossier") {
+		t.Fatalf("dossier lien : %v", e)
+	}
+	// Manifeste : une clé en double que le décodage JSON écraserait se voit à l'octet près.
+	os.Remove(dossier)
+	installer(dossier, instant)
+	m, _ := os.ReadFile(filepath.Join(dossier, "manifest.json"))
+	piege := strings.Replace(string(m), "{", `{"content_scripts":[{"matches":["<all_urls>"],"js":["widget.js"]}],`, 1)
+	os.WriteFile(filepath.Join(dossier, "manifest.json"), []byte(piege), 0o644)
+	if e := ecarts(dossier); !slices.Equal(e, []string{"différent : manifest.json"}) {
+		t.Fatalf("clé en double : %v", e)
+	}
+}
+
+func TestPetitesFonctions(t *testing.T) {
+	if got := ps("C:\\Users\\O’Brien'x"); got != "'C:\\Users\\O’’Brien''x'" {
+		t.Errorf("ps : %s", got)
+	}
+	if got := nettoyer("Ok\x1b[31m rouge\x1b]8;;http://x\x07\nligne 2\u202e", 100); got != "Ok[31m rouge]8;;http://x\nligne 2" {
+		t.Errorf("nettoyer : %q", got)
+	}
+	if got := nettoyer(strings.Repeat("a", 50), 10); got != strings.Repeat("a", 10)+"…" {
+		t.Errorf("nettoyer borne : %q", got)
+	}
+	for chemin, attendu := range map[string]bool{
+		`C:\Program Files\WindowsApps\Claude_1.2.3.0_x64__pzs8sxrjxfjjc\app\claude.exe`: true,
+		`C:\Users\moi\AppData\Local\AnthropicClaude\app-1.0\claude.exe`:                 true,
+		`C:\Users\moi\.local\bin\claude.exe`:                                            false,
+		`C:\Users\moi\AppData\Roaming\npm\node_modules\claude.exe`:                      false,
+		``: true,
+	} {
+		if estClaudeDesktop(chemin) != attendu {
+			t.Errorf("estClaudeDesktop(%q) != %v", chemin, attendu)
+		}
+	}
+	if !parExplorateur(`shell:AppsFolder\Claude_x!Claude`) || parExplorateur(`C:\x\claude.exe`) {
+		t.Error("parExplorateur")
+	}
+}
+
+func TestVersionDansExe(t *testing.T) {
+	m, _ := embarques.ReadFile("manifest.json")
+	exe := append(append([]byte("MZ\x00{faux}\x00 du code"), m...), []byte("\x00encore {du} code")...)
+	if v := versionDansExe(exe); v != version() || v == "" {
+		t.Fatalf("version : %q", v)
+	}
+	if v := versionDansExe([]byte("MZ pas un cercle")); v != "" {
+		t.Fatalf("pas un cercle : %q", v)
+	}
+}
+
+func TestRemplacerFichier(t *testing.T) {
+	d := t.TempDir()
+	exe := filepath.Join(d, "cercle.exe")
+	if err := remplacerFichier(exe, []byte("v1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := remplacerFichier(exe, []byte("v2")); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(exe)
+	a, _ := os.ReadFile(exe + ".ancien")
+	if string(b) != "v2" || string(a) != "v1" {
+		t.Fatalf("%s %s", b, a)
+	}
+}
