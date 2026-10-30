@@ -183,13 +183,16 @@ tout programme lancé sous votre compte. La variable n'est donc **jamais** laiss
   est retirée à l'installation ;
 - reconnaît Claude Desktop par le chemin de son programme : un Claude Code ouvert (lui aussi `claude.exe`) ne compte pas.
 
-Mises à jour (**pas encore actives** : la version actuelle n'embarque pas encore de clé de signature ; « Gérer
-Claude (cercle) » le dit) : à chaque lancement, « Claude (cercle) » regarde la dernière release GitHub. Il ne propose une version que si
+Mises à jour (actives quand `cercle.exe` embarque une clé publique ; « Gérer Claude (cercle) » indique si c'est le
+cas) : à chaque lancement, « Claude (cercle) » regarde la dernière release GitHub. Il ne propose une version que si
 elle est **plus récente** que la sienne et **signée** par la clé du mainteneur (ed25519 ; la clé publique est embarquée
-dans `cercle.exe`, la clé privée n'est jamais sur GitHub), et ne l'installe **que sur votre accord** : la recherche ne
+dans `cercle.exe`), et ne l'installe **que sur votre accord** : la recherche ne
 retarde pas Claude de plus de 5 secondes ; après votre « Oui », il télécharge l'installeur signé, le vérifie, l'exécute
 sans assistant, puis relance Claude. Une release mal signée est signalée et
-ignorée : un compte GitHub piraté ne suffit pas à pousser du code dans Claude. Les notes de version affichées viennent de
+ignorée. La clé privée est rangée chiffrée dans l'environnement protégé « publication » du dépôt : seul le workflow
+« publier », lancé sur `main`, peut s'en servir, et seulement après l'approbation du mainteneur si elle est exigée
+(voir « Publier une version »). Conséquence à connaître : **qui contrôle le compte GitHub du mainteneur peut publier
+une mise à jour signée** ; d'où la double authentification obligatoire sur ce compte. Les notes de version affichées viennent de
 GitHub et ne sont **pas** signées. Sans réseau, Claude se lance avec la version actuelle.
 L'icône de `cercle.exe` et de l'installeur est dessinée par le code (`extension/icone`, refaite par `go generate`).
 
@@ -201,21 +204,30 @@ trouvé. Codes de retour : 0 réussi, 1 action inconnue, 2 profil introuvable ou
 (React DevTools ?), 4 écriture, 5 Claude encore ouvert, 6 fichiers installés modifiés, 7 Claude introuvable, 8 mise à jour
 refusée.
 
-Publier une version (mainteneur) :
-1. une fois : prendre un installeur d'essai (onglet **Actions** du dépôt > dernière exécution « cercle » > **Artifacts** >
-   `cercle-setup-essai` ; un installeur d'essai n'est pas signé : pour soi seulement, jamais à distribuer), l'installer,
-   puis dans un terminal `%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe cle <fichier>` : il crée la clé (chiffrée par
-   une phrase de passe ; à garder hors de GitHub, par exemple dans un gestionnaire de mots de passe) et affiche la clé
-   publique, à mettre dans `extension/cle-publique.txt` et à commiter. Sans elle, la CI refuse de construire une release ;
-2. monter `version` dans `extension/manifest.json`, commiter, pousser le tag `vX.Y.Z` : GitHub Actions teste, construit
-   `cercle.exe` (Linux) puis `cercle-setup.exe` (Inno Setup, Windows), vérifie que le setup contient l'exe tel quel, et
-   crée une release **en brouillon** ;
-3. pour ne pas faire confiance à GitHub Actions, recompiler `cercle.exe` chez soi (build reproductible :
-   `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-buildid= -H windowsgui"
-   -o cercle.exe .` dans `extension/` du tag, Go 1.24.7) ;
-4. télécharger `cercle-setup.exe` du brouillon, puis `cercle signer cercle-setup.exe <fichier de clé> --exe <cercle.exe
-   recompilé>` : il vérifie que le setup contient exactement votre exe, lit la version, vérifie que la clé est celle de
-   `cle-publique.txt`, et écrit `cercle-setup.exe.sig`. L'ajouter au brouillon, publier.
+Publier une version (mainteneur) : tout se fait sur GitHub, sans PC, par le workflow **publier**
+(`.github/workflows/publier.yml`). Il refait tous les tests et l'essai réel sous Windows, attend l'approbation si elle
+est exigée, vérifie que la version est plus récente que la dernière release, signe `cercle-setup.exe` (en vérifiant
+qu'il contient exactement le `cercle.exe` construit et que la clé est celle de `cle-publique.txt`), puis publie la
+release `vX.Y.Z`.
+
+Une seule fois :
+1. activer la **double authentification** du compte GitHub (Settings > Password and authentication) ;
+2. créer la clé : installer un installeur d'essai (Actions > cercle > Artifacts > `cercle-setup-essai`), puis dans un
+   terminal `%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe cle cle-cercle.json` (phrase de passe de 12 caractères au
+   moins). Il affiche la clé **publique** : la mettre dans `extension/cle-publique.txt` et commiter (elle n'a rien de
+   secret) ;
+3. dans le dépôt, Settings > Environments > **New environment** `publication` :
+   - Deployment branches and tags : **Selected branches**, `main` seulement ;
+   - Environment secrets : `CERCLE_CLE` = tout le contenu de `cle-cercle.json`, `CERCLE_PHRASE` = la phrase de passe ;
+   - **Required reviewers** : soi-même, pour valider chaque publication d'un clic (sans : publication directe) ;
+4. garder `cle-cercle.json` et la phrase dans un gestionnaire de mots de passe, puis supprimer le fichier du PC.
+
+À chaque version : monter `version` dans `extension/manifest.json` (dans une PR, mergée sur `main`), puis Actions >
+**publier** > Run workflow (branche `main`). Avec l'approbation exigée, GitHub envoie une notification : **Review
+deployments > Approve**, depuis le site ou l'appli mobile. Signature locale toujours possible :
+`cercle signer cercle-setup.exe <fichier de clé> --exe <cercle.exe recompilé>` (build reproductible :
+`GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-buildid= -H windowsgui" -o
+cercle.exe .` dans `extension/`, Go 1.24.7).
 
 Limites :
 - le chargement passe par un **crochet de développement** de Claude Desktop (`REACT_PROFILE=1` charge le dossier

@@ -580,7 +580,10 @@ func actionSigner(o options) error {
 	if len(o.positifs) != 2 {
 		return echec(codeAction, "usage : cercle signer <cercle-setup.exe> <fichier de clé privée> [--exe <cercle.exe recompilé>]")
 	}
-	if !enConsole {
+	// CERCLE_PHRASE : la phrase de passe fournie par l'environnement (publication par GitHub Actions, secret de
+	// l'environnement « publication ») ; sinon elle est demandée dans le terminal.
+	phraseEnv, avecPhraseEnv := os.LookupEnv("CERCLE_PHRASE")
+	if !enConsole && !avecPhraseEnv {
 		return echec(codeAction, "à lancer depuis un terminal.")
 	}
 	setup, cle := o.positifs[0], o.positifs[1]
@@ -609,9 +612,11 @@ func actionSigner(o options) error {
 	if err != nil {
 		return err
 	}
-	phrase, err := lirePhrase("Phrase de passe : ")
-	if err != nil {
-		return err
+	phrase := phraseEnv
+	if !avecPhraseEnv {
+		if phrase, err = lirePhrase("Phrase de passe : "); err != nil {
+			return err
+		}
 	}
 	prive, err := ouvrirCle(fichierCle, phrase)
 	if err != nil {

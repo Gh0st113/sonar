@@ -367,3 +367,48 @@ func TestOptionsApresArguments(t *testing.T) {
 		t.Fatalf("signer a --exe b cle : %d", c)
 	}
 }
+
+// Publication par GitHub Actions : « signer » sans terminal, la phrase venant de CERCLE_PHRASE ; la signature écrite
+// se vérifie avec la clé publique embarquée, et une mauvaise phrase est refusée sans rien écrire.
+func TestSignerSansTerminal(t *testing.T) {
+	fichier, pubTexte, err := nouvelleCle("une phrase assez longue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ancienne, avantConsole := clePubliqueTexte, enConsole
+	t.Cleanup(func() { clePubliqueTexte, enConsole = ancienne, avantConsole })
+	clePubliqueTexte, enConsole = pubTexte+"\n", false
+
+	d := t.TempDir()
+	m, _ := embarques.ReadFile("manifest.json")
+	exe := append([]byte("MZ cercle "), m...)
+	setup := append(append([]byte("installeur "), exe...), []byte(" fin")...)
+	chemins := map[string][]byte{"setup.exe": setup, "cercle.exe": exe, "cle": fichier}
+	for nom, contenu := range chemins {
+		if err := os.WriteFile(filepath.Join(d, nom), contenu, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	arg := func(nom string) string { return filepath.Join(d, nom) }
+
+	t.Setenv("CERCLE_PHRASE", "pas la bonne phrase")
+	if c := executer([]string{"signer", arg("setup.exe"), arg("cle"), "--exe", arg("cercle.exe")}); c != codeAction {
+		t.Fatalf("mauvaise phrase : %d", c)
+	}
+	if _, err := os.Stat(arg("setup.exe.sig")); err == nil {
+		t.Fatal("signature écrite malgré une mauvaise phrase")
+	}
+
+	t.Setenv("CERCLE_PHRASE", "une phrase assez longue")
+	if c := executer([]string{"signer", arg("setup.exe"), arg("cle"), "--exe", arg("cercle.exe")}); c != okCode {
+		t.Fatalf("signer : %d", c)
+	}
+	sig, err := os.ReadFile(arg("setup.exe.sig"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, _ := clePublique()
+	if v, err := verifier(pub, string(sig), setup); err != nil || v != version() {
+		t.Fatalf("signature : %q %v", v, err)
+	}
+}
