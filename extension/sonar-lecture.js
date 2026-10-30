@@ -144,18 +144,18 @@
     fr: {
       chaud: 'chaud', froid: 'froid', incertain: 'incertain', autreModele: 'autre modèle',
       relu: (p) => `${p} % relu`, jusqua: (h, auMoins) => `${auMoins ? 'au moins ' : ''}jusqu'à ${h}`,
-      detachee: 'HEAD détachée', modifies: (n) => `${n} modifié${n > 1 ? 's' : ''}`,
+      detachee: 'HEAD détachée',
       cout: (x) => `${x.toFixed(2).replace('.', ',')} $`,
-      cache: 'Cache', branche: 'Branche', nomCout: 'Coût', releve: (h) => `relevé à ${h}`,
-      absent: 'Cache · Branche · Coût : avec le mod sonar 0.5.0 ou plus (recommandé), dans une session de l\'onglet Code',
+      cache: 'Cache', nomCout: 'Coût', releve: (h) => `relevé à ${h}`,
+      absent: 'Cache · Coût : avec le mod sonar 0.5.1 ou plus (recommandé), dans une session de l\'onglet Code',
     },
     en: {
       chaud: 'warm', froid: 'cold', incertain: 'uncertain', autreModele: 'other model',
       relu: (p) => `${p}% reused`, jusqua: (h, auMoins) => `${auMoins ? 'at least ' : ''}until ${h}`,
-      detachee: 'detached HEAD', modifies: (n) => `${n} modified`,
+      detachee: 'detached HEAD',
       cout: (x) => `$${x.toFixed(2)}`,
-      cache: 'Cache', branche: 'Branch', nomCout: 'Cost', releve: (h) => `read at ${h}`,
-      absent: 'Cache · Branch · Cost: with the sonar mod 0.5.0 or later (recommended), in a Code tab session',
+      cache: 'Cache', nomCout: 'Cost', releve: (h) => `read at ${h}`,
+      absent: 'Cache · Cost: with the sonar mod 0.5.1 or later (recommended), in a Code tab session',
     },
   };
   const ICONES = { chaud: '🔥', froid: '🧊', incertain: '❔' };
@@ -194,12 +194,7 @@
       const fin = detail.filter(Boolean).join(', ');
       l.push([t.cache, `${ICONES[etat]} ${nomEtat(t, etat, c)}${fin ? ` (${fin})` : ''}`]);
     }
-    if (charge.depot) {
-      const d = charge.depot;
-      const nom = nomBranche(t, d);
-      const detail = [nom !== d.nom ? d.nom : '', d.modifies ? t.modifies(d.modifies) : ''].filter(Boolean).join(', ');
-      l.push([t.branche, `${nom}${detail ? ` (${detail})` : ''}`]);
-    }
+    // Pas de branche ici : le pied de la saisie la montre déjà, à côté du modèle.
     if (charge.cout !== null) l.push([t.nomCout, t.cout(charge.cout)]);
     return l;
   }

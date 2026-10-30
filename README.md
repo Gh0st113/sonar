@@ -140,7 +140,7 @@ The mod is then read **from that folder**: after an edit, `/reload-plugins` in t
 what sonar knows in two places:
 
 - the **usage circle** (right, below the prompt): its popover keeps what UI+ adds (time line and pace of each limit,
-  session context, settings) and gets a **Cache · Branch · Cost** block, with the time of the reading (without data from the mod, one line
+  session context, settings) and gets a **Cache · Cost** block (the branch is already in the prompt footer), with the time of the reading (without data from the mod, one line
   recommends it: mod missing, older than 0.5.1, or no Code tab session open);
 - the **sidebar**, right below "Customize": a collapsible "Usage" row as in UI+, plus sonar's short line, e.g.
   `🔥 cache → 21:03 · ⎇ main · $4.00` (`🧊 cache cold` when the cache is cold).
@@ -151,7 +151,7 @@ English or French, following the app's language. The banner stays invisible when
 default `footer` placement, which only shows what deserves a glance (if you picked `/sonar banner`, go back with
 `/sonar footer` to avoid seeing things twice). The data still flows with `/sonar hide`, which only hides sonar's own
 display. The sonar mod (0.5.1 or later) is **recommended**, not required: without it, the extension shows the UI+
-part (usage, timeline, limits' pace), without the Cache · Branch · Cost block or the short line.
+part (usage, timeline, limits' pace), without the Cache · Cost block or the short line.
 
 Install: download **`cercle-setup.exe`** from the [releases](https://github.com/Gh0st113/sonar/releases) (signed installer, recommended). To try the
 current state of `main`: [Actions > cercle > main branch](https://github.com/Gh0st113/sonar/actions/workflows/cercle.yml?query=branch%3Amain) > latest successful run > **Artifacts** >
@@ -163,7 +163,7 @@ users". An update keeps the mode and folder of the existing installation. Option
 (cercle)"**, uninstall) and a desktop icon. It registers in **Settings > Apps** (version, uninstall), then copies the
 extension into Claude's profile. **"Manage Claude (cercle)"** shows the version and the extension's state, offers to
 repair it if its files changed, and looks for an update on demand; the version also shows in Claude, on the settings row
-of the circle's popover (`cercle 0.5.0 · UI+`). Windows may show a SmartScreen warning (installer without a
+of the circle's popover (`cercle 0.5.2 · UI+`). Windows may show a SmartScreen warning (installer without a
 paid code-signing certificate): "More info > Run anyway". Then **quit Claude completely** (notification area > Quit) and
 start it from "Claude (cercle)". Claude started any other way does **not** load the extension: on purpose. No black
 window: a normal launch shows nothing; a question or a problem shows in a Windows dialog.

@@ -886,6 +886,11 @@
       return;
     }
     const lines = LECTEUR.lignesDetail(sonarCharge, language(), now, clock);
+    // Données du mod, mais rien pour le popover (la branche seule) : pas de bloc.
+    if (!lines.length && LECTEUR.utile(sonarCharge)) {
+      block?.remove();
+      return;
+    }
     // Sans données du mod : une ligne discrète qui le recommande, plutôt qu'un bloc qui manque sans explication,
     // suivie du diagnostic (ce que l'extension voit dans la page).
     const diag = lines.length ? [] : sonarDiagnostic(now);
