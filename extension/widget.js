@@ -1,8 +1,8 @@
 // D'après UI+ for Claude, de Lukas van Uden (licence MIT, voir LICENSE-UI-PLUS),
 // https://github.com/LukasvanUden/ui-plus-for-claude , commit 126cf9540f557466f697f679e9ea20505bf6442a.
 // Adapté pour Claude Desktop Windows par sonar : textes français, sélecteurs vérifiés sur les relevés fr
-// (test/fixtures), et la partie « Sonar » plus bas (lecture du bandeau sonar, masquage, affichage de
-// $ · cache · branche dans le popover du cercle et sous « Personnalisation »).
+// (test/fixtures), et la partie « Sonar » plus bas (lecture des données que le mod sonar dépose dans
+// son pied, affichage de $ · cache · branche dans le popover du cercle et sous « Personnalisation »).
 //
 // Content script for https://claude.ai inside the Claude desktop app. Reads
 // plan usage through claude.ai's own API and shows it in two places: a
@@ -455,7 +455,6 @@
   function uninstall(row) {
     removed = true;
     store('removed', INSTALL_ID);
-    for (const node of document.querySelectorAll('[' + MASQUE + ']')) node.removeAttribute(MASQUE);
     row.classList.add('up-removed');
     row.replaceChildren(element('span', null, strings().removed));
     place();
@@ -475,7 +474,6 @@
       input.addEventListener('change', () => {
         settings[name] = input.checked;
         store(name, input.checked);
-        scanHosts();
         place();
         enhancePopover();
         markSessions();
@@ -770,57 +768,29 @@
 
   // Sonar -------------------------------------------------------------------
 
-  // Le mod sonar dessine son bandeau au-dessus de la zone de saisie, dans le shadowRoot ouvert d'un hôte
-  // [data-plugin-drawn="AbovePrompt"]. On le lit pour montrer $ · cache · branche dans le popover du cercle
-  // et sous « Personnalisation », et on masque cet hôte, mais seulement tant que son texte ACTUEL se lit
-  // comme sonar : à chaque changement on relit, et on démasque aussitôt si ce n'est plus sonar. Les autres
-  // mods AbovePrompt (« baleine » : « DeepSeek plonge ») restent visibles. Le bandeau disparaît pendant que
-  // Claude travaille : on garde la dernière lecture utile et son heure, pour l'affichage seulement.
+  // Sur le bureau, le mod sonar ajoute à son pied (à côté du modèle) une image transparente de 1 pixel dont le texte
+  // alternatif porte ses données (« sonar:1 {json} », sans langue), dans le shadowRoot ouvert d'un hôte
+  // [data-plugin-drawn]. On les lit pour montrer $ · cache · branche dans le popover du cercle et sous
+  // « Personnalisation ». Rien n'est masqué. On garde la dernière charge, qui porte son heure de relevé.
   const LECTEUR = globalThis.SonarLecture;
-  const MASQUE = 'data-sonar-masque';
   const observedRoots = new WeakMap();
-  let sonarReading = null;
-  let sonarReadAt = 0;
+  const waitingHosts = new WeakMap();
+  let sonarCharge = null;
+  let rescan = null;
 
   function sonarUtile() {
-    return Boolean(LECTEUR?.utile(sonarReading));
-  }
-
-  // Texte du shadowRoot, un bloc (div) par ligne ; ni le style ni les attributs (alt des jauges).
-  function hostText(host) {
-    const parts = [];
-    const walk = (node) => {
-      for (const child of node.childNodes) {
-        if (child.nodeType === Node.TEXT_NODE) parts.push(child.nodeValue);
-        else if (child.nodeType === Node.ELEMENT_NODE && !/^(STYLE|SCRIPT|TEMPLATE)$/.test(child.tagName)) {
-          const block = child.tagName === 'DIV';
-          if (block) parts.push('\n');
-          walk(child);
-          if (block) parts.push('\n');
-        }
-      }
-    };
-    if (host.shadowRoot) walk(host.shadowRoot);
-    return parts.join('');
+    return Boolean(LECTEUR?.utile(sonarCharge));
   }
 
   function readHost(host) {
-    const kept = sonarReading ? { lecture: sonarReading, a: sonarReadAt } : null;
-    const step = LECTEUR.suivre(kept, hostText(host), Date.now());
-    // La décision de masquer ne dépend que du texte actuel de cet hôte, jamais de la lecture gardée ; et
-    // seulement si ce qu'il montre s'affiche ailleurs (barre latérale ou popover).
-    const hide = !removed && (settings.sidebar || settings.popover) && step.masque;
-    if (hide !== host.hasAttribute(MASQUE)) host.toggleAttribute(MASQUE, hide);
-    // L'heure gardée est celle du dernier CHANGEMENT de lecture : sinon chaque mutation de la page la
-    // changerait, le popover se redessinerait, et l'observateur se relancerait lui-même.
-    if (step.garde === kept || JSON.stringify(step.garde.lecture) === JSON.stringify(sonarReading)) return;
-    sonarReading = step.garde.lecture;
-    sonarReadAt = step.garde.a;
+    const alt = host.shadowRoot?.querySelector(LECTEUR.PORTEUR)?.getAttribute('alt');
+    const charge = LECTEUR.lireCharge(alt);
+    // Seulement une charge plus récente, et seulement si elle change : un redessin du popover ne doit pas
+    // relancer l'observateur qui l'a causé.
+    if (!charge || (sonarCharge && charge.a <= sonarCharge.a)) return;
+    sonarCharge = charge;
     renderSonar();
   }
-
-  let rescan = null;
-  const waitingHosts = new WeakMap();
 
   function scanHosts() {
     if (!LECTEUR || !SEL.hote) return;
@@ -837,28 +807,26 @@
       }
       if (root && !observedRoots.has(root)) {
         const observer = new MutationObserver(() => readHost(host));
-        observer.observe(root, { childList: true, subtree: true, characterData: true });
+        observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['alt'] });
         observedRoots.set(root, observer);
       }
       readHost(host);
     }
-    // Un hôte masqué qui n'est plus un hôte AbovePrompt (réutilisé par React) est rendu.
-    for (const node of document.querySelectorAll('[' + MASQUE + ']')) {
-      if (!node.matches(SEL.hote)) node.removeAttribute(MASQUE);
-    }
+  }
+
+  function clock(ms) {
+    return new Intl.DateTimeFormat(document.documentElement.lang || undefined, { hour: '2-digit', minute: '2-digit' }).format(new Date(ms));
   }
 
   function readAtText() {
-    const time = new Intl.DateTimeFormat(document.documentElement.lang || undefined, { hour: '2-digit', minute: '2-digit' })
-      .format(new Date(sonarReadAt));
-    return LECTEUR.releve(time, language());
+    return LECTEUR.releve(clock(sonarCharge.a), language());
   }
 
-  // Ligne courte sous l'en-tête « Usage » de la barre latérale.
+  // Ligne courte sous l'en-tête « Utilisation » de la barre latérale.
   function renderSonarLine() {
     if (!widget || !LECTEUR) return;
     let line = widget.querySelector(':scope > .up-sonar');
-    const text = removed ? '' : LECTEUR.ligneCourte(sonarReading, language());
+    const text = removed ? '' : LECTEUR.ligneCourte(sonarCharge, language(), Date.now(), clock);
     if (!text) {
       line?.remove();
       return;
@@ -868,23 +836,26 @@
       widget.insertBefore(line, rows);
     }
     setText(line, text);
-    line.title = readAtText();
-    line.classList.toggle('up-sonar-cold', LECTEUR.froid(sonarReading));
+    if (line.title !== readAtText()) line.title = readAtText();
+    const cold = LECTEUR.froid(sonarCharge, Date.now());
+    if (line.classList.contains('up-sonar-cold') !== cold) line.classList.toggle('up-sonar-cold', cold);
   }
 
   // Bloc « Sonar » du popover du cercle, après les limites, avant la ligne de réglages.
   function syncSonarPopover(list) {
     let block = list.querySelector(':scope > .up-sonar-block');
-    const lines = !LECTEUR || removed || !settings.popover ? [] : LECTEUR.lignesDetail(sonarReading, language());
+    const now = Date.now();
+    const lines = !LECTEUR || removed || !settings.popover ? [] : LECTEUR.lignesDetail(sonarCharge, language(), now, clock);
     if (lines.length === 0) {
       block?.remove();
       return;
     }
+    // Clé à la minute : le bloc n'est refait que si ce qu'il montre change.
     const key = JSON.stringify([lines, readAtText()]);
     if (!block) block = element('div', 'up-sonar-block flex flex-col gap-1 px-lg py-xs text-footnote');
     if (block.dataset.key !== key) {
       block.dataset.key = key;
-      block.classList.toggle('up-sonar-cold', LECTEUR.froid(sonarReading));
+      block.classList.toggle('up-sonar-cold', LECTEUR.froid(sonarCharge, now));
       block.replaceChildren(...lines.map(([label, value]) => {
         const row = element('div', 'up-sonar-row flex items-baseline justify-between gap-x-sm');
         row.append(element('span', 'text-primary', label), element('span', 'up-sonar-value tabular-nums text-muted-as-secondary', value));

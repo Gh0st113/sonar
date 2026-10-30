@@ -58,7 +58,16 @@ test('barre latérale : insertion après « Personnalisation », avant les réce
   assert.ok(lireHtml('<aside aria-label="Sidebar"></aside>').querySelector(S.barreLaterale));
 });
 
-test('hôte du bandeau AbovePrompt', () => {
+test('hôte de dessin d\'un mod (relevé : AbovePrompt)', () => {
   assert.ok(releve('bandeau-sonar-hote.fr.html').querySelector(S.hote));
   assert.ok(releve('bandeau-sonar-ancetres.txt.html').querySelector(`[data-engine-site="AbovePrompt"] ${S.hote}`));
+});
+
+test('porteur des données sonar dans le shadowRoot (rendu Svg du moteur : une img avec alt)', () => {
+  const { PORTEUR } = createRequire(import.meta.url)('../sonar-lecture.js');
+  const alt = 'sonar:1 {"a":1,"cout":4}'.replace(/"/g, '&quot;');
+  const doc = lireHtml(`<div data-engine-row=""><img src="data:image/svg+xml,x" alt="${alt}" style="width:1px;height:1px"></div>`);
+  assert.equal(doc.querySelector(PORTEUR)?.getAttribute('alt'), 'sonar:1 {"a":1,"cout":4}');
+  // Les jauges du bandeau ont aussi une img, mais leur alt n'est pas une charge.
+  assert.equal(releve('bandeau-sonar-shadow.fr.html').querySelector(PORTEUR), null);
 });

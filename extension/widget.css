@@ -91,9 +91,8 @@ div[data-row]:is(:hover, [data-menu-open], :has(:focus-visible)) [data-up-badge]
 @media (prefers-reduced-motion: reduce) { [data-up-session="running"] > :is(.df-leading-slot, [data-row-label="iconless"])::before { animation: none; } }
 [data-reduce-motion="true"] [data-up-session="running"] > :is(.df-leading-slot, [data-row-label="iconless"])::before { animation: none; }
 
-/* Sonar (ajout Windows) : bandeau d'origine masqué tant qu'il se lit comme sonar, ligne courte sous
-   « Utilisation » dans la barre latérale, bloc $ · cache · branche dans le popover du cercle. */
-[data-plugin-drawn="AbovePrompt"][data-sonar-masque] { display: none !important; }
+/* Sonar (ajout Windows) : ligne courte sous « Utilisation » dans la barre latérale, bloc $ · cache · branche
+   dans le popover du cercle. */
 #usage-pace .up-sonar { padding: 2px var(--up-inset, 8px) 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; color: var(--cds-text-secondary, currentColor); }
 #usage-pace .up-sonar.up-sonar-cold { color: var(--cds-text-warning, #e0913a); }
 .up-sonar-block { border-top: 1px solid var(--cds-alpha-2, color-mix(in srgb, currentColor 14%, transparent)); margin-top: 4px; padding-top: 8px; }

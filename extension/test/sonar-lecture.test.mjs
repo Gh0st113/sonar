@@ -1,102 +1,93 @@
+// Le lecteur de l'extension face à ce que le mod sonar dépose réellement dans son pied :
+// les charges sont produites par sonar/hooks/logique.mjs, pas recopiées à la main.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { decoder } from './mini-dom.mjs';
+import { chargeExtension, texteExtension, TTL } from '../../sonar/hooks/logique.mjs';
 
-const { lireSonar, masquer, suivre, ligneCourte, lignesDetail, froid } = createRequire(import.meta.url)('../sonar-lecture.js');
+const { lireCharge, etatCache, ligneCourte, lignesDetail, froid, PREFIXE, PORTEUR } = createRequire(import.meta.url)('../sonar-lecture.js');
 
-const releve = readFileSync(new URL('fixtures/bandeau-sonar-shadow.fr.html', import.meta.url), 'utf8')
-  .replace(/<!--[\s\S]*?-->/g, '').replace(/<style[\s\S]*?<\/style>/g, '');
-// Comme widget.js (hostText) : un bloc div par ligne.
-const parBlocs = decoder(releve.replace(/<\/?div\b[^>]*>/g, '\n').replace(/<[^>]+>/g, ''));
-// Balises simplement retirées : tout le texte d'un bloc, sans séparateur entre les segments.
-const brut = decoder(releve.replace(/<[^>]+>/g, ''));
+const H = 3_600_000;
+const T = Date.parse('2026-10-30T20:00:00Z');
+// Heure fixe pour ne pas dépendre du fuseau de la machine de test.
+const heure = (ms) => new Date(ms).toISOString().slice(11, 16);
+const D = {
+  quotas: [{ kind: 'seven_day', percentUsed: 95 }],
+  cout: 4,
+  cache: { a: T - 60_000, lu: 99, ecrit: 1, neuf: 0, modele: 'm' },
+  ttlMs: TTL['1h'],
+  modele: 'm',
+  depot: { nom: 'mon-depot', branche: 'master', modifies: 0 },
+};
+const alt = (d, t = T) => texteExtension(chargeExtension(d, t));
 
-const ATTENDU = { cache: { etat: 'chaud', relu: 99, jusqua: '21:03' }, branche: 'master', depot: 'mon-depot', cout: '4,00 $' };
-const BALEINE = '🐋 DeepSeek plonge… (12 s)';
-
-test('le relevé fr du bandeau, balises retirées', () => {
-  assert.match(brut, /\(mon-depot\)coût 4,00 \$/, 'segments collés dans le texte brut');
-  assert.deepEqual(lireSonar(brut), ATTENDU);
-  assert.deepEqual(lireSonar(parBlocs), ATTENDU);
+test('contrat : préfixe et sélecteur du porteur suivent le mod', () => {
+  assert.ok(alt(D).startsWith(PREFIXE));
+  assert.equal(PORTEUR, `img[alt^="${PREFIXE}"]`);
 });
 
-test('variante anglaise', () => {
-  const texte = ['5h 54% (resets 20:50)', 'week 95% (3.1%/d, resets Sun 11:00)', 'cache warm (99% reused, until 9:03 PM)',
-    'branch main (my-repo, 2 modified)', 'cost $12.50'].join('\n');
-  assert.deepEqual(lireSonar(texte), { cache: { etat: 'chaud', relu: 99, jusqua: '9:03 PM' }, branche: 'main', depot: 'my-repo', cout: '$12.50' });
-  assert.deepEqual(lireSonar('cache cold\nbranch my-repo'), { cache: { etat: 'froid', relu: null, jusqua: null }, branche: null, depot: 'my-repo', cout: null });
+test('charge complète du mod → lecture', () => {
+  assert.deepEqual(lireCharge(alt(D)), {
+    a: T,
+    cache: { etat: 'chaud', expire: T - 60_000 + H, auMoins: false, taux: 0.99, autreModele: false },
+    depot: { nom: 'mon-depot', branche: 'master', detachee: false, modifies: 0 },
+    cout: 4,
+  });
 });
 
-test('champ absent → null', () => {
-  const sansCache = parBlocs.replace(/cache chaud[^\n]*/, '');
-  assert.deepEqual(lireSonar(sansCache), { ...ATTENDU, cache: null });
-  assert.deepEqual(lireSonar('5 h 54 % (remise 20:50)'), { cache: null, branche: null, depot: null, cout: null });
-});
-
-test('autres formes de sonar', () => {
-  const auMoins = lireSonar('cache chaud (au moins jusqu’à 21:03)');
-  assert.deepEqual(auMoins.cache, { etat: 'chaud', relu: null, jusqua: '21:03', auMoins: true });
-  assert.equal(ligneCourte(auMoins, 'fr'), '🔥 cache → ≥ 21:03');
-  assert.deepEqual(lignesDetail(auMoins, 'fr'), [['Cache', '🔥 chaud (au moins jusqu\'à 21:03)']]);
-  // Jauges de quota sans % (remise passée, épuisé) et quota au nom brut : toujours sonar.
-  for (const q of ['5 h remis à zéro', 'semaine épuisé', '5h reset', 'week exhausted', 'seven_day_opus 12 % (remise ven. 12:00)', 'budget 40 % (reste 60 %)']) {
-    assert.deepEqual(lireSonar(q), { cache: null, branche: null, depot: null, cout: null }, q);
-  }
-  // Un seul bloc, segments collés sans parenthèse entre eux.
-  assert.deepEqual(lireSonar('semaine 95 % (remise dim. 11:00)cache froidbranche master (mon-depot)coût 4,00 $'),
-    { cache: { etat: 'froid', relu: null, jusqua: null }, branche: 'master', depot: 'mon-depot', cout: '4,00 $' });
-  assert.equal(lireSonar('cache autre modèle').cache.etat, 'autre modèle');
-  assert.equal(lireSonar('cache incertain').cache.etat, 'incertain');
-  assert.deepEqual(lireSonar('branche HEAD détachée (mon-depot, 3 modifiés)'), { cache: null, branche: 'HEAD détachée', depot: 'mon-depot', cout: null });
-  assert.deepEqual(lireSonar('branche mon-depot (1 modifié)'), { cache: null, branche: null, depot: 'mon-depot', cout: null });
-  assert.equal(lireSonar('coût 1 234,56 $').cout, '1 234,56 $');
-});
-
-test('texte de baleine, vide ou méconnu → null', () => {
-  assert.equal(lireSonar(BALEINE), null);
-  assert.equal(lireSonar(''), null);
-  assert.equal(lireSonar(undefined), null);
-  assert.equal(lireSonar('mon cache est plein'), null);
-  // Un texte qui mêle sonar et autre chose n'est pas sonar (jamais masqué).
-  assert.equal(lireSonar(BALEINE + '\nbranch main'), null);
-  assert.equal(lireSonar(parBlocs + '\n' + BALEINE), null);
-  for (const t of ['week 42 — sprint review', 'budget 200 € restant', '5h 30 avant la réunion', 'cache tiède']) assert.equal(lireSonar(t), null, t);
-});
-
-test('masquage : fonction pure du texte actuel', () => {
-  assert.equal(masquer(parBlocs), true);
-  assert.equal(masquer(brut), true);
-  assert.equal(masquer(BALEINE), false);
-  assert.equal(masquer(''), false);
-  // Le message de sonar avant sa première mesure est bien sonar.
-  assert.equal(masquer('Pas encore de mesure : elle arrive avec la prochaine réponse.'), true);
-});
-
-test('suivi d\'un même hôte : sonar puis baleine → masqué puis démasqué, la lecture gardée reste', () => {
-  const un = suivre(null, parBlocs, 1000);
-  assert.equal(un.masque, true);
-  assert.deepEqual(un.garde, { lecture: ATTENDU, a: 1000 });
-  const deux = suivre(un.garde, BALEINE, 2000);
-  assert.equal(deux.masque, false, 'la lecture gardée ne décide pas du masquage');
-  assert.equal(deux.garde, un.garde);
-  const trois = suivre(deux.garde, '', 3000);
-  assert.equal(trois.masque, false);
-  assert.equal(trois.garde, un.garde);
-  assert.equal(suivre(trois.garde, parBlocs, 4000).masque, true);
-});
-
-test('formes courtes et détail', () => {
-  assert.equal(ligneCourte(ATTENDU, 'fr'), '🔥 cache → 21:03 · ⎇ master · 4,00 $');
-  const froidFr = { ...ATTENDU, cache: { etat: 'froid', relu: null, jusqua: null } };
-  assert.equal(ligneCourte(froidFr, 'fr'), '🧊 cache froid · ⎇ master · 4,00 $');
-  assert.equal(ligneCourte(froidFr, 'en'), '🧊 cache cold · ⎇ master · 4,00 $');
-  assert.equal(froid(froidFr), true);
-  assert.equal(froid(ATTENDU), false);
-  assert.equal(ligneCourte(null, 'fr'), '');
-  assert.equal(ligneCourte({ cache: null, branche: null, depot: null, cout: null }, 'fr'), '');
-  assert.deepEqual(lignesDetail(ATTENDU, 'fr'), [
-    ['Cache', '🔥 chaud (99 % relu, jusqu\'à 21:03)'], ['Branche', 'master (mon-depot)'], ['Coût', '4,00 $'],
+test('forme courte et détail, en français et en anglais', () => {
+  const c = lireCharge(alt(D));
+  assert.equal(ligneCourte(c, 'fr', T, heure), '🔥 cache → 20:59 · ⎇ master · 4,00 $');
+  assert.equal(ligneCourte(c, 'en', T, heure), '🔥 cache → 20:59 · ⎇ master · $4.00');
+  // Langue inconnue (allemand de UI+) : anglais.
+  assert.equal(ligneCourte(c, 'de', T, heure), ligneCourte(c, 'en', T, heure));
+  assert.deepEqual(lignesDetail(c, 'fr', T, heure), [
+    ['Cache', '🔥 chaud (99 % relu, jusqu\'à 20:59)'], ['Branche', 'master (mon-depot)'], ['Coût', '4,00 $'],
   ]);
+  assert.deepEqual(lignesDetail(c, 'en', T, heure), [
+    ['Cache', '🔥 warm (99% reused, until 20:59)'], ['Branch', 'master (mon-depot)'], ['Cost', '$4.00'],
+  ]);
+});
+
+test('le cache refroidit à l\'écran après son heure, sans nouvelle charge', () => {
+  const c = lireCharge(alt(D));
+  assert.equal(etatCache(c.cache, T), 'chaud');
+  assert.equal(froid(c, T), false);
+  const plusTard = T + H;
+  assert.equal(etatCache(c.cache, plusTard), 'froid');
+  assert.equal(froid(c, plusTard), true);
+  assert.equal(ligneCourte(c, 'fr', plusTard, heure), '🧊 cache froid · ⎇ master · 4,00 $');
+  // Durée de vie inconnue (« au moins ») : incertain une fois l'heure passée, comme le dit sonar.
+  const auMoins = lireCharge(alt({ ...D, ttlMs: undefined }));
+  assert.equal(ligneCourte(auMoins, 'fr', T, heure), '🔥 cache → ≥ 20:04 · ⎇ master · 4,00 $');
+  assert.deepEqual(lignesDetail(auMoins, 'fr', T, heure)[0], ['Cache', '🔥 chaud (99 % relu, au moins jusqu\'à 20:04)']);
+  assert.equal(etatCache(auMoins.cache, T + 10 * 60_000), 'incertain');
+});
+
+test('autres formes : autre modèle, HEAD détachée, fichiers modifiés, dépôt sans branche', () => {
+  assert.equal(ligneCourte(lireCharge(alt({ ...D, modele: 'autre' })), 'fr', T, heure), '🧊 cache autre modèle · ⎇ master · 4,00 $');
+  const det = lireCharge(alt({ ...D, depot: { nom: 'r', detachee: true, modifies: 3 } }));
+  assert.deepEqual(lignesDetail(det, 'fr', T, heure)[1], ['Branche', 'HEAD détachée (r, 3 modifiés)']);
+  assert.deepEqual(lignesDetail(det, 'en', T, heure)[1], ['Branch', 'detached HEAD (r, 3 modified)']);
+  const sansBranche = lireCharge(alt({ ...D, depot: { nom: 'r', modifies: 1 } }));
+  assert.deepEqual(lignesDetail(sansBranche, 'fr', T, heure)[1], ['Branche', 'r (1 modifié)']);
+});
+
+test('champ absent → null ; segments désactivés dans sonar → rien à montrer', () => {
+  const sansCache = lireCharge(alt({ ...D, cache: undefined }));
+  assert.equal(sansCache.cache, null);
+  assert.equal(ligneCourte(sansCache, 'fr', T, heure), '⎇ master · 4,00 $');
+  const vide = lireCharge(alt({ quotas: [] }));
+  assert.deepEqual(vide, { a: T, cache: null, depot: null, cout: null });
+  assert.equal(ligneCourte(vide, 'fr', T, heure), '');
+  assert.deepEqual(lignesDetail(vide, 'fr', T, heure), []);
+});
+
+test('ce qui n\'est pas une charge sonar → null', () => {
+  for (const x of [undefined, null, '', '🐋 DeepSeek plonge… (12 s)', 'semaine 95 %', 'sonar:1 ', 'sonar:1 {', 'sonar:1 null',
+    'sonar:1 {"cache":{"etat":"chaud"}}', 'sonar:2 {"a":1}', 42]) {
+    assert.equal(lireCharge(x), null, String(x));
+  }
+  // Champs douteux écartés un par un.
+  assert.deepEqual(lireCharge('sonar:1 {"a":1,"cache":{"etat":"tiède"},"depot":{"nom":""},"cout":-3}'), { a: 1, cache: null, depot: null, cout: null });
 });

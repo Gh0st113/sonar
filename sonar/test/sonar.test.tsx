@@ -63,7 +63,8 @@ async function demarrer($: Moteur) {
   await $.session.measure(MESURE)
 }
 
-// Texte du pied tel qu'il s'affiche.
+// Texte du pied tel qu'il s'affiche. Sur le bureau, le mod dessine toujours son propre pied (il y porte les données
+// de l'extension « cercle ») : sans rien de sonar à montrer, ce texte est vide, et non « (rien) » du moteur de test.
 async function pied($: Moteur, surface: 'terminal' | 'desktop', modes: string[] = []) {
   const ui = await $.ui.mount({ ...PIED, props: { modes }, surface })
   const t = (await ui.find({ type: 'Text' }))?.text ?? ''
@@ -175,7 +176,7 @@ test('/sonar bandeau : jauges sur le bureau, une ligne sur le terminal, couleur 
   expect(await remis.find({ type: 'Text', text: /semaine/ })).toBeDefined()
   await remis.unmount()
   // Le pied n'affiche plus rien : l'emplacement est unique.
-  expect(await pied($, 'desktop')).toBe('(rien)')
+  expect(await pied($, 'desktop')).toBe('')
 })
 
 test('/sonar indice : remplace la ligne d’aide sous la saisie', FR, async ($, on) => {
@@ -196,6 +197,36 @@ test('git en panne ou hors dépôt : pas de branche, le reste s’affiche', FR, 
   expect(await commande($, '')).not.toMatch(/^branche /m)
 })
 
+test('pied sur le bureau : porteur invisible des données de l\'extension, quel que soit l\'emplacement ; rien sur le terminal', FR, async ($, on) => {
+  moteur(on)
+  await demarrer($)
+  const charge = async () => {
+    const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
+    const svg = await ui.find({ type: 'Svg' } as never) as { props?: { alt?: string; width?: number; height?: number } } | undefined
+    await ui.unmount()
+    return svg?.props
+  }
+  const p = await charge()
+  expect(p?.width).toBe(1)
+  expect(p?.height).toBe(1)
+  expect(p?.alt?.startsWith('sonar:1 ')).toBe(true)
+  const c = JSON.parse((p?.alt ?? '').slice('sonar:1 '.length))
+  expect(c.cout).toBe(1.23)
+  expect(c.depot).toEqual({ nom: 'projet-a', modifies: 2, branche: 'feat/x' })
+  // Autre emplacement, ou sonar masqué : le pied ne montre rien de sonar, le porteur reste.
+  await commande($, 'bandeau')
+  expect(await pied($, 'desktop')).toBe('')
+  expect((await charge())?.alt?.startsWith('sonar:1 ')).toBe(true)
+  await commande($, 'masquer')
+  expect((await charge())?.alt?.startsWith('sonar:1 ')).toBe(true)
+  // Terminal : pas de porteur.
+  await commande($, 'pied')
+  await commande($, 'afficher')
+  const terminal = await $.ui.mount({ ...PIED, surface: 'terminal' })
+  expect(await terminal.find({ type: 'Svg' } as never)).toBeUndefined()
+  await terminal.unmount()
+})
+
 test('hors dépôt', FR, async ($, on) => {
   moteur(on, { git: 'hors-depot' })
   await demarrer($)
@@ -206,7 +237,7 @@ test('/clear : quotas et cache oubliés jusqu’à la prochaine mesure', FR, asy
   moteur(on, { git: 'hors-depot' })
   await demarrer($)
   await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
-  expect(await pied($, 'desktop')).toBe('(rien)')
+  expect(await pied($, 'desktop')).toBe('')
 })
 
 test('quota remis à zéro pendant l’attente : écrit en toutes lettres au tic suivant', FR, async ($, on) => {
@@ -227,7 +258,7 @@ test('options : anglais, segments choisis (« context » ignoré), emplacement p
     await ui.unmount()
   }
   // Rien dans le pied : l'emplacement par défaut vient de l'option.
-  expect(await pied($, 'desktop')).toBe('(rien)')
+  expect(await pied($, 'desktop')).toBe('')
   expect(await commande($, 'footer')).toBe('Sonar shown: footer.')
 })
 
@@ -235,7 +266,7 @@ test('hors abonnement : ni quotas ni coût connus, le pied reste vide', FR, asyn
   moteur(on, { git: 'hors-depot' })
   await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
   await $.session.measure({ context: { tokens: 20_000, window: 1_000_000, percent: 2 }, rateLimits: [], changed: ['context'] })
-  expect(await pied($, 'desktop')).toBe('(rien)')
+  expect(await pied($, 'desktop')).toBe('')
   expect(await commande($, '')).toMatch(/^Sonar : pied/)
 })
 

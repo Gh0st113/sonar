@@ -124,18 +124,20 @@ Le mod est alors lu **depuis ce dossier** : après une modification, `/reload-pl
 
 ## Extension cercle (Windows)
 
-Le dossier `extension/` contient une extension pour **Claude Desktop sous Windows**, adaptée de
+Le dossier `extension/` contient une extension pour **l'appli Claude Desktop sous Windows**, adaptée de
 [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude) (Lukas van Uden, licence MIT,
-`extension/LICENSE-UI-PLUS`). Elle remplace le bandeau de sonar au-dessus de la zone de saisie :
+`extension/LICENSE-UI-PLUS`). Pas de navigateur à ouvrir : l'appli embarque son propre Chromium et charge elle-même ce
+dossier. Elle montre ce que sonar sait, à deux endroits :
 
-- **cercle d'usage** sous la zone de saisie : son popover garde ce qu'ajoute UI+ (ligne de temps et rythme de
-  chaque limite, contexte de la session, réglages) et reçoit un bloc **Cache · Branche · Coût** lu dans sonar ;
-- **barre latérale**, juste sous « Personnalisation » : une ligne « Utilisation » repliable comme dans UI+, et la
-  ligne courte de sonar, par exemple `🔥 cache → 21:03 · ⎇ master · 4,00 $` (`🧊 cache froid` quand le cache est froid) ;
-- le **bandeau sonar** est masqué tant que son texte se lit comme sonar ; les bandeaux d'autres mods restent visibles.
+- **le cercle d'usage** (à droite sous la zone de saisie) : son popover garde ce qu'ajoute UI+ (ligne de temps et rythme de
+  chaque limite, contexte de la session, réglages) et reçoit un bloc **Cache · Branche · Coût**, avec l'heure du relevé ;
+- **la barre latérale**, juste sous « Personnalisation » : une ligne « Utilisation » repliable comme dans UI+, et la
+  ligne courte de sonar, par exemple `🔥 cache → 21:03 · ⎇ master · 4,00 $` (`🧊 cache froid` quand le cache est froid).
 
-L'extension lit le texte que sonar dessine au-dessus de la zone de saisie : sonar doit rester installé, en emplacement `bandeau` (`/sonar bandeau`).
-Pendant que Claude travaille, le bandeau disparaît ; l'extension montre alors la dernière lecture et son heure.
+D'où viennent les données : sur le bureau, le mod sonar ajoute à son pied (à côté du nom du modèle) une image
+transparente de 1 pixel dont le texte alternatif porte ses chiffres en JSON, sans langue. L'extension la lit et les écrit
+en français ou en anglais, selon la langue de l'appli. Rien n'est masqué, le bandeau n'est pas utilisé : sonar peut rester
+à son emplacement par défaut (`pied`), qui ne montre que ce qui mérite un coup d'œil. Le mod sonar doit être installé.
 
 Installation (PowerShell 7, depuis la racine du dépôt), puis **quitter complètement Claude** (zone de notification >
 Quitter) et le relancer :

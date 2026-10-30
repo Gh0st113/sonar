@@ -318,6 +318,36 @@ export function jauges(d, maintenant, cfg = DEFAUTS) {
   return j;
 }
 
+// ——— Données pour l'extension « cercle » (dossier extension/ du dépôt, Claude Desktop Windows) ———
+// Dans le pied, sur le bureau, le mod ajoute une image transparente de 1 pixel dont le texte alternatif porte ces
+// données en JSON, sans langue (nombres, heures en ms). L'extension la lit dans le shadowRoot de l'hôte du pied et
+// l'affiche dans le cercle d'usage et la barre latérale, dans la langue de l'appli. Rien de visible.
+// Format versionné : changer un champ = changer PREFIXE_EXTENSION (« sonar:2 ») et l'extension avec.
+export const PREFIXE_EXTENSION = 'sonar:1 ';
+
+// { a, cache?: { etat, expire?, auMoins?, taux?, autreModele? }, depot?: { nom, branche?, detachee?, modifies }, cout? }
+// Les quotas n'y sont pas : l'extension les lit elle-même. Les segments désactivés dans les options n'y sont pas non plus.
+export function chargeExtension(d, maintenant, cfg = DEFAUTS) {
+  const actif = (k) => cfg.segments.includes(k);
+  const o = { a: maintenant };
+  const c = actif('cache') ? etatCache(d.cache, d.ttlMs, maintenant, d.modele) : undefined;
+  if (c && c.etat !== 'rien') {
+    o.cache = { etat: c.etat };
+    if (fini(c.expire)) o.cache.expire = c.expire;
+    if (c.auMoins) o.cache.auMoins = true;
+    if (fini(c.taux)) o.cache.taux = Math.round(c.taux * 1000) / 1000;
+    if (c.autreModele) o.cache.autreModele = true;
+  }
+  if (actif('depot') && d.depot?.nom) {
+    o.depot = { nom: d.depot.nom, modifies: d.depot.modifies ?? 0 };
+    if (d.depot.branche) o.depot.branche = d.depot.branche;
+    if (d.depot.detachee) o.depot.detachee = true;
+  }
+  if (actif('cout') && fini(d.cout)) o.cout = Math.round(d.cout * 100) / 100;
+  return o;
+}
+export const texteExtension = (charge) => PREFIXE_EXTENSION + JSON.stringify(charge);
+
 // Repli texte (terminal, ligne d'état, réponse de /sonar) : « semaine 41 % (20 %/j, remise ven. 12:00) ».
 export const texte = (el) => `${el.etiquette} ${el.valeur}${el.detail ? ` (${el.detail})` : ''}`;
 export const ligne = (els, sep = '   ') => els.map(texte).join(sep);

@@ -1,12 +1,13 @@
-// Lecteur du bandeau sonar : fonctions pures, sans DOM, chargées avant widget.js (content script) et testées
-// sous Node (test/sonar-lecture.test.mjs). Le bandeau d'un mod n'est pas dans le DOM de la page : son texte est
-// dans le shadowRoot ouvert de son hôte `div[data-plugin-drawn="AbovePrompt"]`. widget.js en tire un texte, un
-// segment par ligne (« cache chaud (99 % relu, jusqu'à 21:03) », « branche master (mon-depot) », « coût 4,00 $ »),
-// et ce module en fait { cache, branche, depot, cout } (fr ou en, selon la langue de sonar).
+// Lecteur des données de sonar : fonctions pures, sans DOM, chargées avant widget.js et testées sous Node
+// (test/sonar-lecture.test.mjs). Sur le bureau, le mod sonar ajoute à son pied (à côté du nom du modèle)
+// une image transparente de 1 pixel dont le texte alternatif vaut « sonar:1 {json} » (sonar/hooks/logique.mjs,
+// chargeExtension), dans le shadowRoot ouvert d'un hôte `[data-plugin-drawn]`. Le JSON est sans langue (nombres,
+// heures en ms) : ce module le vérifie et le met en mots, en français ou en anglais.
 (function (racine) {
   // Sélecteurs vérifiés contre les relevés de Claude Desktop Windows (test/fixtures, 30/10/2026).
   const SELECTEURS = {
-    hote: '[data-plugin-drawn="AbovePrompt"]',
+    // Tout hôte de dessin d'un mod : relevé pour le bandeau (« AbovePrompt »), supposé pour le pied (« SessionMode »).
+    hote: '[data-plugin-drawn]',
     cercle: 'button[aria-haspopup="dialog"]',
     // Début de l'aria-label du cercle : « Utilisation : Hebdomadaire · … » (fr), « Usage: … » (en).
     cercleLibelle: /^(Utilisation|Usage)\b/,
@@ -18,128 +19,125 @@
     epingles: '[data-testid="sidebar-pinned"]',
   };
 
-  // Valeurs de l'état du cache, ramenées aux mots français de sonar.
-  const ETATS = {
-    chaud: 'chaud', froid: 'froid', incertain: 'incertain', 'autre modèle': 'autre modèle',
-    warm: 'chaud', cold: 'froid', uncertain: 'incertain', 'other model': 'autre modèle',
-  };
-  const ESPACES = /[  ]/g;
-  // Début d'un segment de sonar, pour couper un texte venu d'un seul bloc (« …11:00)cache froidbranche … »).
-  const DEBUTS = /\s*(?=(?:5 ?h|semaine|sem\.|week|budget|cache|branche|branch|coût|cost) )/g;
-  // Une jauge de quota : nom connu, ou nom brut d'un quota inconnu (« seven_day_opus »), puis un % ou un état.
-  const QUOTA = /^(?:5 ?h|semaine|sem\.|week|budget|[a-z]+(?:_[a-z0-9]+)+) (?:\d+(?:[.,]\d+)? ?%|remis à zéro|épuisé|reset|exhausted)(?: \(.*\))?$/;
-  // Le message de sonar avant la première mesure : c'est bien sonar, sans rien à lire.
-  const VIDE = /^(Pas encore de mesure|No reading yet)\b/;
-  const CACHE = /^cache (chaud|froid|incertain|autre modèle|warm|cold|uncertain|other model)(?: \((.*)\))?$/;
-  const RELU = /(\d+(?:[.,]\d+)?) ?% (?:relu|reused)/;
-  const JUSQUA = /(au moins |at least )?(?:jusqu['’]à|until) (\d{1,2}:\d{2}(?: ?[AP]M)?)/;
-  const BRANCHE = /^(?:branche|branch) (.+?)(?: \((.*)\))?$/;
-  const MODIFIES = /^\d+ modifi/;
-  const COUT = /^(?:coût (\d[\d ]*(?:,\d+)? \$)|cost (\$\d[\d,]*(?:\.\d+)?))$/;
+  const PREFIXE = 'sonar:1 ';
+  // L'image qui porte les données, dans le shadowRoot de l'hôte.
+  const PORTEUR = 'img[alt^="sonar:1 "]';
+  const ETATS = ['chaud', 'froid', 'incertain'];
 
-  function segments(texte) {
-    return String(texte ?? '').replace(ESPACES, ' ').split(/\n+/)
-      .flatMap((l) => l.split(DEBUTS)).map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  }
+  const fini = (x) => typeof x === 'number' && Number.isFinite(x);
+  const texte = (x) => typeof x === 'string' && x.length > 0 && x.length <= 200;
 
-  // Texte du bandeau → { cache: { etat, relu, jusqua[, auMoins] } | null, branche, depot, cout } ; null si ce
-  // n'est pas sonar. C'est sonar seulement si CHAQUE segment se lit comme sonar : un texte qui mêle sonar et autre
-  // chose (un autre mod dans le même site AbovePrompt) n'est pas sonar, et ne sera donc pas masqué.
-  function lireSonar(texte) {
-    const r = { cache: null, branche: null, depot: null, cout: null };
-    const morceaux = segments(texte);
-    if (morceaux.length === 0) return null;
-    for (const s of morceaux) {
-      let m;
-      if ((m = CACHE.exec(s))) {
-        const relu = RELU.exec(m[2] ?? '');
-        const jusqua = JUSQUA.exec(m[2] ?? '');
-        r.cache = { etat: ETATS[m[1]], relu: relu ? Number(relu[1].replace(',', '.')) : null, jusqua: jusqua?.[2] ?? null };
-        // Durée de vie du cache inconnue : sonar écrit « au moins jusqu'à ».
-        if (jusqua?.[1]) r.cache.auMoins = true;
-      } else if ((m = BRANCHE.exec(s))) {
-        // « branche master (mon-depot, 2 modifiés) » ; sans branche connue, sonar écrit le nom du dépôt seul.
-        const detail = (m[2] ?? '').split(', ').filter((d) => d && !MODIFIES.test(d));
-        if (detail.length > 0) {
-          r.branche = m[1];
-          r.depot = detail[0];
-        } else {
-          r.depot = m[1];
-        }
-      } else if ((m = COUT.exec(s))) {
-        r.cout = m[1] ?? m[2];
-      } else if (!QUOTA.test(s) && !VIDE.test(s)) {
-        return null;
-      }
+  // Texte alternatif → { a, cache, depot, cout } vérifié (champ douteux → null) ; pas sonar ou illisible → null.
+  function lireCharge(alt) {
+    if (typeof alt !== 'string' || !alt.startsWith(PREFIXE)) return null;
+    let o;
+    try {
+      o = JSON.parse(alt.slice(PREFIXE.length));
+    } catch {
+      return null;
     }
-    return r;
+    if (!o || typeof o !== 'object' || !fini(o.a)) return null;
+    const c = o.cache;
+    const d = o.depot;
+    return {
+      a: o.a,
+      cache: c && ETATS.includes(c.etat)
+        ? {
+          etat: c.etat,
+          expire: fini(c.expire) ? c.expire : null,
+          auMoins: c.auMoins === true,
+          taux: fini(c.taux) ? Math.min(1, Math.max(0, c.taux)) : null,
+          autreModele: c.autreModele === true,
+        }
+        : null,
+      depot: d && texte(d.nom)
+        ? { nom: d.nom, branche: texte(d.branche) ? d.branche : null, detachee: d.detachee === true, modifies: fini(d.modifies) ? d.modifies : 0 }
+        : null,
+      cout: fini(o.cout) && o.cout >= 0 ? o.cout : null,
+    };
   }
 
-  // Masquer un hôte AbovePrompt ? Oui seulement si son texte ACTUEL se lit comme sonar.
-  function masquer(texte) {
-    return lireSonar(texte) !== null;
+  // L'état du cache à l'instant `maintenant` : un cache chaud dont l'heure est passée a refroidi depuis le relevé
+  // (incertain si sa durée de vie était inconnue, comme le dit sonar).
+  function etatCache(cache, maintenant) {
+    if (!cache) return null;
+    if (cache.etat === 'chaud' && cache.expire !== null && maintenant >= cache.expire) return cache.auMoins ? 'incertain' : 'froid';
+    return cache.etat;
   }
 
-  // Un pas de suivi d'un hôte : texte actuel → { masque, garde }. `garde` est la dernière lecture utile et son
-  // heure ({ lecture, a }), pour l'affichage seulement : elle survit au tour où le bandeau disparaît, mais le
-  // masquage ne regarde que le texte actuel.
-  function suivre(garde, texte, maintenant) {
-    const lecture = lireSonar(texte);
-    return { masque: lecture !== null, garde: utile(lecture) ? { lecture, a: maintenant } : garde ?? null };
-  }
-
-  // Une lecture qui a quelque chose à montrer (le message « pas encore de mesure » n'en a pas).
-  function utile(lecture) {
-    return Boolean(lecture && (lecture.cache || lecture.branche || lecture.depot || lecture.cout));
+  function utile(charge) {
+    return Boolean(charge && (charge.cache || charge.depot || charge.cout !== null));
   }
 
   const MOTS = {
     fr: {
-      chaud: 'chaud', froid: 'froid', incertain: 'incertain', 'autre modèle': 'autre modèle',
-      relu: (p) => `${String(p).replace('.', ',')} % relu`, jusqua: (h, auMoins) => `${auMoins ? 'au moins ' : ''}jusqu'à ${h}`,
-      cache: 'Cache', branche: 'Branche', cout: 'Coût', releve: (h) => `relevé à ${h}`,
+      chaud: 'chaud', froid: 'froid', incertain: 'incertain', autreModele: 'autre modèle',
+      relu: (p) => `${p} % relu`, jusqua: (h, auMoins) => `${auMoins ? 'au moins ' : ''}jusqu'à ${h}`,
+      detachee: 'HEAD détachée', modifies: (n) => `${n} modifié${n > 1 ? 's' : ''}`,
+      cout: (x) => `${x.toFixed(2).replace('.', ',')} $`,
+      cache: 'Cache', branche: 'Branche', nomCout: 'Coût', releve: (h) => `relevé à ${h}`,
     },
     en: {
-      chaud: 'warm', froid: 'cold', incertain: 'uncertain', 'autre modèle': 'other model',
+      chaud: 'warm', froid: 'cold', incertain: 'uncertain', autreModele: 'other model',
       relu: (p) => `${p}% reused`, jusqua: (h, auMoins) => `${auMoins ? 'at least ' : ''}until ${h}`,
-      cache: 'Cache', branche: 'Branch', cout: 'Cost', releve: (h) => `read at ${h}`,
+      detachee: 'detached HEAD', modifies: (n) => `${n} modified`,
+      cout: (x) => `$${x.toFixed(2)}`,
+      cache: 'Cache', branche: 'Branch', nomCout: 'Cost', releve: (h) => `read at ${h}`,
     },
   };
-  const ICONES = { chaud: '🔥', froid: '🧊', incertain: '❔', 'autre modèle': '🧊' };
+  const ICONES = { chaud: '🔥', froid: '🧊', incertain: '❔' };
+  const mots = (langue) => MOTS[langue] ?? MOTS.en;
+  const heureParDefaut = (ms) => {
+    const d = new Date(ms);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  const nomEtat = (t, etat, cache) => (etat === 'froid' && cache.autreModele ? t.autreModele : t[etat]);
+  const nomBranche = (t, d) => (d.detachee ? t.detachee : d.branche ?? d.nom);
 
   // Forme courte : « 🔥 cache → 21:03 · ⎇ master · 4,00 $ » ; froid : « 🧊 cache froid · … ».
-  function ligneCourte(lecture, langue) {
-    if (!utile(lecture)) return '';
-    const t = MOTS[langue] ?? MOTS.en;
+  function ligneCourte(charge, langue, maintenant, heure = heureParDefaut) {
+    if (!utile(charge)) return '';
+    const t = mots(langue);
     const morceaux = [];
-    const c = lecture.cache;
-    if (c) morceaux.push(c.etat === 'chaud' && c.jusqua ? `${ICONES.chaud} cache → ${c.auMoins ? '≥ ' : ''}${c.jusqua}` : `${ICONES[c.etat] ?? ''} cache ${t[c.etat] ?? c.etat}`.trim());
-    if (lecture.branche || lecture.depot) morceaux.push(`⎇ ${lecture.branche ?? lecture.depot}`);
-    if (lecture.cout) morceaux.push(lecture.cout);
+    const etat = etatCache(charge.cache, maintenant);
+    if (etat === 'chaud' && charge.cache.expire !== null) morceaux.push(`${ICONES.chaud} cache → ${charge.cache.auMoins ? '≥ ' : ''}${heure(charge.cache.expire)}`);
+    else if (etat) morceaux.push(`${ICONES[etat]} cache ${nomEtat(t, etat, charge.cache)}`);
+    if (charge.depot) morceaux.push(`⎇ ${nomBranche(t, charge.depot)}`);
+    if (charge.cout !== null) morceaux.push(t.cout(charge.cout));
     return morceaux.join(' · ');
   }
 
   // Lignes du popover : [[étiquette, valeur], …].
-  function lignesDetail(lecture, langue) {
-    if (!utile(lecture)) return [];
-    const t = MOTS[langue] ?? MOTS.en;
+  function lignesDetail(charge, langue, maintenant, heure = heureParDefaut) {
+    if (!utile(charge)) return [];
+    const t = mots(langue);
     const l = [];
-    const c = lecture.cache;
-    if (c) {
-      const detail = [c.relu !== null ? t.relu(c.relu) : '', c.jusqua ? t.jusqua(c.jusqua, c.auMoins) : ''].filter(Boolean).join(', ');
-      l.push([t.cache, `${ICONES[c.etat] ?? ''} ${t[c.etat] ?? c.etat}${detail ? ` (${detail})` : ''}`.trim()]);
+    const etat = etatCache(charge.cache, maintenant);
+    if (etat) {
+      const c = charge.cache;
+      const detail = etat === 'chaud'
+        ? [c.taux !== null ? t.relu(Math.round(c.taux * 100)) : '', c.expire !== null ? t.jusqua(heure(c.expire), c.auMoins) : '']
+        : [];
+      const fin = detail.filter(Boolean).join(', ');
+      l.push([t.cache, `${ICONES[etat]} ${nomEtat(t, etat, c)}${fin ? ` (${fin})` : ''}`]);
     }
-    if (lecture.branche || lecture.depot) {
-      l.push([t.branche, lecture.branche ? `${lecture.branche}${lecture.depot ? ` (${lecture.depot})` : ''}` : lecture.depot]);
+    if (charge.depot) {
+      const d = charge.depot;
+      const nom = nomBranche(t, d);
+      const detail = [nom !== d.nom ? d.nom : '', d.modifies ? t.modifies(d.modifies) : ''].filter(Boolean).join(', ');
+      l.push([t.branche, `${nom}${detail ? ` (${detail})` : ''}`]);
     }
-    if (lecture.cout) l.push([t.cout, lecture.cout]);
+    if (charge.cout !== null) l.push([t.nomCout, t.cout(charge.cout)]);
     return l;
   }
 
-  const releve = (h, langue) => (MOTS[langue] ?? MOTS.en).releve(h);
-  const froid = (lecture) => Boolean(lecture?.cache && lecture.cache.etat !== 'chaud');
+  const releve = (h, langue) => mots(langue).releve(h);
+  const froid = (charge, maintenant) => {
+    const etat = etatCache(charge?.cache, maintenant);
+    return Boolean(etat && etat !== 'chaud');
+  };
 
-  const api = { SELECTEURS, segments, lireSonar, masquer, suivre, utile, ligneCourte, lignesDetail, releve, froid };
+  const api = { SELECTEURS, PREFIXE, PORTEUR, lireCharge, etatCache, utile, ligneCourte, lignesDetail, releve, froid };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else racine.SonarLecture = api;
 })(typeof globalThis === 'object' ? globalThis : this);

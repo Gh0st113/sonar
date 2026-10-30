@@ -124,18 +124,20 @@ The mod is then read **from that folder**: after an edit, `/reload-plugins` in t
 
 ## Circle extension (Windows)
 
-`extension/` holds an extension for **Claude Desktop on Windows**, adapted from
+`extension/` holds an extension for **the Claude Desktop app on Windows**, adapted from
 [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude) (Lukas van Uden, MIT licence,
-`extension/LICENSE-UI-PLUS`). It replaces sonar's banner above the prompt:
+`extension/LICENSE-UI-PLUS`). No browser involved: the app ships its own Chromium and loads this folder itself. It shows
+what sonar knows in two places:
 
-- the **usage circle** below the prompt: its popover keeps what UI+ adds (time line and pace of each limit,
-  session context, settings) and gets a **Cache · Branch · Cost** block read from sonar;
+- the **usage circle** (right, below the prompt): its popover keeps what UI+ adds (time line and pace of each limit,
+  session context, settings) and gets a **Cache · Branch · Cost** block, with the time of the reading;
 - the **sidebar**, right below "Customize": a collapsible "Usage" row as in UI+, plus sonar's short line, e.g.
-  `🔥 cache → 21:03 · ⎇ main · $4.00` (`🧊 cache cold` when the cache is cold);
-- sonar's **banner** is hidden while its text reads as sonar; other mods' banners stay visible.
+  `🔥 cache → 21:03 · ⎇ main · $4.00` (`🧊 cache cold` when the cache is cold).
 
-The extension reads the text sonar draws above the prompt: keep sonar installed, in the `banner` placement (`/sonar banner`). While Claude
-works the banner disappears; the extension then shows the last reading and its time.
+Where the data comes from: on the desktop, the sonar mod adds to its footer (next to the model name) a transparent
+1-pixel image whose alt text carries its numbers as language-neutral JSON. The extension reads it and words it in
+English or French, following the app's language. Nothing is hidden and the banner is not used: sonar can stay in its
+default `footer` placement, which only shows what deserves a glance. The sonar mod must be installed.
 
 Install (PowerShell 7, from the repository root), then **quit Claude completely** (notification area > Quit) and
 start it again:
