@@ -8,6 +8,8 @@ on:
     branches: [main]
     tags: ['v*']
   pull_request:
+  # Relancer à la main depuis l'onglet Actions (bouton « Run workflow », une fois le workflow sur main).
+  workflow_dispatch:
 
 # Actions épinglées par empreinte de commit (et non par tag, qu'on peut déplacer) : le job release a le droit d'écrire.
 permissions:
