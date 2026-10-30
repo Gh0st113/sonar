@@ -8,6 +8,7 @@
 //	cercle installer                     copie l'extension dans le profil de Claude (appelé par l'installeur)
 //	cercle retirer                       la supprime (appelé à la désinstallation)
 //	cercle etat                          ce qui est installé, fichiers intacts ou non
+//	cercle verifier                      code de retour seul : 0 extension intacte, 6 sinon (scripts, CI)
 //	cercle gerer                         « Gérer Claude (cercle) » : version, état, réparation, mise à jour (fenêtres)
 //	cercle maj                           cherche une mise à jour signée et l'installe sur accord (sans lancer Claude)
 //	cercle cle <fichier>                 crée la clé de signature (à garder hors de GitHub)
@@ -87,6 +88,8 @@ func executer(args []string) int {
 		vider(boiteInfo, true)
 	case "gerer":
 		err = actionGerer(o)
+	case "verifier":
+		err = actionVerifier(o)
 	case "maj":
 		err = actionMaj(o)
 	case "cle":
@@ -97,7 +100,7 @@ func executer(args []string) int {
 		dire("%s", version())
 		vider(boiteInfo, true)
 	default:
-		err = echec(codeAction, "action inconnue « %s » : lancer | installer | retirer | etat | gerer | maj | cle | signer | version", action)
+		err = echec(codeAction, "action inconnue « %s » : lancer | installer | retirer | etat | verifier | gerer | maj | cle | signer | version", action)
 	}
 	return terminer(err)
 }
@@ -468,6 +471,22 @@ func actionEtat(o options) error {
 		}
 	}
 	avertirVariable()
+	return nil
+}
+
+// actionVerifier : pour un script ou la CI, où la sortie d'un exe « windowsgui » n'est pas fiable : le code dit tout.
+func actionVerifier(o options) error {
+	dossier, err := dossierDe(o)
+	if err != nil {
+		return err
+	}
+	if oc := occupant(dossier); oc != "nôtre" {
+		return echec(codeVerif, "extension non installée (%s)", oc)
+	}
+	if e := ecarts(dossier); len(e) > 0 {
+		return echec(codeVerif, "écarts : %s", strings.Join(e, " ; "))
+	}
+	dire("Extension intacte.")
 	return nil
 }
 

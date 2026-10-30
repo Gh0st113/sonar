@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -341,7 +342,8 @@ func TestDossierInscriptible(t *testing.T) {
 	if entrees, _ := os.ReadDir(d); len(entrees) != 0 {
 		t.Fatal("le fichier de test est resté")
 	}
-	if os.Getuid() != 0 {
+	// Sous Windows, le droit « lecture seule » d'un dossier n'empêche pas d'y créer des fichiers : test Unix seulement.
+	if os.Getuid() != 0 && runtime.GOOS != "windows" {
 		os.Chmod(d, 0o555)
 		defer os.Chmod(d, 0o755)
 		if dossierInscriptible(d) {

@@ -58,7 +58,8 @@ func vider(style uint32, toujours bool) {
 	if enConsole || journal.Len() == 0 {
 		return
 	}
-	if (important || toujours) && (!silencieux || style == boiteErreur) {
+	// CERCLE_SANS_FENETRE : aucune boîte, jamais (CI : une boîte attendrait un clic pour toujours).
+	if (important || toujours) && (!silencieux || style == boiteErreur) && os.Getenv("CERCLE_SANS_FENETRE") == "" {
 		boite(strings.TrimSpace(journal.String()), style)
 	}
 	journal.Reset()
@@ -73,7 +74,7 @@ func oui(question string) bool {
 		r := strings.ToLower(strings.TrimSpace(l))
 		return r == "o" || r == "oui" || r == "y" || r == "yes"
 	}
-	if silencieux {
+	if silencieux || os.Getenv("CERCLE_SANS_FENETRE") != "" {
 		return false
 	}
 	texte := strings.TrimSpace(journal.String() + "\n" + question)
