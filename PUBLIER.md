@@ -10,9 +10,15 @@ release `vX.Y.Z`.
 ## Une seule fois
 
 1. Activer la **double authentification** du compte GitHub (Settings > Password and authentication) ;
-2. Créer la clé : installer un installeur d'essai (Actions > cercle > Artifacts > `cercle-setup-essai`), puis dans un
-   terminal `%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe cle cle-cercle.json` (phrase de passe de 12 caractères au
-   moins). Il affiche la clé **publique** : la mettre dans `extension/cle-publique.txt` et commiter (elle n'a rien de
+2. Créer la clé : installer un installeur d'essai (Actions > cercle > Artifacts > `cercle-setup-essai`), puis dans
+   PowerShell (`Start-Process` : PowerShell attend ainsi que cercle ait lu la phrase) :
+
+   ```powershell
+   Start-Process -FilePath "$env:LOCALAPPDATA\Programs\sonar-cercle\cercle.exe" -ArgumentList 'cle', "$env:USERPROFILE\Desktop\cle-cercle.json" -NoNewWindow -Wait
+   ```
+
+   Phrase de passe : 12 caractères au moins, **sans accent ni symbole spécial** (pas de é, €… : la console Windows les
+   code autrement que GitHub). Il affiche la clé **publique** : la mettre dans `extension/cle-publique.txt` et commiter (elle n'a rien de
    secret) ;
 3. Dans le dépôt, Settings > Environments > **New environment** `publication` :
    - Deployment branches and tags : **Selected branches**, `main` seulement ;

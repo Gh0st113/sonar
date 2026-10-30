@@ -412,3 +412,15 @@ func TestSignerSansTerminal(t *testing.T) {
 		t.Fatalf("signature : %q %v", v, err)
 	}
 }
+
+// Une phrase avec accent ou symbole hors ASCII est refusée à la création de la clé.
+func TestPhraseASCII(t *testing.T) {
+	for _, p := range []string{"une phrase à accent", "un prix en euros €€€", "tabulation\tinterdite"} {
+		if _, _, err := nouvelleCle(p); err == nil {
+			t.Errorf("%q acceptée", p)
+		}
+	}
+	if _, _, err := nouvelleCle("Cheval-Agrafe 42 Batterie!"); err != nil {
+		t.Fatal(err)
+	}
+}
