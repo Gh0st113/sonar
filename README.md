@@ -183,11 +183,9 @@ Updates (active when `cercle.exe` embeds a public key; "Manage Claude (cercle)" 
 launch, "Claude (cercle)" looks at the latest GitHub release. It only offers a version that is
 **newer** than its own and **signed** with the maintainer's key (ed25519; the public key is embedded in `cercle.exe`), and only installs it **with your consent**: the lookup never delays Claude by more than
 5 seconds; after your "Yes", it downloads the signed installer, checks it, runs it without the wizard, then starts
-Claude again. A badly signed release is reported and ignored. The private key is
-stored encrypted in the repository's protected "publication" environment: only the "publier" workflow, run on `main`,
-can use it, and only after the maintainer's approval when that is required (see "Publishing a version"). One
-consequence to know: **whoever controls the maintainer's GitHub account can publish a signed update**; hence
-two-factor authentication is mandatory on that account. The release notes shown come from GitHub and are **not** signed.
+Claude again. A badly signed release is reported and ignored. Each release is signed on GitHub, in a protected
+environment, and, when the maintainer has turned it on, approved by them with one click; their GitHub account is therefore protected by two-factor authentication.
+The release notes shown come from GitHub and are **not** signed.
 Offline, Claude starts with the current version.
 The icon of `cercle.exe` and of the installer is drawn by code (`extension/icone`, rebuilt by `go generate`).
 
@@ -198,28 +196,7 @@ starting Claude), `installer` / `retirer` (called by the installer and the unins
 codes: 0 success, 1 unknown action, 2 profile missing or ambiguous, 3 folder used by something else (React DevTools?),
 4 write error, 5 Claude still open, 6 installed files changed, 7 Claude not found, 8 update refused.
 
-Publishing a version (maintainer): everything happens on GitHub, without a PC, through the **publier** workflow
-(`.github/workflows/publier.yml`). It reruns every test and the real Windows trial, waits for approval when required,
-checks that the version is newer than the latest release, signs `cercle-setup.exe` (checking that it holds exactly the
-built `cercle.exe` and that the key matches `cle-publique.txt`), then publishes the `vX.Y.Z` release.
-
-Once:
-1. turn on **two-factor authentication** on the GitHub account (Settings > Password and authentication);
-2. create the key: install a trial installer (Actions > cercle > Artifacts > `cercle-setup-essai`), then in a terminal
-   `%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe cle cle-cercle.json` (passphrase of 12 characters or more). It
-   prints the **public** key: put it in `extension/cle-publique.txt` and commit (nothing secret about it);
-3. in the repository, Settings > Environments > **New environment** `publication`:
-   - Deployment branches and tags: **Selected branches**, `main` only;
-   - Environment secrets: `CERCLE_CLE` = the whole content of `cle-cercle.json`, `CERCLE_PHRASE` = the passphrase;
-   - **Required reviewers**: yourself, to approve each publication with one click (without it: direct publication);
-4. keep `cle-cercle.json` and the passphrase in a password manager, then delete the file from the PC.
-
-For each version: bump `version` in `extension/manifest.json` (in a PR, merged into `main`), then Actions > **publier**
-> Run workflow (branch `main`). With approval required, GitHub sends a notification: **Review deployments > Approve**,
-from the website or the mobile app. Local signing still works:
-`cercle signer cercle-setup.exe <key file> --exe <rebuilt cercle.exe>` (reproducible build:
-`GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-buildid= -H windowsgui" -o
-cercle.exe .` in `extension/`, Go 1.24.7).
+Publishing a version (maintainer): see [PUBLIER.md](PUBLIER.md) (in French).
 
 Limits:
 - loading goes through a **development hook** of Claude Desktop (`REACT_PROFILE=1` loads the React DevTools folder,

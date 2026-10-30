@@ -189,10 +189,8 @@ elle est **plus récente** que la sienne et **signée** par la clé du mainteneu
 dans `cercle.exe`), et ne l'installe **que sur votre accord** : la recherche ne
 retarde pas Claude de plus de 5 secondes ; après votre « Oui », il télécharge l'installeur signé, le vérifie, l'exécute
 sans assistant, puis relance Claude. Une release mal signée est signalée et
-ignorée. La clé privée est rangée chiffrée dans l'environnement protégé « publication » du dépôt : seul le workflow
-« publier », lancé sur `main`, peut s'en servir, et seulement après l'approbation du mainteneur si elle est exigée
-(voir « Publier une version »). Conséquence à connaître : **qui contrôle le compte GitHub du mainteneur peut publier
-une mise à jour signée** ; d'où la double authentification obligatoire sur ce compte. Les notes de version affichées viennent de
+ignorée. Chaque publication est signée sur GitHub, dans un environnement protégé, et, si le mainteneur
+l'a activé, validée par lui d'un clic ; son compte GitHub est donc protégé par une double authentification. Les notes de version affichées viennent de
 GitHub et ne sont **pas** signées. Sans réseau, Claude se lance avec la version actuelle.
 L'icône de `cercle.exe` et de l'installeur est dessinée par le code (`extension/icone`, refaite par `go generate`).
 
@@ -204,30 +202,7 @@ trouvé. Codes de retour : 0 réussi, 1 action inconnue, 2 profil introuvable ou
 (React DevTools ?), 4 écriture, 5 Claude encore ouvert, 6 fichiers installés modifiés, 7 Claude introuvable, 8 mise à jour
 refusée.
 
-Publier une version (mainteneur) : tout se fait sur GitHub, sans PC, par le workflow **publier**
-(`.github/workflows/publier.yml`). Il refait tous les tests et l'essai réel sous Windows, attend l'approbation si elle
-est exigée, vérifie que la version est plus récente que la dernière release, signe `cercle-setup.exe` (en vérifiant
-qu'il contient exactement le `cercle.exe` construit et que la clé est celle de `cle-publique.txt`), puis publie la
-release `vX.Y.Z`.
-
-Une seule fois :
-1. activer la **double authentification** du compte GitHub (Settings > Password and authentication) ;
-2. créer la clé : installer un installeur d'essai (Actions > cercle > Artifacts > `cercle-setup-essai`), puis dans un
-   terminal `%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe cle cle-cercle.json` (phrase de passe de 12 caractères au
-   moins). Il affiche la clé **publique** : la mettre dans `extension/cle-publique.txt` et commiter (elle n'a rien de
-   secret) ;
-3. dans le dépôt, Settings > Environments > **New environment** `publication` :
-   - Deployment branches and tags : **Selected branches**, `main` seulement ;
-   - Environment secrets : `CERCLE_CLE` = tout le contenu de `cle-cercle.json`, `CERCLE_PHRASE` = la phrase de passe ;
-   - **Required reviewers** : soi-même, pour valider chaque publication d'un clic (sans : publication directe) ;
-4. garder `cle-cercle.json` et la phrase dans un gestionnaire de mots de passe, puis supprimer le fichier du PC.
-
-À chaque version : monter `version` dans `extension/manifest.json` (dans une PR, mergée sur `main`), puis Actions >
-**publier** > Run workflow (branche `main`). Avec l'approbation exigée, GitHub envoie une notification : **Review
-deployments > Approve**, depuis le site ou l'appli mobile. Signature locale toujours possible :
-`cercle signer cercle-setup.exe <fichier de clé> --exe <cercle.exe recompilé>` (build reproductible :
-`GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-buildid= -H windowsgui" -o
-cercle.exe .` dans `extension/`, Go 1.24.7).
+Publier une version (mainteneur) : voir [PUBLIER.md](PUBLIER.md).
 
 Limites :
 - le chargement passe par un **crochet de développement** de Claude Desktop (`REACT_PROFILE=1` charge le dossier
