@@ -1,0 +1,101 @@
+/* Sidebar */
+#usage-pace { display: block; margin: 0 0 8px; font-size: 12px; line-height: 1.3; color: var(--cds-text-secondary, currentColor); }
+#usage-pace .up-header { display: flex; align-items: center; width: 100%; cursor: pointer; }
+#usage-pace .up-pace { margin-left: auto; padding-left: 8px; font-size: 12px; color: var(--cds-text-muted, color-mix(in srgb, currentColor 60%, transparent)); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#usage-pace .up-rows { padding-top: 8px; pointer-events: none; }
+#usage-pace.up-collapsed .up-rows { display: none; }
+#usage-pace .up-row { margin: 0 0 9px; }
+#usage-pace .up-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 4px; }
+#usage-pace .up-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#usage-pace .up-meta { color: var(--cds-text-muted, color-mix(in srgb, currentColor 60%, transparent)); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#usage-pace .up-track { position: relative; height: 4px; border-radius: 99px; background: color-mix(in srgb, currentColor 16%, transparent); }
+#usage-pace .up-fill { height: 100%; border-radius: inherit; background: var(--cds-fill-accent, #2a78d6); transition: width .2s ease-out; }
+
+/* Time line, in the sidebar and in Claude's usage popover */
+.up-time { position: relative; height: 3px; border-radius: 99px; background: color-mix(in srgb, currentColor 10%, transparent); }
+.up-time.up-in-sidebar { margin: 0 0 2px; }
+.up-time.up-in-popover { height: 4px; margin-top: var(--cds-pad-xs, 4px); outline-color: var(--cds-fill-accent, #2a78d6); }
+.up-time.up-on-warning .up-segment-over { background: #e5484d; }
+.up-time.up-in-popover + [role="progressbar"] { margin-top: 2px; }
+.up-time.up-in-popover:has(+ [data-cds="Meter"]) { margin-top: 0; margin-bottom: -2px; }
+.up-segment { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 99px; }
+.up-segment-elapsed { background: var(--cds-text-muted, color-mix(in srgb, currentColor 55%, transparent)); }
+.up-segment-buffer { background: #3fa66b; }
+.up-segment-over { background: #e0913a; }
+
+/* Popover header and settings */
+.up-popover-pace { margin-left: auto; margin-right: 8px; font-size: 12px; color: var(--cds-text-muted, color-mix(in srgb, currentColor 60%, transparent)); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.up-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; white-space: nowrap; font-size: 12px; color: var(--cds-text-muted, color-mix(in srgb, currentColor 60%, transparent)); }
+.up-toggle { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.up-toggle input { width: 12px; height: 12px; margin: 0; accent-color: var(--cds-fill-accent, #2a78d6); cursor: pointer; }
+.up-link { padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
+.up-link:hover { color: var(--cds-text-primary, currentColor); text-decoration: underline; }
+.up-uninstall, .up-confirm-question + .up-link { margin-left: auto; }
+.up-confirm-remove, .up-confirm-remove:hover { color: #e5484d; }
+.up-settings.up-removed { display: block; line-height: 1.4; white-space: normal; }
+
+/* Context of the session, mirrored from the session rail into the popover */
+.up-context-track { height: 8px; border-radius: 99px; overflow: hidden; background: var(--cds-alpha-2, color-mix(in srgb, currentColor 14%, transparent)); box-shadow: inset 0 0 0 1px var(--cds-alpha-1, transparent); }
+.up-context-track[hidden] { display: none; }
+.up-context-stacked[hidden] { display: none; }
+.up-context-stacked > * { width: 100%; pointer-events: none; }
+.up-context-fill { height: 100%; border-radius: inherit; background: var(--cds-fill-accent, #2a78d6); transition: width .2s ease-out; }
+.up-context-fill.up-context-full { background: var(--cds-fill-warning, #e0913a); }
+.up-context-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.up-context-caption { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up-context-action { margin-left: auto; white-space: nowrap; color: var(--cds-text-secondary, currentColor); }
+.up-context-action[hidden] { display: none; }
+.up-context-action:disabled { opacity: .5; cursor: default; text-decoration: none; }
+
+/* Sessions in the sidebar: a gear in place of the icon of active rows,
+   turning while Claude works, still and dimmed with a badge when the session
+   waits, is ready or failed. Other session rows show no icon, keeping the
+   space so titles line up. Rows without an icon, such as side sessions
+   nested under the session that started them, get the gear before their
+   title, on the same line: Claude's title is a block as wide as the row.
+   Claude's own status marks give way to these. */
+[data-up-session] > .df-leading-slot { position: relative; }
+[data-up-session] > .df-leading-slot > * { visibility: hidden; }
+[data-up-session]:not([data-up-session="idle"]) > .df-leading-slot::before { position: absolute; inset: 0; margin: auto; }
+[data-up-session]:not([data-up-session="idle"]) > [data-row-label="iconless"] { display: flex; align-items: center; }
+[data-up-session]:not([data-up-session="idle"]) > [data-row-label="iconless"] > * { min-width: 0; }
+[data-up-session]:not([data-up-session="idle"]) > [data-row-label="iconless"]::before { flex: none; margin-inline-end: var(--df-row-gap, 8px); }
+[data-up-session]:not([data-up-session="idle"]) > :is(.df-leading-slot, [data-row-label="iconless"])::before {
+  content: ''; width: var(--df-icon-size, 16px); height: var(--df-icon-size, 16px);
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+[data-up-session="running"] > :is(.df-leading-slot, [data-row-label="iconless"])::before { color: var(--cds-text-primary, currentColor); animation: up-spin 2.4s linear infinite; }
+[data-up-session]:is([data-up-session="awaiting"], [data-up-session="ready"], [data-up-session="error"]) > :is(.df-leading-slot, [data-row-label="iconless"])::before { color: var(--cds-text-muted, currentColor); opacity: .6; }
+/* On an active row, Claude's mark at its end shows the state the badge now
+   shows, drawn as a .status-dot or as a plain colored dot. Claude wraps the
+   row's link, so its decoration is no sibling of it. */
+[data-up-session]:not([data-up-session="idle"]) .df-tail-mark,
+div[data-row]:has([data-up-session]:not([data-up-session="idle"])) [data-row-decoration] { display: none; }
+:is([data-up-session], div[data-row]:has([data-up-session])) .status-dot { visibility: hidden; }
+[data-up-session="awaiting"] { --up-state: var(--cds-fill-warning, #e0a23a); }
+[data-up-session="ready"] { --up-state: var(--cds-fill-accent, #2a78d6); }
+[data-up-session="error"] { --up-state: var(--cds-fill-danger, #e5484d); }
+[data-up-badge]::after {
+  content: attr(data-up-badge); flex-shrink: 0; margin-inline-start: 6px; padding: 1px 7px; border-radius: 99px;
+  font-size: 11px; font-weight: 500; line-height: 16px; white-space: nowrap;
+  color: var(--up-state); background: color-mix(in srgb, var(--up-state) 16%, transparent);
+}
+/* Claude's row buttons appear at the end of the row on hover. */
+div[data-row]:is(:hover, [data-menu-open], :has(:focus-visible)) [data-up-badge]::after { visibility: hidden; }
+/* The gear shows a session at work, so its title stays plain: no shimmer,
+   neither the fallback gradient nor the composited clone on top. */
+[data-up-session] [data-cds="ShimmerText"] { -webkit-text-fill-color: currentColor !important; background: none !important; animation: none !important; }
+[data-up-session] [data-cds-shimmer-clone] { display: none !important; }
+@keyframes up-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { [data-up-session="running"] > :is(.df-leading-slot, [data-row-label="iconless"])::before { animation: none; } }
+[data-reduce-motion="true"] [data-up-session="running"] > :is(.df-leading-slot, [data-row-label="iconless"])::before { animation: none; }
+
+/* Sonar (ajout Windows) : bandeau d'origine masqué tant qu'il se lit comme sonar, ligne courte sous
+   « Utilisation » dans la barre latérale, bloc $ · cache · branche dans le popover du cercle. */
+[data-plugin-drawn="AbovePrompt"][data-sonar-masque] { display: none !important; }
+#usage-pace .up-sonar { padding: 2px var(--up-inset, 8px) 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; color: var(--cds-text-secondary, currentColor); }
+#usage-pace .up-sonar.up-sonar-cold { color: var(--cds-text-warning, #e0913a); }
+.up-sonar-block { border-top: 1px solid var(--cds-alpha-2, color-mix(in srgb, currentColor 14%, transparent)); margin-top: 4px; padding-top: 8px; }
+.up-sonar-block.up-sonar-cold .up-sonar-row:first-child .up-sonar-value { color: var(--cds-text-warning, #e0913a); }
+.up-sonar-at { font-size: 11px; }

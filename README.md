@@ -122,6 +122,51 @@ claude plugin install sonar@sonar-mods
 
 The mod is then read **from that folder**: after an edit, `/reload-plugins` in the session is enough.
 
+## Circle extension (Windows)
+
+`extension/` holds an extension for **Claude Desktop on Windows**, adapted from
+[UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude) (Lukas van Uden, MIT licence,
+`extension/LICENSE-UI-PLUS`). It replaces sonar's banner above the prompt:
+
+- the **usage circle** below the prompt: its popover keeps what UI+ adds (time line and pace of each limit,
+  session context, settings) and gets a **Cache · Branch · Cost** block read from sonar;
+- the **sidebar**, right below "Customize": a collapsible "Usage" row as in UI+, plus sonar's short line, e.g.
+  `🔥 cache → 21:03 · ⎇ main · $4.00` (`🧊 cache cold` when the cache is cold);
+- sonar's **banner** is hidden while its text reads as sonar; other mods' banners stay visible.
+
+The extension reads the text sonar draws above the prompt: keep sonar installed, in the `banner` placement (`/sonar banner`). While Claude
+works the banner disappears; the extension then shows the last reading and its time.
+
+Install (PowerShell 7, from the repository root), then **quit Claude completely** (notification area > Quit) and
+start it again:
+
+```powershell
+pwsh -NoProfile -File .\extension\install.ps1 installer
+```
+
+Status, changing nothing:
+
+```powershell
+pwsh -NoProfile -File .\extension\install.ps1 etat
+```
+
+Removal (deletes only this extension's folder and restores `REACT_PROFILE` as it was), then a full restart:
+
+```powershell
+pwsh -NoProfile -File .\extension\install.ps1 retirer
+```
+
+Limits:
+- loading goes through a **development hook** of Claude Desktop (`REACT_PROFILE=1` loads the React DevTools folder,
+  `%LOCALAPPDATA%\Claude-Data\claude_<id>\extensions\fmkadmapgofadopljbjfkapdkoienihi`): Anthropic does not
+  guarantee it; if React DevTools already uses that folder, the script refuses;
+- `REACT_PROFILE` is a **user** variable: every app started afterwards sees it;
+- every change needs a **full restart** of Claude;
+- the selectors come from captures of Claude Desktop for Windows in French (`extension/test/fixtures`): a Claude
+  update can break them.
+
+Tests (Node 22, no dependency): `node --test extension/test/`.
+
 ## Tests
 
 ```powershell

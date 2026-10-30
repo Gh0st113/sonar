@@ -122,6 +122,51 @@ claude plugin install sonar@sonar-mods
 
 Le mod est alors lu **depuis ce dossier** : après une modification, `/reload-plugins` dans la session suffit.
 
+## Extension cercle (Windows)
+
+Le dossier `extension/` contient une extension pour **Claude Desktop sous Windows**, adaptée de
+[UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude) (Lukas van Uden, licence MIT,
+`extension/LICENSE-UI-PLUS`). Elle remplace le bandeau de sonar au-dessus de la zone de saisie :
+
+- **cercle d'usage** sous la zone de saisie : son popover garde ce qu'ajoute UI+ (ligne de temps et rythme de
+  chaque limite, contexte de la session, réglages) et reçoit un bloc **Cache · Branche · Coût** lu dans sonar ;
+- **barre latérale**, juste sous « Personnalisation » : une ligne « Utilisation » repliable comme dans UI+, et la
+  ligne courte de sonar, par exemple `🔥 cache → 21:03 · ⎇ master · 4,00 $` (`🧊 cache froid` quand le cache est froid) ;
+- le **bandeau sonar** est masqué tant que son texte se lit comme sonar ; les bandeaux d'autres mods restent visibles.
+
+L'extension lit le texte que sonar dessine au-dessus de la zone de saisie : sonar doit rester installé, en emplacement `bandeau` (`/sonar bandeau`).
+Pendant que Claude travaille, le bandeau disparaît ; l'extension montre alors la dernière lecture et son heure.
+
+Installation (PowerShell 7, depuis la racine du dépôt), puis **quitter complètement Claude** (zone de notification >
+Quitter) et le relancer :
+
+```powershell
+pwsh -NoProfile -File .\extension\install.ps1 installer
+```
+
+État, sans rien changer :
+
+```powershell
+pwsh -NoProfile -File .\extension\install.ps1 etat
+```
+
+Retrait (supprime seulement le dossier de cette extension et remet `REACT_PROFILE` comme avant), puis redémarrage complet :
+
+```powershell
+pwsh -NoProfile -File .\extension\install.ps1 retirer
+```
+
+Limites :
+- le chargement passe par un **crochet de développement** de Claude Desktop (`REACT_PROFILE=1` charge le dossier
+  de React DevTools, `%LOCALAPPDATA%\Claude-Data\claude_<id>\extensions\fmkadmapgofadopljbjfkapdkoienihi`) :
+  rien ne garantit qu'Anthropic le garde ; si React DevTools occupe déjà ce dossier, le script refuse ;
+- `REACT_PROFILE` est une variable **utilisateur** : toutes les applis lancées ensuite la voient ;
+- tout changement demande un **redémarrage complet** de Claude ;
+- les sélecteurs viennent de relevés de Claude Desktop Windows en français (`extension/test/fixtures`) : une mise à
+  jour de Claude peut les casser.
+
+Tests (Node 22, sans dépendance) : `node --test extension/test/`.
+
 ## Tests
 
 ```powershell
