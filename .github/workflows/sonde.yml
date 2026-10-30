@@ -40,8 +40,10 @@ jobs:
           SORTIE: ${{ runner.temp }}/sonde-sortie
         run: |
           exe=$(dpkg -L claude-desktop | grep -E '^/usr/bin/' | head -1)
-          echo "lanceur : $exe"
-          bash outils/sonde/sonde.sh / xvfb-run -a "$exe" --no-sandbox
+          # Le dossier de l'appli : celui de son app.asar (chercher sur tout le disque prendrait des minutes).
+          app=$(dirname "$(dpkg -L claude-desktop | grep -E 'app\.asar$' | head -1)")
+          echo "lanceur : $exe ; appli : $app"
+          bash outils/sonde/sonde.sh "$app" xvfb-run -a "$exe" --no-sandbox
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
