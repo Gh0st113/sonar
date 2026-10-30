@@ -37,6 +37,11 @@ coût 12,84 $
 Dans le terminal, le bandeau et le panneau s'écrivent en texte (le terminal ne dessine pas de jauge). Les emplacements
 `indice` et `ligne` servent au terminal ; l'appli de bureau ne les dessine pas.
 
+**L'extension cercle** (Windows, en option) : cache · branche · coût dans le popover du **cercle d'usage** et sous
+« Personnalisation » dans la barre latérale, avec le rythme des limites de [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude).
+Elle s'installe avec `cercle.exe`, à télécharger dans les [releases](https://github.com/Gh0st113/sonar/releases/latest) :
+voir [Extension cercle (Windows)](#extension-cercle-windows).
+
 *(Comme le sonar d'un navire : il sonde en continu ce qui vous entoure — quotas, cache, branche — pour ne jamais toucher le fond par surprise.)*
 
 Licence : [MIT](LICENSE).
@@ -55,7 +60,12 @@ coût quand il n'est pas suivi) n'est simplement pas affiché ; seuils, langue, 
 | `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | seulement sur `protectedBranches` (`main,master`) | orange sur une branche protégée |
 | `coût` estimé de la session (prix catalogue) | `session.measure` | jamais | — |
 
-Le contexte n'est affiché nulle part : Claude Code le montre déjà.
+Le mod n'affiche le contexte nulle part : Claude Code le montre déjà (l'extension cercle, en option, reprend le bloc
+contexte de UI+ dans le popover du cercle).
+
+Sur le bureau, le pied porte aussi, quel que soit l'emplacement choisi, une image transparente de 1 pixel dont le texte
+alternatif contient le cache, la branche et le coût en JSON (`sonar:1 {…}`) : c'est ce que lit l'extension cercle.
+Rien de visible ; un lecteur d'écran peut toutefois l'annoncer.
 
 Durée de vie du cache : déduite des réponses (une lecture du cache après plus de 6 minutes prouve 1 h ; une réécriture complète
 indique 5 min), donnée par le moteur lors d'un changement de modèle, ou forcée par `/sonar ttl`. Tant qu'elle est inconnue,
@@ -201,4 +211,7 @@ Tests (Node 22 et Go 1.24, sans dépendance) : `node --test extension/test/`, et
 node --test sonar/test/
 claude plugin validate sonar
 claude plugin test sonar
+node --test extension/test/
 ```
+
+Et pour `cercle.exe` (Go 1.24), dans `extension/` : `go test ./...`. GitHub Actions lance l'ensemble à chaque push.

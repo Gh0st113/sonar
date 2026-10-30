@@ -37,6 +37,11 @@ cost $12.84
 In the terminal, the banner and the pane are written as text (the terminal draws no gauge). The `hint` and `status`
 placements exist for the terminal; the desktop app does not draw them.
 
+**The circle extension** (Windows, optional): cache · branch · cost in the **usage circle**'s popover and below
+"Customize" in the sidebar, with the limits' pace from [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude).
+Install it with `cercle.exe`, from the [releases](https://github.com/Gh0st113/sonar/releases/latest): see
+[Circle extension (Windows)](#circle-extension-windows).
+
 *(Like a ship's sonar: it keeps sounding what lies around you — limits, cache, branch — so you never hit bottom by surprise.)*
 
 License: [MIT](LICENSE).
@@ -55,7 +60,12 @@ cost where no ledger is kept) is simply not shown, and thresholds, language, seg
 | `branch`, repo, changed files | `$.session.repo()` + `git status` (at most every 5 s, 3 s timeout) | only on `protectedBranches` (`main,master`) | orange on a protected branch |
 | session `cost` estimate (list price) | `session.measure` | never | — |
 
-Context is shown nowhere: Claude Code already does.
+The mod shows context nowhere: Claude Code already does (the optional circle extension brings UI+'s context block into
+the circle's popover).
+
+On the desktop, the footer also carries, whatever the placement, a transparent 1-pixel image whose alt text holds the
+cache, branch and cost as JSON (`sonar:1 {…}`): that is what the circle extension reads. Nothing visible; a screen
+reader may still announce it.
 
 Cache lifetime: inferred from responses (a cache read after more than 6 minutes proves 1 h; a full rewrite points to 5 min),
 or told by the engine on a model switch, or forced with `/sonar ttl`. Until it is known, the cache is shown warm for 5 minutes
@@ -198,4 +208,7 @@ Tests (Node 22 and Go 1.24, no dependency): `node --test extension/test/`, and `
 node --test sonar/test/
 claude plugin validate sonar
 claude plugin test sonar
+node --test extension/test/
 ```
+
+And for `cercle.exe` (Go 1.24), in `extension/`: `go test ./...`. GitHub Actions runs it all on every push.

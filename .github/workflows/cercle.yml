@@ -34,6 +34,15 @@ jobs:
           go vet ./...
           GOOS=windows GOARCH=amd64 go vet ./...
           go test ./...
+      # Un cercle.exe d'essai à chaque push et PR (onglet Actions > l'exécution > Artifacts), avant toute release.
+      - name: Construire cercle.exe (essai)
+        working-directory: extension
+        run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags=-buildid= -o cercle.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cercle-exe-essai
+          path: extension/cercle.exe
+          retention-days: 14
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
