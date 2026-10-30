@@ -98,3 +98,4 @@ div[data-row]:is(:hover, [data-menu-open], :has(:focus-visible)) [data-up-badge]
 .up-sonar-block { border-top: 1px solid var(--cds-alpha-2, color-mix(in srgb, currentColor 14%, transparent)); margin-top: 4px; padding-top: 8px; }
 .up-sonar-block.up-sonar-cold .up-sonar-row:first-child .up-sonar-value { color: var(--cds-text-warning, #e0913a); }
 .up-sonar-at { font-size: 11px; }
+.up-sonar-diag { font-size: 10px; overflow-wrap: anywhere; user-select: text; }
