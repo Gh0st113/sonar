@@ -162,6 +162,7 @@ Limits:
   guarantee it; if React DevTools already uses that folder, the script refuses;
 - `REACT_PROFILE` is a **user** variable: every app started afterwards sees it;
 - every change needs a **full restart** of Claude;
+- with several `claude_*` folders (after reinstalling Claude) the script stops: name the right one with `-Profil <name>`;
 - the selectors come from captures of Claude Desktop for Windows in French (`extension/test/fixtures`): a Claude
   update can break them.
 

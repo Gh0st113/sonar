@@ -36,7 +36,17 @@ test('champ absent → null', () => {
 });
 
 test('autres formes de sonar', () => {
-  assert.deepEqual(lireSonar('cache chaud (au moins jusqu’à 21:03)').cache, { etat: 'chaud', relu: null, jusqua: '21:03' });
+  const auMoins = lireSonar('cache chaud (au moins jusqu’à 21:03)');
+  assert.deepEqual(auMoins.cache, { etat: 'chaud', relu: null, jusqua: '21:03', auMoins: true });
+  assert.equal(ligneCourte(auMoins, 'fr'), '🔥 cache → ≥ 21:03');
+  assert.deepEqual(lignesDetail(auMoins, 'fr'), [['Cache', '🔥 chaud (au moins jusqu\'à 21:03)']]);
+  // Jauges de quota sans % (remise passée, épuisé) et quota au nom brut : toujours sonar.
+  for (const q of ['5 h remis à zéro', 'semaine épuisé', '5h reset', 'week exhausted', 'seven_day_opus 12 % (remise ven. 12:00)', 'budget 40 % (reste 60 %)']) {
+    assert.deepEqual(lireSonar(q), { cache: null, branche: null, depot: null, cout: null }, q);
+  }
+  // Un seul bloc, segments collés sans parenthèse entre eux.
+  assert.deepEqual(lireSonar('semaine 95 % (remise dim. 11:00)cache froidbranche master (mon-depot)coût 4,00 $'),
+    { cache: { etat: 'froid', relu: null, jusqua: null }, branche: 'master', depot: 'mon-depot', cout: '4,00 $' });
   assert.equal(lireSonar('cache autre modèle').cache.etat, 'autre modèle');
   assert.equal(lireSonar('cache incertain').cache.etat, 'incertain');
   assert.deepEqual(lireSonar('branche HEAD détachée (mon-depot, 3 modifiés)'), { cache: null, branche: 'HEAD détachée', depot: 'mon-depot', cout: null });
@@ -49,6 +59,10 @@ test('texte de baleine, vide ou méconnu → null', () => {
   assert.equal(lireSonar(''), null);
   assert.equal(lireSonar(undefined), null);
   assert.equal(lireSonar('mon cache est plein'), null);
+  // Un texte qui mêle sonar et autre chose n'est pas sonar (jamais masqué).
+  assert.equal(lireSonar(BALEINE + '\nbranch main'), null);
+  assert.equal(lireSonar(parBlocs + '\n' + BALEINE), null);
+  for (const t of ['week 42 — sprint review', 'budget 200 € restant', '5h 30 avant la réunion', 'cache tiède']) assert.equal(lireSonar(t), null, t);
 });
 
 test('masquage : fonction pure du texte actuel', () => {

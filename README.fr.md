@@ -162,6 +162,7 @@ Limites :
   rien ne garantit qu'Anthropic le garde ; si React DevTools occupe déjà ce dossier, le script refuse ;
 - `REACT_PROFILE` est une variable **utilisateur** : toutes les applis lancées ensuite la voient ;
 - tout changement demande un **redémarrage complet** de Claude ;
+- s'il y a plusieurs dossiers `claude_*` (après une réinstallation de Claude), le script s'arrête : précisez lequel avec `-Profil <nom>` ;
 - les sélecteurs viennent de relevés de Claude Desktop Windows en français (`extension/test/fixtures`) : une mise à
   jour de Claude peut les casser.
 

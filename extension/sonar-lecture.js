@@ -24,14 +24,15 @@
     warm: 'chaud', cold: 'froid', uncertain: 'incertain', 'other model': 'autre modèle',
   };
   const ESPACES = /[  ]/g;
-  // Début d'un segment de sonar, pour couper un texte venu d'un seul bloc.
-  const DEBUTS = /(?<=[)$%\d])\s*(?=(?:5 ?h|semaine|sem\.|week|budget|cache|branche|branch|coût|cost) )/g;
-  const QUOTA = /^(?:5 ?h|semaine|sem\.|week|budget) \d/;
+  // Début d'un segment de sonar, pour couper un texte venu d'un seul bloc (« …11:00)cache froidbranche … »).
+  const DEBUTS = /\s*(?=(?:5 ?h|semaine|sem\.|week|budget|cache|branche|branch|coût|cost) )/g;
+  // Une jauge de quota : nom connu, ou nom brut d'un quota inconnu (« seven_day_opus »), puis un % ou un état.
+  const QUOTA = /^(?:5 ?h|semaine|sem\.|week|budget|[a-z]+(?:_[a-z0-9]+)+) (?:\d+(?:[.,]\d+)? ?%|remis à zéro|épuisé|reset|exhausted)(?: \(.*\))?$/;
   // Le message de sonar avant la première mesure : c'est bien sonar, sans rien à lire.
   const VIDE = /^(Pas encore de mesure|No reading yet)\b/;
   const CACHE = /^cache (chaud|froid|incertain|autre modèle|warm|cold|uncertain|other model)(?: \((.*)\))?$/;
   const RELU = /(\d+(?:[.,]\d+)?) ?% (?:relu|reused)/;
-  const JUSQUA = /(?:jusqu['’]à|until) (\d{1,2}:\d{2}(?: ?[AP]M)?)/;
+  const JUSQUA = /(au moins |at least )?(?:jusqu['’]à|until) (\d{1,2}:\d{2}(?: ?[AP]M)?)/;
   const BRANCHE = /^(?:branche|branch) (.+?)(?: \((.*)\))?$/;
   const MODIFIES = /^\d+ modifi/;
   const COUT = /^(?:coût (\d[\d ]*(?:,\d+)? \$)|cost (\$\d[\d,]*(?:\.\d+)?))$/;
@@ -41,19 +42,21 @@
       .flatMap((l) => l.split(DEBUTS)).map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
   }
 
-  // Texte du bandeau → { cache: { etat, relu, jusqua } | null, branche, depot, cout } ; null si ce n'est pas sonar.
+  // Texte du bandeau → { cache: { etat, relu, jusqua[, auMoins] } | null, branche, depot, cout } ; null si ce
+  // n'est pas sonar. C'est sonar seulement si CHAQUE segment se lit comme sonar : un texte qui mêle sonar et autre
+  // chose (un autre mod dans le même site AbovePrompt) n'est pas sonar, et ne sera donc pas masqué.
   function lireSonar(texte) {
     const r = { cache: null, branche: null, depot: null, cout: null };
-    let reconnu = false;
-    for (const s of segments(texte)) {
+    const morceaux = segments(texte);
+    if (morceaux.length === 0) return null;
+    for (const s of morceaux) {
       let m;
       if ((m = CACHE.exec(s))) {
         const relu = RELU.exec(m[2] ?? '');
-        r.cache = {
-          etat: ETATS[m[1]],
-          relu: relu ? Number(relu[1].replace(',', '.')) : null,
-          jusqua: JUSQUA.exec(m[2] ?? '')?.[1] ?? null,
-        };
+        const jusqua = JUSQUA.exec(m[2] ?? '');
+        r.cache = { etat: ETATS[m[1]], relu: relu ? Number(relu[1].replace(',', '.')) : null, jusqua: jusqua?.[2] ?? null };
+        // Durée de vie du cache inconnue : sonar écrit « au moins jusqu'à ».
+        if (jusqua?.[1]) r.cache.auMoins = true;
       } else if ((m = BRANCHE.exec(s))) {
         // « branche master (mon-depot, 2 modifiés) » ; sans branche connue, sonar écrit le nom du dépôt seul.
         const detail = (m[2] ?? '').split(', ').filter((d) => d && !MODIFIES.test(d));
@@ -66,11 +69,10 @@
       } else if ((m = COUT.exec(s))) {
         r.cout = m[1] ?? m[2];
       } else if (!QUOTA.test(s) && !VIDE.test(s)) {
-        continue;
+        return null;
       }
-      reconnu = true;
     }
-    return reconnu ? r : null;
+    return r;
   }
 
   // Masquer un hôte AbovePrompt ? Oui seulement si son texte ACTUEL se lit comme sonar.
@@ -94,12 +96,12 @@
   const MOTS = {
     fr: {
       chaud: 'chaud', froid: 'froid', incertain: 'incertain', 'autre modèle': 'autre modèle',
-      relu: (p) => `${String(p).replace('.', ',')} % relu`, jusqua: (h) => `jusqu'à ${h}`,
+      relu: (p) => `${String(p).replace('.', ',')} % relu`, jusqua: (h, auMoins) => `${auMoins ? 'au moins ' : ''}jusqu'à ${h}`,
       cache: 'Cache', branche: 'Branche', cout: 'Coût', releve: (h) => `relevé à ${h}`,
     },
     en: {
       chaud: 'warm', froid: 'cold', incertain: 'uncertain', 'autre modèle': 'other model',
-      relu: (p) => `${p}% reused`, jusqua: (h) => `until ${h}`,
+      relu: (p) => `${p}% reused`, jusqua: (h, auMoins) => `${auMoins ? 'at least ' : ''}until ${h}`,
       cache: 'Cache', branche: 'Branch', cout: 'Cost', releve: (h) => `read at ${h}`,
     },
   };
@@ -111,7 +113,7 @@
     const t = MOTS[langue] ?? MOTS.en;
     const morceaux = [];
     const c = lecture.cache;
-    if (c) morceaux.push(c.etat === 'chaud' && c.jusqua ? `${ICONES.chaud} cache → ${c.jusqua}` : `${ICONES[c.etat] ?? ''} cache ${t[c.etat] ?? c.etat}`.trim());
+    if (c) morceaux.push(c.etat === 'chaud' && c.jusqua ? `${ICONES.chaud} cache → ${c.auMoins ? '≥ ' : ''}${c.jusqua}` : `${ICONES[c.etat] ?? ''} cache ${t[c.etat] ?? c.etat}`.trim());
     if (lecture.branche || lecture.depot) morceaux.push(`⎇ ${lecture.branche ?? lecture.depot}`);
     if (lecture.cout) morceaux.push(lecture.cout);
     return morceaux.join(' · ');
@@ -124,7 +126,7 @@
     const l = [];
     const c = lecture.cache;
     if (c) {
-      const detail = [c.relu !== null ? t.relu(c.relu) : '', c.jusqua ? t.jusqua(c.jusqua) : ''].filter(Boolean).join(', ');
+      const detail = [c.relu !== null ? t.relu(c.relu) : '', c.jusqua ? t.jusqua(c.jusqua, c.auMoins) : ''].filter(Boolean).join(', ');
       l.push([t.cache, `${ICONES[c.etat] ?? ''} ${t[c.etat] ?? c.etat}${detail ? ` (${detail})` : ''}`.trim()]);
     }
     if (lecture.branche || lecture.depot) {

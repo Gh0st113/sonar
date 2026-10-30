@@ -475,6 +475,7 @@
       input.addEventListener('change', () => {
         settings[name] = input.checked;
         store(name, input.checked);
+        scanHosts();
         place();
         enhancePopover();
         markSessions();
@@ -806,20 +807,34 @@
   function readHost(host) {
     const kept = sonarReading ? { lecture: sonarReading, a: sonarReadAt } : null;
     const step = LECTEUR.suivre(kept, hostText(host), Date.now());
-    // La décision de masquer ne dépend que du texte actuel de cet hôte, jamais de la lecture gardée.
-    const hide = !removed && step.masque;
+    // La décision de masquer ne dépend que du texte actuel de cet hôte, jamais de la lecture gardée ; et
+    // seulement si ce qu'il montre s'affiche ailleurs (barre latérale ou popover).
+    const hide = !removed && (settings.sidebar || settings.popover) && step.masque;
     if (hide !== host.hasAttribute(MASQUE)) host.toggleAttribute(MASQUE, hide);
-    if (step.garde === kept) return;
-    const changed = JSON.stringify(step.garde.lecture) !== JSON.stringify(sonarReading);
+    // L'heure gardée est celle du dernier CHANGEMENT de lecture : sinon chaque mutation de la page la
+    // changerait, le popover se redessinerait, et l'observateur se relancerait lui-même.
+    if (step.garde === kept || JSON.stringify(step.garde.lecture) === JSON.stringify(sonarReading)) return;
     sonarReading = step.garde.lecture;
     sonarReadAt = step.garde.a;
-    if (changed) renderSonar();
+    renderSonar();
   }
+
+  let rescan = null;
+  const waitingHosts = new WeakMap();
 
   function scanHosts() {
     if (!LECTEUR || !SEL.hote) return;
     for (const host of document.querySelectorAll(SEL.hote)) {
       const root = host.shadowRoot;
+      // Hôte inséré avant son shadowRoot : on repasse à l'image suivante (une seconde au plus).
+      const tries = waitingHosts.get(host) ?? 0;
+      if (!root && tries < 60) {
+        waitingHosts.set(host, tries + 1);
+        rescan ??= requestAnimationFrame(() => {
+          rescan = null;
+          scanHosts();
+        });
+      }
       if (root && !observedRoots.has(root)) {
         const observer = new MutationObserver(() => readHost(host));
         observer.observe(root, { childList: true, subtree: true, characterData: true });
@@ -865,7 +880,7 @@
       block?.remove();
       return;
     }
-    const key = JSON.stringify([lines, sonarReadAt]);
+    const key = JSON.stringify([lines, readAtText()]);
     if (!block) block = element('div', 'up-sonar-block flex flex-col gap-1 px-lg py-xs text-footnote');
     if (block.dataset.key !== key) {
       block.dataset.key = key;
