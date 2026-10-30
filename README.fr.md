@@ -155,8 +155,11 @@ Installation : téléchargez **`cercle-setup.exe`** depuis la [dernière release
 et lancez-le : un assistant classique, **sans droits administrateur** par défaut. Il installe le programme dans
 `%LOCALAPPDATA%\Programs\sonar-cercle` ou dans le dossier de votre choix ; un dossier protégé (`Program Files`…)
 relance l'installation en administrateur, avec votre accord (l'extension et Claude restent alors sous votre compte, et
-les mises à jour redemandent cet accord). Il ajoute **« Claude (cercle) »** au menu Démarrer et une entrée dans
-**Paramètres > Applications** (désinstallation), puis copie l'extension dans le profil de Claude. Windows peut afficher un
+les mises à jour redemandent cet accord). Au choix : un dossier **« Claude (cercle) »** dans le menu Démarrer (lancer
+Claude, **« Gérer Claude (cercle) »**, désinstaller) et une icône sur le Bureau. Il s'inscrit dans **Paramètres >
+Applications** (version, désinstallation), puis copie l'extension dans le profil de Claude. **« Gérer Claude (cercle) »**
+montre la version et l'état de l'extension, propose de la réparer si ses fichiers ont changé, et cherche une mise à jour à
+la demande ; la version se lit aussi dans Claude, sur la ligne de réglages du popover du cercle (`cercle 0.5.0 · UI+`). Windows peut afficher un
 avertissement SmartScreen (installeur non signé par un certificat payant) : « Informations complémentaires > Exécuter
 quand même ». Ensuite, **quitter complètement Claude** (zone de notification > Quitter) et le lancer par
 « Claude (cercle) ». Un Claude lancé autrement ne charge **pas** l'extension : c'est voulu. Pas de fenêtre noire : un
@@ -183,7 +186,7 @@ ignorée : un compte GitHub piraté ne suffit pas à pousser du code dans Claude
 GitHub et ne sont **pas** signées. Sans réseau, Claude se lance avec la version actuelle.
 
 Depuis un terminal (`%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe <action>`) : `lancer` (ce que fait le raccourci),
-`etat` (fichiers intacts ou non, état de la variable), `maj` (cherche une version signée et l'installe sur accord, sans
+`gerer` (ce que fait « Gérer Claude (cercle) »), `etat` (fichiers intacts ou non, état de la variable), `maj` (cherche une version signée et l'installe sur accord, sans
 lancer Claude), `installer` / `retirer` (appelés par l'installeur et la désinstallation), `version` ; options
 `--profil <claude_…>` s'il y a plusieurs profils, `--lanceur <claude.exe ou shell:AppsFolder\…>` si Claude n'est pas
 trouvé. Codes de retour : 0 réussi, 1 action inconnue, 2 profil introuvable ou ambigu, 3 dossier occupé par autre chose

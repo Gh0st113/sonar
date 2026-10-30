@@ -155,8 +155,11 @@ Install: download **`cercle-setup.exe`** from the [latest release](https://githu
 and run it: a classic wizard, **no administrator rights** by default. It installs the program into
 `%LOCALAPPDATA%\Programs\sonar-cercle` or the folder of your choice; a protected folder (`Program Files`…) restarts
 the installation as administrator, with your consent (the extension and Claude then stay under your account, and updates
-ask for that consent again). It adds **"Claude (cercle)"** to the Start menu and an entry to **Settings > Apps**
-(uninstall), then copies the extension into Claude's profile. Windows may show a SmartScreen warning (installer without a
+ask for that consent again). Optionally: a **"Claude (cercle)"** Start menu folder (start Claude, **"Manage Claude
+(cercle)"**, uninstall) and a desktop icon. It registers in **Settings > Apps** (version, uninstall), then copies the
+extension into Claude's profile. **"Manage Claude (cercle)"** shows the version and the extension's state, offers to
+repair it if its files changed, and looks for an update on demand; the version also shows in Claude, on the settings row
+of the circle's popover (`cercle 0.5.0 · UI+`). Windows may show a SmartScreen warning (installer without a
 paid code-signing certificate): "More info > Run anyway". Then **quit Claude completely** (notification area > Quit) and
 start it from "Claude (cercle)". Claude started any other way does **not** load the extension: on purpose. No black
 window: a normal launch shows nothing; a question or a problem shows in a Windows dialog.
@@ -179,8 +182,8 @@ it, runs it without the wizard, then starts Claude again. A badly signed release
 GitHub account is not enough to push code into Claude. The release notes shown come from GitHub and are **not** signed.
 Offline, Claude starts with the current version.
 
-From a terminal (`%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe <action>`): `lancer` (what the shortcut does), `etat`
-(files intact or not, variable state), `maj` (looks for a signed version and installs it with your consent, without
+From a terminal (`%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe <action>`): `lancer` (what the shortcut does), `gerer`
+(what "Manage Claude (cercle)" does), `etat` (files intact or not, variable state), `maj` (looks for a signed version and installs it with your consent, without
 starting Claude), `installer` / `retirer` (called by the installer and the uninstaller), `version`; options
 `--profil <claude_…>` with several profiles, `--lanceur <claude.exe or shell:AppsFolder\…>` if Claude is not found. Exit
 codes: 0 success, 1 unknown action, 2 profile missing or ambiguous, 3 folder used by something else (React DevTools?),

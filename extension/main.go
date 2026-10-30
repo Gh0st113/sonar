@@ -8,6 +8,7 @@
 //	cercle installer                     copie l'extension dans le profil de Claude (appelé par l'installeur)
 //	cercle retirer                       la supprime (appelé à la désinstallation)
 //	cercle etat                          ce qui est installé, fichiers intacts ou non
+//	cercle gerer                         « Gérer Claude (cercle) » : version, état, réparation, mise à jour (fenêtres)
 //	cercle maj                           cherche une mise à jour signée et l'installe sur accord (sans lancer Claude)
 //	cercle cle <fichier>                 crée la clé de signature (à garder hors de GitHub)
 //	cercle signer <setup> <clé> [--exe <cercle.exe recompilé>]   écrit <setup>.sig
@@ -84,6 +85,8 @@ func executer(args []string) int {
 	case "etat":
 		err = actionEtat(o)
 		vider(boiteInfo, true)
+	case "gerer":
+		err = actionGerer(o)
 	case "maj":
 		err = actionMaj(o)
 	case "cle":
@@ -94,7 +97,7 @@ func executer(args []string) int {
 		dire("%s", version())
 		vider(boiteInfo, true)
 	default:
-		err = echec(codeAction, "action inconnue « %s » : lancer | installer | retirer | etat | maj | cle | signer | version", action)
+		err = echec(codeAction, "action inconnue « %s » : lancer | installer | retirer | etat | gerer | maj | cle | signer | version", action)
 	}
 	return terminer(err)
 }
@@ -359,7 +362,8 @@ func appliquerMaj(m *miseAJour, lancer bool) (bool, error) {
 	if err := os.WriteFile(setup, m.Exe, 0o755); err != nil {
 		return true, echec(codeEcriture, "écriture de l'installeur impossible : %v", err)
 	}
-	args := []string{"/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"}
+	// /SILENT : la fenêtre de progression s'affiche, sans questions (l'accord est déjà donné).
+	args := []string{"/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART"}
 	// Installé dans un dossier protégé (Program Files…) : l'installeur doit passer en administrateur ; Windows demande
 	// l'accord, et l'extension comme Claude restent sous le compte de l'utilisateur (runasoriginaluser).
 	if installationProtegee() {
@@ -465,6 +469,68 @@ func actionEtat(o options) error {
 	}
 	avertirVariable()
 	return nil
+}
+
+// actionGerer : l'entrée « Gérer Claude (cercle) » du menu Démarrer. La version et l'état, la réparation si les
+// fichiers de l'extension ont changé, puis la recherche d'une mise à jour à la demande.
+func actionGerer(o options) error {
+	dossier, err := dossierDe(o)
+	if err != nil {
+		return err
+	}
+	dire("Claude (cercle) version %s", version())
+	switch oc := occupant(dossier); {
+	case oc == "absent":
+		alerter("L'extension n'est pas installée dans le profil de Claude.")
+		if oui("L'installer maintenant ?") {
+			if err := installer(dossier, time.Now()); err != nil {
+				return err
+			}
+			dire("Extension installée.")
+		}
+	case oc != "nôtre" && oc != "nôtre sans état":
+		alerter("Le dossier de l'extension est occupé par autre chose (%s) : %s", oc, dossier)
+	default:
+		if e := ecarts(dossier); len(e) == 0 {
+			dire("Extension : installée, fichiers intacts.")
+		} else {
+			alerter("Extension : fichiers modifiés (%s).", strings.Join(e, " ; "))
+			if oui("Réparer (réinstaller les fichiers de l'extension) ?") {
+				if err := installer(dossier, time.Now()); err != nil {
+					return err
+				}
+				dire("Extension réparée.")
+			}
+		}
+	}
+	if v, err := lireReactProfile(); err == nil && v.Existe && strings.TrimSpace(v.Valeur) == "1" {
+		alerter("REACT_PROFILE vaut 1 en permanence : le prochain lancement par « Claude (cercle) » propose de la retirer.")
+	}
+	if pub, err := clePublique(); pub == nil || err != nil {
+		dire("Mises à jour : pas encore activées (aucune clé de signature dans cette version).")
+		vider(boiteInfo, true)
+		return nil
+	}
+	if !oui("Chercher une mise à jour maintenant ?") {
+		return nil
+	}
+	ctx, fin := contexteCourt(3 * time.Minute)
+	defer fin()
+	m, err := chercherMiseAJour(ctx, version())
+	if err != nil {
+		var e *erreurCode
+		if errors.As(err, &e) {
+			return err
+		}
+		return echec(codeMiseAJour, "recherche impossible : %v", err)
+	}
+	if m == nil {
+		alerter("Vous avez la dernière version (%s).", version())
+		vider(boiteInfo, true)
+		return nil
+	}
+	_, err = appliquerMaj(m, false)
+	return err
 }
 
 func actionCle(o options) error {

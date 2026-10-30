@@ -31,6 +31,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline
 DisableDirPage=no
 UsePreviousAppDir=yes
+DefaultGroupName=Claude (cercle)
 DisableProgramGroupPage=yes
 DisableReadyPage=no
 WizardStyle=modern
@@ -59,6 +60,18 @@ fr.DroitsAdmin=Ce dossier demande des droits administrateur.%n%nRelancer l'insta
 en.DroitsAdmin=This folder needs administrator rights.%n%nRestart the installation as administrator, with this folder? (Windows will ask for your consent.)%n%nThe extension and Claude will stay under your account.
 fr.ElevationRefusee=L'installation en administrateur n'a pas pu démarrer. Choisissez un autre dossier.
 en.ElevationRefusee=The installation as administrator could not start. Choose another folder.
+fr.TacheMenu=Créer un dossier « Claude (cercle) » dans le menu Démarrer
+en.TacheMenu=Create a "Claude (cercle)" folder in the Start menu
+fr.TacheBureau=Créer une icône « Claude (cercle) » sur le Bureau
+en.TacheBureau=Create a "Claude (cercle)" icon on the desktop
+fr.Raccourcis=Raccourcis :
+en.Raccourcis=Shortcuts:
+fr.Gerer=Gérer Claude (cercle)
+en.Gerer=Manage Claude (cercle)
+fr.CommentaireGerer=Version, état de l'extension, réparation et mises à jour
+en.CommentaireGerer=Version, extension state, repair and updates
+fr.Desinstaller=Désinstaller Claude (cercle)
+en.Desinstaller=Uninstall Claude (cercle)
 fr.Commentaire=Lance Claude avec l'extension cercle, après vérification des fichiers
 en.Commentaire=Starts Claude with the cercle extension, after checking its files
 
@@ -71,8 +84,16 @@ Source: "{#Exe}"; DestDir: "{app}"; DestName: "cercle.exe"; Flags: ignoreversion
 Source: "..\LICENSE-UI-PLUS"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\PROVENANCE.md"; DestDir: "{app}"; Flags: ignoreversion
 
+[Tasks]
+Name: "menu"; Description: "{cm:TacheMenu}"; GroupDescription: "{cm:Raccourcis}"
+Name: "bureau"; Description: "{cm:TacheBureau}"; GroupDescription: "{cm:Raccourcis}"
+
 [Icons]
-Name: "{autoprograms}\Claude (cercle)"; Filename: "{app}\cercle.exe"; Comment: "{cm:Commentaire}"
+; Menu Démarrer : un dossier « Claude (cercle) » avec le lanceur, la gestion (version, mises à jour) et la désinstallation.
+Name: "{group}\Claude (cercle)"; Filename: "{app}\cercle.exe"; Comment: "{cm:Commentaire}"; Tasks: menu
+Name: "{group}\{cm:Gerer}"; Filename: "{app}\cercle.exe"; Parameters: "gerer"; Comment: "{cm:CommentaireGerer}"; Tasks: menu
+Name: "{group}\{cm:Desinstaller}"; Filename: "{uninstallexe}"; Tasks: menu
+Name: "{autodesktop}\Claude (cercle)"; Filename: "{app}\cercle.exe"; Comment: "{cm:Commentaire}"; Tasks: bureau
 
 [Run]
 ; Toujours : copier l'extension dans le profil de Claude (une erreur s'affiche dans une fenêtre).

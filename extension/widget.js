@@ -25,7 +25,14 @@
   // stop the polling.
   const FETCH_TIMEOUT_MS = 15_000;
   const ACCOUNT_CHECK_MS = 2_000;
-  const NAME = 'UI+';
+  // Nom affiché en tête de la ligne de réglages du popover : la version installée de cercle, visible dans Claude.
+  const NAME = (() => {
+    try {
+      return 'cercle ' + chrome.runtime.getManifest().version + ' · UI+';
+    } catch {
+      return 'UI+';
+    }
+  })();
   const GAUGE_PATHS = ['M3.8 14.2a6.8 6.8 0 1 1 12.4 0', 'M10 11.2l3.2-3.4'];
 
   const STRINGS = {
