@@ -789,10 +789,10 @@
 
   // Sonar -------------------------------------------------------------------
 
-  // Sur le bureau, le mod sonar ajoute à son pied (à côté du modèle) une image transparente de 1 pixel dont le texte
+  // Sur le bureau, le mod sonar ajoute à son bandeau (au-dessus de la saisie) une image transparente de 1 pixel dont le texte
   // alternatif porte ses données (« sonar:1 {json} », sans langue), dans le shadowRoot ouvert d'un hôte
   // [data-plugin-drawn]. On les lit pour montrer $ · cache · branche dans le popover du cercle et sous
-  // « Personnalisation ». Rien n'est masqué. À chaque passe, la charge vient des seuls pieds affichés : un pied
+  // « Personnalisation ». Rien n'est masqué. À chaque passe, la charge vient des seuls bandeaux affichés : un bandeau
   // retiré ou caché (autre session) ne compte plus, et une charge de plus de quelques minutes n'est plus montrée.
   const LECTEUR = globalThis.SonarLecture;
   const observedRoots = new WeakMap();

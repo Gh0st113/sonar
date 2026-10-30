@@ -63,13 +63,12 @@ async function demarrer($: Moteur) {
   await $.session.measure(MESURE)
 }
 
-// Texte du pied tel qu'il s'affiche. Sur le bureau, le mod dessine toujours son propre pied (il y porte les données
-// de l'extension « cercle ») : sans rien de sonar à montrer, ce texte est vide, et non « (rien) » du moteur de test.
+// Texte du pied tel qu'il s'affiche ; vide quand le pied du moteur de test ne montre rien (« (rien) »).
 async function pied($: Moteur, surface: 'terminal' | 'desktop', modes: string[] = []) {
   const ui = await $.ui.mount({ ...PIED, props: { modes }, surface })
   const t = (await ui.find({ type: 'Text' }))?.text ?? ''
   await ui.unmount()
-  return t
+  return t === '(rien)' ? '' : t
 }
 
 test('pied (défaut) : cas normal = la semaine seule, ni contexte ni % des 5 h', FR, async ($, on) => {
@@ -197,34 +196,36 @@ test('git en panne ou hors dépôt : pas de branche, le reste s’affiche', FR, 
   expect(await commande($, '')).not.toMatch(/^branche /m)
 })
 
-test('pied sur le bureau : porteur invisible des données de l\'extension, quel que soit l\'emplacement ; rien sur le terminal', FR, async ($, on) => {
+test('bandeau sur le bureau : porteur invisible des données de l\'extension, quel que soit l\'emplacement ; rien sur le terminal', FR, async ($, on) => {
   moteur(on)
   await demarrer($)
   const charge = async () => {
-    const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-    const svg = await ui.find({ type: 'Svg' } as never) as { props?: { alt?: string; width?: number; height?: number } } | undefined
+    const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+    const svgs = await ui.findAll({ type: 'Svg' } as never) as { props?: { alt?: string; width?: number; height?: number } }[]
+    const texte = (await ui.find({ type: 'Text' }))?.text
     await ui.unmount()
-    return svg?.props
+    return { p: svgs.find(s => s.props?.alt?.startsWith('sonar:1 '))?.props, texte }
   }
-  const p = await charge()
+  // Emplacement par défaut (pied) : le bandeau ne montre rien, il porte seulement les données.
+  const { p, texte } = await charge()
+  expect(texte).toBeUndefined()
   expect(p?.width).toBe(1)
   expect(p?.height).toBe(1)
-  expect(p?.alt?.startsWith('sonar:1 ')).toBe(true)
   const c = JSON.parse((p?.alt ?? '').slice('sonar:1 '.length))
   expect(c.cout).toBe(1.23)
   expect(c.depot).toEqual({ nom: 'projet-a', modifies: 2, branche: 'feat/x' })
-  // Autre emplacement, ou sonar masqué : le pied ne montre rien de sonar, le porteur reste.
+  // Bandeau affiché : les jauges et le porteur ; sonar masqué : le porteur seul.
   await commande($, 'bandeau')
-  expect(await pied($, 'desktop')).toBe('')
-  expect((await charge())?.alt?.startsWith('sonar:1 ')).toBe(true)
+  const affiche = await charge()
+  expect(affiche.texte).toMatch(/^5 h/)
+  expect(affiche.p?.alt?.startsWith('sonar:1 ')).toBe(true)
   await commande($, 'masquer')
-  expect((await charge())?.alt?.startsWith('sonar:1 ')).toBe(true)
-  // Un mode natif, rien de sonar : le mode seul, sans « & » final.
+  expect((await charge()).p?.alt?.startsWith('sonar:1 ')).toBe(true)
+  // Le pied ne porte plus rien : un mode natif, rien de sonar, le dessin du moteur.
   expect(await pied($, 'desktop', ['focus'])).toBe('focus')
   // Terminal : pas de porteur.
-  await commande($, 'pied')
   await commande($, 'afficher')
-  const terminal = await $.ui.mount({ ...PIED, surface: 'terminal' })
+  const terminal = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
   expect(await terminal.find({ type: 'Svg' } as never)).toBeUndefined()
   await terminal.unmount()
 })

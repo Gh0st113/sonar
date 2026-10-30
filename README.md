@@ -63,7 +63,7 @@ cost where no ledger is kept) is simply not shown, and thresholds, language, seg
 The mod shows context nowhere: Claude Code already does (the optional circle extension brings UI+'s context block into
 the circle's popover).
 
-On the desktop, the footer also carries, whatever the placement, a transparent 1-pixel image whose alt text holds the
+On the desktop, the banner also carries, whatever the placement, a transparent 1-pixel image whose alt text holds the
 cache, branch and cost as JSON (`sonar:1 {…}`): that is what the circle extension reads. Nothing visible; a screen
 reader may still announce it.
 
@@ -141,16 +141,16 @@ what sonar knows in two places:
 
 - the **usage circle** (right, below the prompt): its popover keeps what UI+ adds (time line and pace of each limit,
   session context, settings) and gets a **Cache · Branch · Cost** block, with the time of the reading (without data from the mod, one line
-  recommends it: mod missing, older than 0.5.0, or no Code tab session open);
+  recommends it: mod missing, older than 0.5.1, or no Code tab session open);
 - the **sidebar**, right below "Customize": a collapsible "Usage" row as in UI+, plus sonar's short line, e.g.
   `🔥 cache → 21:03 · ⎇ main · $4.00` (`🧊 cache cold` when the cache is cold).
 
-Where the data comes from: on the desktop, the sonar mod adds to its footer (next to the model name) a transparent
+Where the data comes from: on the desktop, the sonar mod adds to the banner above the prompt a transparent
 1-pixel image whose alt text carries its numbers as language-neutral JSON. The extension reads it and words it in
-English or French, following the app's language. Nothing is hidden and the banner is not used: sonar can stay in its
+English or French, following the app's language. The banner stays invisible when sonar is not shown there: sonar can stay in its
 default `footer` placement, which only shows what deserves a glance (if you picked `/sonar banner`, go back with
 `/sonar footer` to avoid seeing things twice). The data still flows with `/sonar hide`, which only hides sonar's own
-display. The sonar mod (0.5.0 or later) is **recommended**, not required: without it, the extension shows the UI+
+display. The sonar mod (0.5.1 or later) is **recommended**, not required: without it, the extension shows the UI+
 part (usage, timeline, limits' pace), without the Cache · Branch · Cost block or the short line.
 
 Install: download **`cercle-setup.exe`** from the [releases](https://github.com/Gh0st113/sonar/releases) (signed installer, recommended). To try the
@@ -212,8 +212,9 @@ Limits:
 - installed "for all users" with **another** administrator account's password, the uninstaller runs under that account
   and does not find your Claude profile: the extension stays there (`cercle.exe retirer` before uninstalling, or delete
   the `fmkadmapgofadopljbjfkapdkoienihi` folder by hand);
-- the carrier is invisible but **not silent**: a screen reader may read its text (`sonar:1 {…}`) in the footer;
-- the footer's host has not been captured in the app yet (only the banner's was): to be confirmed when trying it;
+- the carrier is invisible but **not silent**: a screen reader may read its text (`sonar:1 {…}`) in the banner;
+- the footer is not an area the extension can read (test of 10/30): the data goes through the banner, which may leave
+  a slight empty gap above the prompt, to be confirmed when trying it;
 - the locks hold until Claude has started (+10 s): if Claude reads the extension again later (new window), that is not
   covered. To be checked when trying it (Process Monitor); so is the AppID of Claude's package looked up in the Start
   menu (otherwise `--lanceur`);

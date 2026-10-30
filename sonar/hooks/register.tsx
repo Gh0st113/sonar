@@ -369,29 +369,18 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     await read($, tic)
     // Le pied ne montre que ce qui mérite un coup d'œil (cas normal : la semaine seule).
-    const montrer = (await lieu($)) === 'pied' && !(await read($, masque))
-    // Hors du bureau, pas de porteur : rien à calculer si rien n'est montré.
-    if (!montrer && e.surface !== 'desktop') return next(e)
-    const { pied, extension } = await calculer($)
-    const visibles = montrer ? pied : []
+    if ((await lieu($)) !== 'pied' || (await read($, masque))) return next(e)
+    const { pied } = await calculer($)
+    if (pied.length === 0) return next(e)
     // L'appli de bureau ne dessine pas les `modes` ajoutés (essai du 27/10) : on y dessine notre propre arbre,
-    // les modes natifs devant, joints comme le moteur le fait. Sur le bureau, le porteur des données de l'extension
-    // « cercle » y est toujours, quel que soit l'emplacement : invisible, il ne dépend pas de ce que montre sonar.
+    // les modes natifs devant, joints comme le moteur le fait.
     if (e.surface === 'desktop') {
       const u = $.ui.resolve(e)
-      const { Box, Text } = u
-      const Svg = svgDe(u, e.surface)
-      if (visibles.length === 0 && !Svg) return next(e)
+      const { Text } = u
       const natifs = e.props.modes.join(' & ')
-      return (
-        <Box flexDirection="row" alignItems="center">
-          <Text>{natifs ? <Text dimColor>{`${natifs}${visibles.length > 0 ? ' & ' : ''}`}</Text> : null}{visibles.length > 0 ? phrase(u, visibles, SEP_BUREAU) : null}</Text>
-          {Svg ? <Svg source={SVG_VIDE} alt={extension} width={1} height={1} /> : null}
-        </Box>
-      )
+      return <Text>{natifs ? <Text dimColor>{`${natifs} & `}</Text> : null}{phrase(u, pied, SEP_BUREAU)}</Text>
     }
-    if (visibles.length === 0) return next(e)
-    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, ligne(visibles, '  ')] } })
+    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, ligne(pied, '  ')] } })
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
@@ -401,10 +390,24 @@ export const register: Register = (on, options) => {
     return js.length > 0 ? phrase($.ui.resolve(e), js) : next(e)
   }).catch(($, e, next) => next(e))
 
+  // Sur le bureau, le bandeau porte toujours les données de l'extension « cercle » (image invisible), quel que soit
+  // l'emplacement : c'est la seule zone des mods que l'extension peut lire (le pied n'en est pas une, essai du 30/10).
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     await read($, tic)
-    if (e.props.hasSurvey || (await lieu($)) !== 'bandeau' || (await read($, masque))) return next(e)
-    return (await bandeau($, e)) ?? next(e)
+    if (e.props.hasSurvey) return next(e)
+    const montrer = (await lieu($)) === 'bandeau' && !(await read($, masque))
+    const vue = montrer ? await bandeau($, e) : undefined
+    const u = $.ui.resolve(e)
+    const Svg = e.surface === 'desktop' ? svgDe(u, e.surface) : undefined
+    if (!Svg) return vue ?? next(e)
+    const { Box } = u
+    const { extension } = await calculer($)
+    return (
+      <Box flexDirection="column">
+        {vue ?? null}
+        <Svg source={SVG_VIDE} alt={extension} width={1} height={1} />
+      </Box>
+    )
   }).catch(($, e, next) => next(e))
 
   // Panneau ouvert par /sonar : tout le détail, jauges comprises sur le bureau ; fermé par sa croix.

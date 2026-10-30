@@ -63,7 +63,7 @@ coût quand il n'est pas suivi) n'est simplement pas affiché ; seuils, langue, 
 Le mod n'affiche le contexte nulle part : Claude Code le montre déjà (l'extension cercle, en option, reprend le bloc
 contexte de UI+ dans le popover du cercle).
 
-Sur le bureau, le pied porte aussi, quel que soit l'emplacement choisi, une image transparente de 1 pixel dont le texte
+Sur le bureau, le bandeau porte aussi, quel que soit l'emplacement choisi, une image transparente de 1 pixel dont le texte
 alternatif contient le cache, la branche et le coût en JSON (`sonar:1 {…}`) : c'est ce que lit l'extension cercle.
 Rien de visible ; un lecteur d'écran peut toutefois l'annoncer.
 
@@ -141,16 +141,16 @@ dossier. Elle montre ce que sonar sait, à deux endroits :
 
 - **le cercle d'usage** (à droite sous la zone de saisie) : son popover garde ce qu'ajoute UI+ (ligne de temps et rythme de
   chaque limite, contexte de la session, réglages) et reçoit un bloc **Cache · Branche · Coût**, avec l'heure du relevé (sans données du mod, une ligne le recommande :
-  mod absent, antérieur à 0.5.0, ou pas de session de l'onglet Code ouverte) ;
+  mod absent, antérieur à 0.5.1, ou pas de session de l'onglet Code ouverte) ;
 - **la barre latérale**, juste sous « Personnalisation » : une ligne « Utilisation » repliable comme dans UI+, et la
   ligne courte de sonar, par exemple `🔥 cache → 21:03 · ⎇ master · 4,00 $` (`🧊 cache froid` quand le cache est froid).
 
-D'où viennent les données : sur le bureau, le mod sonar ajoute à son pied (à côté du nom du modèle) une image
+D'où viennent les données : sur le bureau, le mod sonar ajoute au bandeau au-dessus de la saisie une image
 transparente de 1 pixel dont le texte alternatif porte ses chiffres en JSON, sans langue. L'extension la lit et les écrit
-en français ou en anglais, selon la langue de l'appli. Rien n'est masqué, le bandeau n'est pas utilisé : sonar peut rester
+en français ou en anglais, selon la langue de l'appli. Le bandeau reste invisible si sonar n'y est pas affiché : sonar peut rester
 à son emplacement par défaut (`pied`), qui ne montre que ce qui mérite un coup d'œil (si vous aviez choisi `/sonar bandeau`,
 revenez-y avec `/sonar pied` pour ne pas voir les infos en double). Les données partent même avec `/sonar masquer`, qui
-cache seulement l'affichage de sonar. Le mod sonar (0.5.0 ou plus) est **recommandé**, pas obligatoire : sans lui,
+cache seulement l'affichage de sonar. Le mod sonar (0.5.1 ou plus) est **recommandé**, pas obligatoire : sans lui,
 l'extension montre la partie UI+ (utilisation, ligne de temps, rythme des limites), sans le bloc Cache · Branche · Coût
 ni la ligne courte.
 
@@ -218,8 +218,9 @@ Limites :
 - installé « pour tous » avec le mot de passe d'un **autre** compte administrateur, la désinstallation tourne sous ce
   compte et ne trouve pas votre profil de Claude : l'extension y reste (`cercle.exe retirer` avant de désinstaller, ou
   supprimer le dossier `fmkadmapgofadopljbjfkapdkoienihi` à la main) ;
-- le porteur est invisible mais **pas muet** : un lecteur d'écran peut annoncer son texte (`sonar:1 {…}`) dans le pied ;
-- l'hôte du pied n'a pas encore été relevé dans l'appli (seul celui du bandeau l'a été) : à confirmer à l'essai ;
+- le porteur est invisible mais **pas muet** : un lecteur d'écran peut annoncer son texte (`sonar:1 {…}`) dans le bandeau ;
+- le pied n'est pas une zone que l'extension peut lire (essai du 30/10) : les données passent par le bandeau, qui
+  pourrait laisser un léger espace vide au-dessus de la saisie, à confirmer à l'essai ;
 - les verrous tiennent jusqu'au démarrage de Claude (+10 s) : si Claude relit l'extension plus tard (nouvelle fenêtre), ce
   n'est plus couvert. À vérifier à l'essai (Process Monitor) ; l'AppID du paquet de Claude, cherché dans le menu Démarrer,
   aussi (sinon `--lanceur`) ;
