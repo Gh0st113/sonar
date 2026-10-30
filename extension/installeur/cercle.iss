@@ -45,6 +45,8 @@ OutputDir=sortie
 OutputBaseFilename=cercle-setup
 UninstallDisplayName=Claude (cercle)
 UninstallDisplayIcon={app}\cercle.exe
+; Icône de l'assistant (même dessin que cercle.exe : extension/icone, « go generate »).
+SetupIconFile=..\cercle.ico
 ; Une mise à jour lancée par cercle.exe : l'ancien cercle.exe a déjà quitté ; s'il tourne encore, on le ferme.
 CloseApplications=force
 RestartApplications=no

@@ -140,7 +140,8 @@ Le dossier `extension/` contient une extension pour **l'appli Claude Desktop sou
 dossier. Elle montre ce que sonar sait, à deux endroits :
 
 - **le cercle d'usage** (à droite sous la zone de saisie) : son popover garde ce qu'ajoute UI+ (ligne de temps et rythme de
-  chaque limite, contexte de la session, réglages) et reçoit un bloc **Cache · Branche · Coût**, avec l'heure du relevé ;
+  chaque limite, contexte de la session, réglages) et reçoit un bloc **Cache · Branche · Coût**, avec l'heure du relevé (sans données du mod, une ligne dit pourquoi :
+  mod absent, antérieur à 0.5.0, ou pas de session de l'onglet Code ouverte) ;
 - **la barre latérale**, juste sous « Personnalisation » : une ligne « Utilisation » repliable comme dans UI+, et la
   ligne courte de sonar, par exemple `🔥 cache → 21:03 · ⎇ master · 4,00 $` (`🧊 cache froid` quand le cache est froid).
 
@@ -182,10 +183,12 @@ tout programme lancé sous votre compte. La variable n'est donc **jamais** laiss
 Mises à jour (**pas encore actives** : la version actuelle n'embarque pas encore de clé de signature ; « Gérer
 Claude (cercle) » le dit) : à chaque lancement, « Claude (cercle) » regarde la dernière release GitHub. Il ne propose une version que si
 elle est **plus récente** que la sienne et **signée** par la clé du mainteneur (ed25519 ; la clé publique est embarquée
-dans `cercle.exe`, la clé privée n'est jamais sur GitHub), et ne l'installe **que sur votre accord** : il télécharge
-l'installeur signé, le vérifie, l'exécute sans assistant, puis relance Claude. Une release mal signée est signalée et
+dans `cercle.exe`, la clé privée n'est jamais sur GitHub), et ne l'installe **que sur votre accord** : la recherche ne
+retarde pas Claude de plus de 5 secondes ; après votre « Oui », il télécharge l'installeur signé, le vérifie, l'exécute
+sans assistant, puis relance Claude. Une release mal signée est signalée et
 ignorée : un compte GitHub piraté ne suffit pas à pousser du code dans Claude. Les notes de version affichées viennent de
 GitHub et ne sont **pas** signées. Sans réseau, Claude se lance avec la version actuelle.
+L'icône de `cercle.exe` et de l'installeur est dessinée par le code (`extension/icone`, refaite par `go generate`).
 
 Depuis un terminal (`%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe <action>`) : `lancer` (ce que fait le raccourci),
 `gerer` (ce que fait « Gérer Claude (cercle) »), `etat` (fichiers intacts ou non, état de la variable), `maj` (cherche une version signée et l'installe sur accord, sans

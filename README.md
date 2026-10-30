@@ -140,7 +140,8 @@ The mod is then read **from that folder**: after an edit, `/reload-plugins` in t
 what sonar knows in two places:
 
 - the **usage circle** (right, below the prompt): its popover keeps what UI+ adds (time line and pace of each limit,
-  session context, settings) and gets a **Cache · Branch · Cost** block, with the time of the reading;
+  session context, settings) and gets a **Cache · Branch · Cost** block, with the time of the reading (without data from the mod, one line says
+  why: mod missing, older than 0.5.0, or no Code tab session open);
 - the **sidebar**, right below "Customize": a collapsible "Usage" row as in UI+, plus sonar's short line, e.g.
   `🔥 cache → 21:03 · ⎇ main · $4.00` (`🧊 cache cold` when the cache is cold).
 
@@ -179,10 +180,12 @@ program running under your account. So the variable is **never** left set. On ev
 Updates (**not active yet**: the current version does not embed a signing key yet; "Manage Claude (cercle)" says
 so): on every launch, "Claude (cercle)" looks at the latest GitHub release. It only offers a version that is
 **newer** than its own and **signed** with the maintainer's key (ed25519; the public key is embedded in `cercle.exe`, the
-private key is never on GitHub), and only installs it **with your consent**: it downloads the signed installer, checks
-it, runs it without the wizard, then starts Claude again. A badly signed release is reported and ignored: a hijacked
+private key is never on GitHub), and only installs it **with your consent**: the lookup never delays Claude by more than
+5 seconds; after your "Yes", it downloads the signed installer, checks it, runs it without the wizard, then starts
+Claude again. A badly signed release is reported and ignored: a hijacked
 GitHub account is not enough to push code into Claude. The release notes shown come from GitHub and are **not** signed.
 Offline, Claude starts with the current version.
+The icon of `cercle.exe` and of the installer is drawn by code (`extension/icone`, rebuilt by `go generate`).
 
 From a terminal (`%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe <action>`): `lancer` (what the shortcut does), `gerer`
 (what "Manage Claude (cercle)" does), `etat` (files intact or not, variable state), `maj` (looks for a signed version and installs it with your consent, without
