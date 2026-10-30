@@ -42,10 +42,10 @@ test('forme courte et détail, en français et en anglais', () => {
   // Langue inconnue (allemand de UI+) : anglais.
   assert.equal(ligneCourte(c, 'de', T, heure), ligneCourte(c, 'en', T, heure));
   assert.deepEqual(lignesDetail(c, 'fr', T, heure), [
-    ['Cache', '🔥 chaud (99 % relu, jusqu\'à 20:59)'], ['Branche', 'master (mon-depot)'], ['Coût', '4,00 $'],
+    ['Cache', '🔥 chaud (99 % relu, jusqu\'à 20:59)'], ['Coût', '4,00 $'],
   ]);
   assert.deepEqual(lignesDetail(c, 'en', T, heure), [
-    ['Cache', '🔥 warm (99% reused, until 20:59)'], ['Branch', 'master (mon-depot)'], ['Cost', '$4.00'],
+    ['Cache', '🔥 warm (99% reused, until 20:59)'], ['Cost', '$4.00'],
   ]);
 });
 
@@ -82,13 +82,16 @@ test('choix de la charge : la plus récente des pieds affichés, rien si trop vi
   assert.equal(choisir([future, a], T), a);
 });
 
-test('autres formes : autre modèle, HEAD détachée, fichiers modifiés, dépôt sans branche', () => {
+test('autres formes : autre modèle, HEAD détachée, dépôt sans branche ; la branche reste hors du popover', () => {
   assert.equal(ligneCourte(lireCharge(alt({ ...D, modele: 'autre' })), 'fr', T, heure), '🧊 cache autre modèle · ⎇ master · 4,00 $');
   const det = lireCharge(alt({ ...D, depot: { nom: 'r', detachee: true, modifies: 3 } }));
-  assert.deepEqual(lignesDetail(det, 'fr', T, heure)[1], ['Branche', 'HEAD détachée (r, 3 modifiés)']);
-  assert.deepEqual(lignesDetail(det, 'en', T, heure)[1], ['Branch', 'detached HEAD (r, 3 modified)']);
+  assert.equal(ligneCourte(det, 'fr', T, heure), '🔥 cache → 20:59 · ⎇ HEAD détachée · 4,00 $');
+  assert.equal(ligneCourte(det, 'en', T, heure), '🔥 cache → 20:59 · ⎇ detached HEAD · $4.00');
   const sansBranche = lireCharge(alt({ ...D, depot: { nom: 'r', modifies: 1 } }));
-  assert.deepEqual(lignesDetail(sansBranche, 'fr', T, heure)[1], ['Branche', 'r (1 modifié)']);
+  assert.equal(ligneCourte(sansBranche, 'fr', T, heure), '🔥 cache → 20:59 · ⎇ r · 4,00 $');
+  // La branche seule : rien pour le popover (le pied la montre déjà).
+  const brancheSeule = lireCharge(alt({ quotas: [], depot: { nom: 'r', branche: 'dev', modifies: 0 } }));
+  assert.deepEqual(lignesDetail(brancheSeule, 'fr', T, heure), []);
 });
 
 test('champ absent → null ; segments désactivés dans sonar → rien à montrer', () => {
@@ -116,8 +119,8 @@ test('ce qui n\'est pas une charge sonar → null', () => {
 
 test('popover sans données du mod : une ligne qui le recommande, en fr et en en', () => {
   assert.deepEqual(lignesDetail(null, 'fr', T), []);
-  assert.match(absent('fr'), /mod sonar 0\.5\.0 ou plus \(recommandé\)/);
-  assert.match(absent('en'), /sonar mod 0\.5\.0 or later \(recommended\)/);
+  assert.match(absent('fr'), /mod sonar 0\.5\.1 ou plus \(recommandé\)/);
+  assert.match(absent('en'), /sonar mod 0\.5\.1 or later \(recommended\)/);
   assert.equal(absent('de'), absent('en'));
 });
 

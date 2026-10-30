@@ -140,7 +140,7 @@ Le dossier `extension/` contient une extension pour **l'appli Claude Desktop sou
 dossier. Elle montre ce que sonar sait, à deux endroits :
 
 - **le cercle d'usage** (à droite sous la zone de saisie) : son popover garde ce qu'ajoute UI+ (ligne de temps et rythme de
-  chaque limite, contexte de la session, réglages) et reçoit un bloc **Cache · Branche · Coût**, avec l'heure du relevé (sans données du mod, une ligne le recommande :
+  chaque limite, contexte de la session, réglages) et reçoit un bloc **Cache · Coût** (la branche est déjà dans le pied de la saisie), avec l'heure du relevé (sans données du mod, une ligne le recommande :
   mod absent, antérieur à 0.5.1, ou pas de session de l'onglet Code ouverte) ;
 - **la barre latérale**, juste sous « Personnalisation » : une ligne « Utilisation » repliable comme dans UI+, et la
   ligne courte de sonar, par exemple `🔥 cache → 21:03 · ⎇ master · 4,00 $` (`🧊 cache froid` quand le cache est froid).
@@ -151,7 +151,7 @@ en français ou en anglais, selon la langue de l'appli. Le bandeau reste invisib
 à son emplacement par défaut (`pied`), qui ne montre que ce qui mérite un coup d'œil (si vous aviez choisi `/sonar bandeau`,
 revenez-y avec `/sonar pied` pour ne pas voir les infos en double). Les données partent même avec `/sonar masquer`, qui
 cache seulement l'affichage de sonar. Le mod sonar (0.5.1 ou plus) est **recommandé**, pas obligatoire : sans lui,
-l'extension montre la partie UI+ (utilisation, ligne de temps, rythme des limites), sans le bloc Cache · Branche · Coût
+l'extension montre la partie UI+ (utilisation, ligne de temps, rythme des limites), sans le bloc Cache · Coût
 ni la ligne courte.
 
 Installation : téléchargez **`cercle-setup.exe`** dans les [releases](https://github.com/Gh0st113/sonar/releases) (installeur signé, recommandé). Pour
@@ -164,7 +164,7 @@ relancez l'installeur en « pour tous ». Une mise à jour reprend le mode et le
 Claude, **« Gérer Claude (cercle) »**, désinstaller) et une icône sur le Bureau. Il s'inscrit dans **Paramètres >
 Applications** (version, désinstallation), puis copie l'extension dans le profil de Claude. **« Gérer Claude (cercle) »**
 montre la version et l'état de l'extension, propose de la réparer si ses fichiers ont changé, et cherche une mise à jour à
-la demande ; la version se lit aussi dans Claude, sur la ligne de réglages du popover du cercle (`cercle 0.5.0 · UI+`). Windows peut afficher un
+la demande ; la version se lit aussi dans Claude, sur la ligne de réglages du popover du cercle (`cercle 0.5.2 · UI+`). Windows peut afficher un
 avertissement SmartScreen (installeur non signé par un certificat payant) : « Informations complémentaires > Exécuter
 quand même ». Ensuite, **quitter complètement Claude** (zone de notification > Quitter) et le lancer par
 « Claude (cercle) ». Un Claude lancé autrement ne charge **pas** l'extension : c'est voulu. Pas de fenêtre noire : un
