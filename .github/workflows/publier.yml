@@ -5,7 +5,7 @@
 #                   étape. Puis : version plus récente que la dernière release, signature de cercle-setup.exe avec la
 #                   clé de l'environnement (secrets CERCLE_CLE et CERCLE_PHRASE), vérifiée avec la clé publique
 #                   embarquée, et release vX.Y.Z (le tag est créé sur le commit construit).
-# Voir README, « Publier une version ».
+# Voir PUBLIER.md.
 name: publier
 
 on:

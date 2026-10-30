@@ -134,7 +134,7 @@ func chercherDisponible(ctx context.Context, actuelle string) (*disponible, erro
 		return nil, err
 	}
 	if pub == nil {
-		return nil, errors.New("aucune clé publique embarquée : mises à jour désactivées (voir README, « cercle cle »)")
+		return nil, errors.New("aucune clé publique embarquée : mises à jour désactivées (voir PUBLIER.md)")
 	}
 	rel, err := derniereRelease(ctx)
 	if err != nil {
