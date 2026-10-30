@@ -367,12 +367,8 @@ func appliquerMaj(m *miseAJour, lancer bool) (bool, error) {
 	}
 	// /SILENT : la fenêtre de progression s'affiche, sans questions (l'accord est déjà donné).
 	args := []string{"/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART"}
-	// Installé dans un dossier protégé (Program Files…) : l'installeur doit passer en administrateur ; Windows demande
-	// l'accord, et l'extension comme Claude restent sous le compte de l'utilisateur (runasoriginaluser).
-	if installationProtegee() {
-		args = append(args, "/ALLUSERS")
-		dire("L'installation est dans un dossier protégé : Windows va demander votre accord.")
-	}
+	// Pas de /ALLUSERS ni de /CURRENTUSER : l'installeur reprend de lui-même le mode de l'installation existante (pour
+	// moi ou pour tous, UsePreviousPrivileges) ; pour tous, Windows demande l'accord.
 	if lancer {
 		args = append(args, "/LANCER=oui")
 	}
@@ -382,26 +378,6 @@ func appliquerMaj(m *miseAJour, lancer bool) (bool, error) {
 	}
 	dire("Installation de la version %s en cours.", m.Version)
 	return true, nil
-}
-
-// installationProtegee : le dossier de cercle.exe n'est pas modifiable par l'utilisateur (installé pour tous).
-func installationProtegee() bool {
-	moi, err := os.Executable()
-	if err != nil {
-		return false
-	}
-	return !dossierInscriptible(filepath.Dir(moi))
-}
-
-func dossierInscriptible(dossier string) bool {
-	f, err := os.CreateTemp(dossier, "cercle-test-*")
-	if err != nil {
-		return false
-	}
-	nom := f.Name()
-	f.Close()
-	_ = os.Remove(nom)
-	return true
 }
 
 func actionMaj(o options) error {
@@ -493,11 +469,12 @@ func actionVerifier(o options) error {
 // actionGerer : l'entrée « Gérer Claude (cercle) » du menu Démarrer. La version et l'état, la réparation si les
 // fichiers de l'extension ont changé, puis la recherche d'une mise à jour à la demande.
 func actionGerer(o options) error {
+	// La version d'abord : visible même si le profil de Claude est introuvable.
+	dire("Claude (cercle) version %s", version())
 	dossier, err := dossierDe(o)
 	if err != nil {
 		return err
 	}
-	dire("Claude (cercle) version %s", version())
 	switch oc := occupant(dossier); {
 	case oc == "absent":
 		alerter("L'extension n'est pas installée dans le profil de Claude.")

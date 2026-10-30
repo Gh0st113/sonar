@@ -68,13 +68,17 @@ func vider(style uint32, toujours bool) {
 
 // oui : une question, en console ou dans une boîte Oui/Non (avec ce qui précède pour contexte).
 func oui(question string) bool {
+	// CERCLE_SANS_FENETRE : personne pour répondre (CI) ; non, sans attendre de saisie.
+	if os.Getenv("CERCLE_SANS_FENETRE") != "" {
+		return false
+	}
 	if enConsole {
 		fmt.Print(question + " (o/N) ")
 		l, _ := lecteur().ReadString('\n')
 		r := strings.ToLower(strings.TrimSpace(l))
 		return r == "o" || r == "oui" || r == "y" || r == "yes"
 	}
-	if silencieux || os.Getenv("CERCLE_SANS_FENETRE") != "" {
+	if silencieux {
 		return false
 	}
 	texte := strings.TrimSpace(journal.String() + "\n" + question)

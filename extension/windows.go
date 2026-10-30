@@ -38,6 +38,13 @@ func init() {
 		return
 	}
 	enConsole = false
+	// Sortie redirigée (« cercle etat > f.txt », tube) : on écrit là, sans se rattacher à la console du terminal.
+	if h, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE); err == nil && h != 0 && h != syscall.InvalidHandle {
+		if t, err := syscall.GetFileType(h); err == nil && (t == syscall.FILE_TYPE_DISK || t == syscall.FILE_TYPE_PIPE) {
+			enConsole = true
+			return
+		}
+	}
 	if len(os.Args) < 2 {
 		return
 	}

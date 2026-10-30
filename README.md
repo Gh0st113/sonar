@@ -152,10 +152,11 @@ default `footer` placement, which only shows what deserves a glance (if you pick
 display. The sonar mod (0.5.0 or later) must be installed.
 
 Install: download **`cercle-setup.exe`** from the [latest release](https://github.com/Gh0st113/sonar/releases/latest)
-and run it: a classic wizard, **no administrator rights** by default. It installs the program into
-`%LOCALAPPDATA%\Programs\sonar-cercle` or the folder of your choice; a protected folder (`Program Files`…) restarts
-the installation as administrator, with your consent (the extension and Claude then stay under your account, and updates
-ask for that consent again). Optionally: a **"Claude (cercle)"** Start menu folder (start Claude, **"Manage Claude
+and run it: a classic wizard. It first asks **"for me only"** (default, no administrator rights, into
+`%LOCALAPPDATA%\Programs\sonar-cercle`) or **"for all users"** (`Program Files`, Windows asks for your consent; the
+extension and Claude stay under your account, and updates ask for that consent again), then the folder, which you can
+change. "For me only" refuses a protected folder: pick one of your own, or restart the installer and choose "for all
+users". An update keeps the mode and folder of the existing installation. Optionally: a **"Claude (cercle)"** Start menu folder (start Claude, **"Manage Claude
 (cercle)"**, uninstall) and a desktop icon. It registers in **Settings > Apps** (version, uninstall), then copies the
 extension into Claude's profile. **"Manage Claude (cercle)"** shows the version and the extension's state, offers to
 repair it if its files changed, and looks for an update on demand; the version also shows in Claude, on the settings row
@@ -175,7 +176,8 @@ program running under your account. So the variable is **never** left set. On ev
   set to 1 permanently, it offers to remove it; an empty variable (left over by an older tool) is removed at install;
 - recognises Claude Desktop by its program's path: an open Claude Code (also `claude.exe`) does not count.
 
-Updates: on every launch, "Claude (cercle)" looks at the latest GitHub release. It only offers a version that is
+Updates (**not active yet**: the current version does not embed a signing key yet; "Manage Claude (cercle)" says
+so): on every launch, "Claude (cercle)" looks at the latest GitHub release. It only offers a version that is
 **newer** than its own and **signed** with the maintainer's key (ed25519; the public key is embedded in `cercle.exe`, the
 private key is never on GitHub), and only installs it **with your consent**: it downloads the signed installer, checks
 it, runs it without the wizard, then starts Claude again. A badly signed release is reported and ignored: a hijacked
@@ -214,6 +216,11 @@ Limits:
 - if `REACT_PROFILE` is set to 1 **permanently** on your account (older tool, probe), "Claude (cercle)" offers to remove it;
 - audit and provenance of the code taken from UI+: `extension/PROVENANCE.md`;
 - every change needs a **full restart** of Claude;
+- if you untick both shortcuts, none is left to start Claude with the extension: run `cercle.exe` from its install
+  folder;
+- installed "for all users" with **another** administrator account's password, the uninstaller runs under that account
+  and does not find your Claude profile: the extension stays there (`cercle.exe retirer` before uninstalling, or delete
+  the `fmkadmapgofadopljbjfkapdkoienihi` folder by hand);
 - the carrier is invisible but **not silent**: a screen reader may read its text (`sonar:1 {…}`) in the footer;
 - the footer's host has not been captured in the app yet (only the banner's was): to be confirmed when trying it;
 - the locks hold until Claude has started (+10 s): if Claude reads the extension again later (new window), that is not
@@ -236,3 +243,13 @@ node --test extension/test/
 ```
 
 And for `cercle.exe` (Go 1.24), in `extension/`: `go test ./...`. GitHub Actions runs it all on every push.
+
+## Credits and sources
+
+- **[UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude)**, by Lukas van Uden, MIT licence: the cercle
+  extension reuses its code (`widget.js`, `widget.css`, `manifest.json`, one test), from commit
+  [`126cf95`](https://github.com/LukasvanUden/ui-plus-for-claude/commit/126cf9540f557466f697f679e9ea20505bf6442a)
+  (files identical to tag `v0.4.3`). Its licence is included as is (`extension/LICENSE-UI-PLUS`, also installed next
+  to `cercle.exe`). Files taken, original git hashes, changes and audit: `extension/PROVENANCE.md`.
+- **[Inno Setup](https://jrsoftware.org/isinfo.php)** (Jordan Russell and Martijn Laan): builds the `cercle-setup.exe`
+  installer.

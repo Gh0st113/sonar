@@ -210,17 +210,29 @@ func installer(dossier string, maintenant time.Time) error {
 	if err := os.WriteFile(filepath.Join(temp, fichierEtat), etat, 0o644); err != nil {
 		return echec(codeEcriture, "écriture impossible : %v", err)
 	}
-	if err := os.RemoveAll(dossier); err != nil {
-		return echec(codeEcriture, "remplacement impossible (Claude est-il ouvert ?) : %v", err)
+	// Échange par renommages : un fichier ouvert (Claude) fait échouer le premier renommage d'un bloc, sans rien
+	// effacer ; une suppression directe aurait laissé l'extension à moitié vidée.
+	ancien := dossier + ".ancien"
+	_ = os.RemoveAll(ancien)
+	if _, err := os.Lstat(dossier); err == nil {
+		if err := os.Rename(dossier, ancien); err != nil {
+			_ = os.RemoveAll(temp)
+			return echec(codeEcriture, "remplacement impossible (Claude est-il ouvert ?) : %v", err)
+		}
 	}
 	if err := os.Rename(temp, dossier); err != nil {
+		_ = os.Rename(ancien, dossier)
 		return echec(codeEcriture, "remplacement impossible : %v", err)
 	}
+	_ = os.RemoveAll(ancien)
 	return nil
 }
 
 // retirer : supprime le dossier seulement s'il est le nôtre.
 func retirer(dossier string) (bool, error) {
+	// Restes d'une installation interrompue (noms à nous, à côté du dossier de l'extension).
+	_ = os.RemoveAll(dossier + ".nouveau")
+	_ = os.RemoveAll(dossier + ".ancien")
 	switch occupant(dossier) {
 	case "absent":
 		return false, nil

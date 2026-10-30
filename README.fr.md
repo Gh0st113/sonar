@@ -152,10 +152,11 @@ revenez-y avec `/sonar pied` pour ne pas voir les infos en double). Les données
 cache seulement l'affichage de sonar. Le mod sonar (0.5.0 ou plus) doit être installé.
 
 Installation : téléchargez **`cercle-setup.exe`** depuis la [dernière release](https://github.com/Gh0st113/sonar/releases/latest)
-et lancez-le : un assistant classique, **sans droits administrateur** par défaut. Il installe le programme dans
-`%LOCALAPPDATA%\Programs\sonar-cercle` ou dans le dossier de votre choix ; un dossier protégé (`Program Files`…)
-relance l'installation en administrateur, avec votre accord (l'extension et Claude restent alors sous votre compte, et
-les mises à jour redemandent cet accord). Au choix : un dossier **« Claude (cercle) »** dans le menu Démarrer (lancer
+et lancez-le : un assistant classique. Il demande d'abord **« pour moi seulement »** (par défaut, sans droits
+administrateur, dans `%LOCALAPPDATA%\Programs\sonar-cercle`) ou **« pour tous les utilisateurs »** (`Program Files`,
+Windows demande votre accord ; l'extension et Claude restent sous votre compte, et les mises à jour redemandent cet
+accord), puis le dossier, modifiable. « Pour moi seulement » refuse un dossier protégé : choisissez-en un à vous, ou
+relancez l'installeur en « pour tous ». Une mise à jour reprend le mode et le dossier de l'installation existante. Au choix : un dossier **« Claude (cercle) »** dans le menu Démarrer (lancer
 Claude, **« Gérer Claude (cercle) »**, désinstaller) et une icône sur le Bureau. Il s'inscrit dans **Paramètres >
 Applications** (version, désinstallation), puis copie l'extension dans le profil de Claude. **« Gérer Claude (cercle) »**
 montre la version et l'état de l'extension, propose de la réparer si ses fichiers ont changé, et cherche une mise à jour à
@@ -178,7 +179,8 @@ tout programme lancé sous votre compte. La variable n'est donc **jamais** laiss
   est retirée à l'installation ;
 - reconnaît Claude Desktop par le chemin de son programme : un Claude Code ouvert (lui aussi `claude.exe`) ne compte pas.
 
-Mises à jour : à chaque lancement, « Claude (cercle) » regarde la dernière release GitHub. Il ne propose une version que si
+Mises à jour (**pas encore actives** : la version actuelle n'embarque pas encore de clé de signature ; « Gérer
+Claude (cercle) » le dit) : à chaque lancement, « Claude (cercle) » regarde la dernière release GitHub. Il ne propose une version que si
 elle est **plus récente** que la sienne et **signée** par la clé du mainteneur (ed25519 ; la clé publique est embarquée
 dans `cercle.exe`, la clé privée n'est jamais sur GitHub), et ne l'installe **que sur votre accord** : il télécharge
 l'installeur signé, le vérifie, l'exécute sans assistant, puis relance Claude. Une release mal signée est signalée et
@@ -218,6 +220,11 @@ Limites :
 - si `REACT_PROFILE` vaut 1 **en permanence** sur votre compte (ancien outil, sonde), « Claude (cercle) » propose de la retirer ;
 - audit et provenance du code repris de UI+ : `extension/PROVENANCE.md` ;
 - tout changement demande un **redémarrage complet** de Claude ;
+- si vous décochez les deux raccourcis, il n'en reste aucun pour lancer Claude avec l'extension : lancer
+  `cercle.exe` depuis son dossier d'installation ;
+- installé « pour tous » avec le mot de passe d'un **autre** compte administrateur, la désinstallation tourne sous ce
+  compte et ne trouve pas votre profil de Claude : l'extension y reste (`cercle.exe retirer` avant de désinstaller, ou
+  supprimer le dossier `fmkadmapgofadopljbjfkapdkoienihi` à la main) ;
 - le porteur est invisible mais **pas muet** : un lecteur d'écran peut annoncer son texte (`sonar:1 {…}`) dans le pied ;
 - l'hôte du pied n'a pas encore été relevé dans l'appli (seul celui du bandeau l'a été) : à confirmer à l'essai ;
 - les verrous tiennent jusqu'au démarrage de Claude (+10 s) : si Claude relit l'extension plus tard (nouvelle fenêtre), ce
@@ -240,3 +247,13 @@ node --test extension/test/
 ```
 
 Et pour `cercle.exe` (Go 1.24), dans `extension/` : `go test ./...`. GitHub Actions lance l'ensemble à chaque push.
+
+## Crédits et sources
+
+- **[UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude)**, de Lukas van Uden, sous licence MIT : l'extension
+  cercle reprend son code (`widget.js`, `widget.css`, `manifest.json`, un test), à partir du commit
+  [`126cf95`](https://github.com/LukasvanUden/ui-plus-for-claude/commit/126cf9540f557466f697f679e9ea20505bf6442a)
+  (fichiers identiques au tag `v0.4.3`). Sa licence est jointe telle quelle (`extension/LICENSE-UI-PLUS`, aussi installée
+  avec `cercle.exe`). Fichiers repris, empreintes git d'origine, modifications et audit : `extension/PROVENANCE.md`.
+- **[Inno Setup](https://jrsoftware.org/isinfo.php)** (Jordan Russell et Martijn Laan) : construit l'installeur
+  `cercle-setup.exe`.

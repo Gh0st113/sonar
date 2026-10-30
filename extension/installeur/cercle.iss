@@ -1,11 +1,11 @@
 ; Installeur « Claude (cercle) » (Inno Setup 6). Construit par GitHub Actions (.github/workflows/cercle.yml) :
 ;   ISCC /DVersion=<version du manifeste> /DExe=<chemin de cercle.exe> extension\installeur\cercle.iss
 ;
-; Par défaut sans droits administrateur : le programme va dans %LOCALAPPDATA%\Programs\sonar-cercle (dossier modifiable
-; sur la page « Dossier de destination »), le raccourci dans le menu Démarrer, la désinstallation dans Paramètres >
-; Applications. Un dossier qui demande des droits (Program Files…) : l'installeur se relance en administrateur
-; (/ALLUSERS) avec ce dossier ; l'extension et Claude restent alors sous le compte de l'utilisateur (runasoriginaluser),
-; jamais en administrateur. cercle.exe est stocké NON compressé :
+; Au démarrage, Inno Setup demande « pour moi seulement » (sans droits administrateur, par défaut :
+; %LOCALAPPDATA%\Programs\sonar-cercle) ou « pour tous les utilisateurs » (Program Files, Windows demande l'accord).
+; Le dossier se choisit ensuite sur la page « Dossier de destination ». Une mise à jour reprend le mode de
+; l'installation existante. En mode « pour tous », l'extension et Claude restent sous le compte de l'utilisateur qui a
+; lancé l'installeur (runasoriginaluser), jamais en administrateur. cercle.exe est stocké NON compressé :
 ; « cercle signer » y lit la version, et y retrouve octet pour octet un cercle.exe recompilé (build reproductible).
 
 #ifndef Version
@@ -27,8 +27,10 @@ AppUpdatesURL=https://github.com/Gh0st113/sonar/releases
 VersionInfoVersion={#Version}
 DefaultDirName={autopf}\sonar-cercle
 PrivilegesRequired=lowest
-; /ALLUSERS (relance en administrateur pour un dossier protégé, mises à jour d'une telle installation).
-PrivilegesRequiredOverridesAllowed=commandline
+; dialog : la question « pour moi / pour tous » (et /ALLUSERS, /CURRENTUSER en ligne de commande). Elle n'est plus
+; posée quand l'application est déjà installée : le mode précédent est repris (UsePreviousPrivileges=yes, défaut).
+PrivilegesRequiredOverridesAllowed=dialog
+UsePreviousPrivileges=yes
 DisableDirPage=no
 UsePreviousAppDir=yes
 DefaultGroupName=Claude (cercle)
@@ -56,10 +58,8 @@ fr.Installation=Installation de l'extension dans le profil de Claude…
 en.Installation=Installing the extension into Claude's profile…
 fr.Lancer=Lancer Claude avec l'extension (Claude doit être fermé)
 en.Lancer=Start Claude with the extension (Claude must be closed)
-fr.DroitsAdmin=Ce dossier demande des droits administrateur.%n%nRelancer l'installation en administrateur, avec ce dossier ? (Windows va demander votre accord.)%n%nL'extension et Claude resteront sous votre compte.
-en.DroitsAdmin=This folder needs administrator rights.%n%nRestart the installation as administrator, with this folder? (Windows will ask for your consent.)%n%nThe extension and Claude will stay under your account.
-fr.ElevationRefusee=L'installation en administrateur n'a pas pu démarrer. Choisissez un autre dossier.
-en.ElevationRefusee=The installation as administrator could not start. Choose another folder.
+fr.DroitsAdmin=Ce dossier demande des droits administrateur, et l'installation a été lancée « pour moi seulement ».%n%nChoisissez un dossier à vous, ou relancez l'installeur et choisissez « pour tous les utilisateurs ».
+en.DroitsAdmin=This folder needs administrator rights, and the installation was started "for me only".%n%nChoose a folder of your own, or restart the installer and choose "for all users".
 fr.TacheMenu=Créer un dossier « Claude (cercle) » dans le menu Démarrer
 en.TacheMenu=Create a "Claude (cercle)" folder in the Start menu
 fr.TacheBureau=Créer une icône « Claude (cercle) » sur le Bureau
@@ -83,6 +83,10 @@ en.WelcomeLabel2=[name/ver]%n%nClaude (cercle) adds your limits' pace, the cache
 Source: "{#Exe}"; DestDir: "{app}"; DestName: "cercle.exe"; Flags: ignoreversion nocompression
 Source: "..\LICENSE-UI-PLUS"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\PROVENANCE.md"; DestDir: "{app}"; Flags: ignoreversion
+
+; L'installeur d'avant le dossier « Claude (cercle) » posait son raccourci seul à la racine du menu Démarrer.
+[InstallDelete]
+Type: files; Name: "{autoprograms}\Claude (cercle).lnk"
 
 [Tasks]
 Name: "menu"; Description: "{cm:TacheMenu}"; GroupDescription: "{cm:Raccourcis}"
@@ -109,50 +113,45 @@ Filename: "{app}\cercle.exe"; Parameters: "lancer --sans-maj"; Flags: nowait run
 Filename: "{app}\cercle.exe"; Parameters: "retirer --silencieux"; Flags: waituntilterminated; RunOnceId: "RetirerExtension"
 
 [Code]
-procedure ExitProcess(uExitCode: Integer);
-  external 'ExitProcess@kernel32.dll stdcall';
-
 function LancerApresMaj: Boolean;
 begin
   Result := WizardSilent and (ExpandConstant('{param:LANCER|non}') = 'oui');
 end;
 
-// Peut-on écrire dans ce dossier (ou, s'il n'existe pas encore, dans son premier parent existant) ?
+// Peut-on écrire dans ce dossier ? S'il n'existe pas encore, on essaie de le créer (puis on retire ce qu'on a créé) :
+// un utilisateur peut créer C:\sonar-cercle même sans pouvoir écrire un fichier à la racine de C:\.
 function DossierInscriptible(Dossier: string): Boolean;
 var
-  Test: string;
+  Existant, Test: string;
 begin
-  while (not DirExists(Dossier)) and (ExtractFileDir(Dossier) <> Dossier) and (Dossier <> '') do
-    Dossier := ExtractFileDir(Dossier);
+  Dossier := RemoveBackslashUnlessRoot(Dossier);
+  Existant := Dossier;
+  while (not DirExists(Existant)) and (ExtractFileDir(Existant) <> Existant) and (Existant <> '') do
+    Existant := ExtractFileDir(Existant);
+  if not ForceDirectories(Dossier) then
+  begin
+    Result := False;
+    exit;
+  end;
   Test := AddBackslash(Dossier) + 'cercle-test-ecriture.tmp';
   Result := SaveStringToFile(Test, 'x', False);
-  if Result then
-    DeleteFile(Test);
+  DeleteFile(Test);
+  // Retirer les dossiers créés pour le test, du plus profond jusqu'au premier qui existait.
+  while (CompareText(Dossier, Existant) <> 0) and (ExtractFileDir(Dossier) <> Dossier) do
+  begin
+    RemoveDir(Dossier);
+    Dossier := ExtractFileDir(Dossier);
+  end;
 end;
 
-// Dossier protégé choisi sans droits : proposer de relancer l'installeur en mode « tous les utilisateurs » avec ce
-// dossier. On le relance NORMALEMENT avec /ALLUSERS : c'est Inno Setup qui demande l'élévation, et il garde ainsi le
-// compte d'origine pour runasoriginaluser (lancé directement en administrateur, il ne le connaîtrait pas).
+// Mode « pour moi seulement » et dossier protégé : refuser ce dossier. Boîte supprimable (/SUPPRESSMSGBOXES) ; en
+// installation silencieuse, False arrête l'installeur au lieu d'attendre un clic.
 function NextButtonClick(CurPageID: Integer): Boolean;
-var
-  Dossier: string;
-  Code: Integer;
 begin
   Result := True;
-  if (CurPageID = wpSelectDir) and (not IsAdminInstallMode) then
+  if (CurPageID = wpSelectDir) and (not IsAdminInstallMode) and (not DossierInscriptible(WizardDirValue)) then
   begin
-    Dossier := WizardDirValue;
-    if not DossierInscriptible(Dossier) then
-    begin
-      Result := False;
-      if MsgBox(CustomMessage('DroitsAdmin'), mbConfirmation, MB_YESNO) = IDYES then
-      begin
-        if ShellExec('', ExpandConstant('{srcexe}'), '/ALLUSERS /DIR="' + Dossier + '" /LANG=' + ActiveLanguage,
-             '', SW_SHOW, ewNoWait, Code) then
-          ExitProcess(0)
-        else
-          MsgBox(CustomMessage('ElevationRefusee'), mbError, MB_OK);
-      end;
-    end;
+    Result := False;
+    SuppressibleMsgBox(CustomMessage('DroitsAdmin'), mbError, MB_OK, IDOK);
   end;
 end;
