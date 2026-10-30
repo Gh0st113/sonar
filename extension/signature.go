@@ -96,6 +96,13 @@ func nouvelleCle(phrase string) ([]byte, string, error) {
 	if len(phrase) < 12 {
 		return nil, "", errors.New("phrase de passe trop courte (12 caractères au moins)")
 	}
+	// Caractères ASCII imprimables seulement : une console Windows code « é » ou « € » autrement que le secret
+	// CERCLE_PHRASE de GitHub (UTF-8), et la clé ne s'ouvrirait plus au moment de publier.
+	for _, r := range phrase {
+		if r < 0x20 || r > 0x7E {
+			return nil, "", errors.New("phrase de passe : lettres sans accent, chiffres, espaces et signes simples seulement (pas de é, €…)")
+		}
+	}
 	pub, prive, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, "", err

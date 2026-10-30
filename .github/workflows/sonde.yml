@@ -1,0 +1,79 @@
+# Sonde : l'extension cercle pourrait-elle marcher sous Linux et macOS ? Installe Claude Desktop depuis les sources
+# officielles d'Anthropic, puis outils/sonde/sonde.sh regarde si l'appli connaît le crochet REACT_PROFILE, quels
+# dossiers elle crée, et si une extension témoin se charge. Aucun compte connecté, aucun secret. Le résultat est dans
+# le résumé de l'exécution et dans l'artifact « sonde-<système> ».
+name: sonde
+
+on:
+  # Un push qui touche la sonde la lance, sur n'importe quelle branche (sans attendre une PR).
+  push:
+    paths:
+      - '.github/workflows/sonde.yml'
+      - 'outils/sonde/**'
+  pull_request:
+    paths:
+      - '.github/workflows/sonde.yml'
+      - 'outils/sonde/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Dépôt apt officiel : https://support.claude.com/en/articles/10065433-install-claude-desktop
+      - name: Installer Claude Desktop (dépôt apt d'Anthropic)
+        run: |
+          sudo curl -fsSLo /usr/share/keyrings/claude-desktop-archive-keyring.asc https://downloads.claude.ai/claude-desktop/key.asc
+          echo "deb [signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] https://downloads.claude.ai/claude-desktop/apt/stable stable main" \
+            | sudo tee /etc/apt/sources.list.d/claude-desktop.list
+          sudo apt-get update
+          sudo apt-get install -y claude-desktop xvfb strace
+          dpkg -s claude-desktop | grep -E '^(Version|Architecture)'
+          dpkg -L claude-desktop | grep -E 'bin/|app\.asar$|\.desktop$'
+      - name: Sonde
+        env:
+          SORTIE: ${{ runner.temp }}/sonde-sortie
+        run: |
+          exe=$(dpkg -L claude-desktop | grep -E '^/usr/bin/' | head -1)
+          # Le dossier de l'appli : celui de son app.asar (chercher sur tout le disque prendrait des minutes).
+          app=$(dirname "$(dpkg -L claude-desktop | grep -E 'app\.asar$' | head -1)")
+          echo "lanceur : $exe ; appli : $app"
+          bash outils/sonde/sonde.sh "$app" xvfb-run -a "$exe" --no-sandbox
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: sonde-linux
+          path: ${{ runner.temp }}/sonde-sortie
+          retention-days: 14
+
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # claude.ai refuse le téléchargement direct aux machines de GitHub (403, protection anti-robot) : on passe par
+      # le paquet Homebrew « claude », puis on vérifie que l'appli installée est bien signée par Anthropic (Apple).
+      - name: Installer Claude Desktop (Homebrew, signature vérifiée)
+        run: |
+          brew info --cask claude
+          brew install --cask claude
+          codesign --verify --deep --strict /Applications/Claude.app
+          codesign -dv --verbose=2 /Applications/Claude.app 2>&1 | grep -E '^(Authority|TeamIdentifier)='
+          codesign -dv --verbose=2 /Applications/Claude.app 2>&1 | grep -q '^Authority=Developer ID Application: Anthropic'
+          spctl --assess --type execute -vv /Applications/Claude.app
+          defaults read /Applications/Claude.app/Contents/Info.plist CFBundleShortVersionString
+      - name: Sonde
+        env:
+          SORTIE: ${{ runner.temp }}/sonde-sortie
+        run: bash outils/sonde/sonde.sh /Applications/Claude.app /Applications/Claude.app/Contents/MacOS/Claude
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: sonde-macos
+          path: ${{ runner.temp }}/sonde-sortie
+          retention-days: 14

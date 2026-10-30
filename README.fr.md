@@ -39,7 +39,7 @@ Dans le terminal, le bandeau et le panneau s'écrivent en texte (le terminal ne 
 
 **L'extension cercle** (Windows, en option) : cache · branche · coût dans le popover du **cercle d'usage** et sous
 « Personnalisation » dans la barre latérale, avec le rythme des limites de [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude).
-Elle s'installe avec `cercle-setup.exe`, à télécharger dans les [releases](https://github.com/Gh0st113/sonar/releases/latest) :
+Elle s'installe avec `cercle-setup.exe`, publié dans les [releases](https://github.com/Gh0st113/sonar/releases) :
 voir [Extension cercle (Windows)](#extension-cercle-windows).
 
 *(Comme le sonar d'un navire : il sonde en continu ce qui vous entoure — quotas, cache, branche — pour ne jamais toucher le fond par surprise.)*
@@ -154,8 +154,9 @@ cache seulement l'affichage de sonar. Le mod sonar (0.5.0 ou plus) est **recomma
 l'extension montre la partie UI+ (utilisation, ligne de temps, rythme des limites), sans le bloc Cache · Branche · Coût
 ni la ligne courte.
 
-Installation : téléchargez **`cercle-setup.exe`** depuis la [dernière release](https://github.com/Gh0st113/sonar/releases/latest)
-et lancez-le : un assistant classique. Il demande d'abord **« pour moi seulement »** (par défaut, sans droits
+Installation : téléchargez **`cercle-setup.exe`** dans les [releases](https://github.com/Gh0st113/sonar/releases) (installeur signé, recommandé). Pour
+essayer l'état actuel de `main` : [Actions > cercle > branche main](https://github.com/Gh0st113/sonar/actions/workflows/cercle.yml?query=branch%3Amain) > dernière exécution
+réussie > **Artifacts** > `cercle-setup-essai` (installeur d'essai non signé, en zip ; compte GitHub nécessaire). Lancez-le : un assistant classique. Il demande d'abord **« pour moi seulement »** (par défaut, sans droits
 administrateur, dans `%LOCALAPPDATA%\Programs\sonar-cercle`) ou **« pour tous les utilisateurs »** (`Program Files`,
 Windows demande votre accord ; l'extension et Claude restent sous votre compte, et les mises à jour redemandent cet
 accord), puis le dossier, modifiable. « Pour moi seulement » refuse un dossier protégé : choisissez-en un à vous, ou
@@ -182,13 +183,14 @@ tout programme lancé sous votre compte. La variable n'est donc **jamais** laiss
   est retirée à l'installation ;
 - reconnaît Claude Desktop par le chemin de son programme : un Claude Code ouvert (lui aussi `claude.exe`) ne compte pas.
 
-Mises à jour (**pas encore actives** : la version actuelle n'embarque pas encore de clé de signature ; « Gérer
-Claude (cercle) » le dit) : à chaque lancement, « Claude (cercle) » regarde la dernière release GitHub. Il ne propose une version que si
+Mises à jour (actives quand `cercle.exe` embarque une clé publique ; « Gérer Claude (cercle) » indique si c'est le
+cas) : à chaque lancement, « Claude (cercle) » regarde la dernière release GitHub. Il ne propose une version que si
 elle est **plus récente** que la sienne et **signée** par la clé du mainteneur (ed25519 ; la clé publique est embarquée
-dans `cercle.exe`, la clé privée n'est jamais sur GitHub), et ne l'installe **que sur votre accord** : la recherche ne
+dans `cercle.exe`), et ne l'installe **que sur votre accord** : la recherche ne
 retarde pas Claude de plus de 5 secondes ; après votre « Oui », il télécharge l'installeur signé, le vérifie, l'exécute
 sans assistant, puis relance Claude. Une release mal signée est signalée et
-ignorée : un compte GitHub piraté ne suffit pas à pousser du code dans Claude. Les notes de version affichées viennent de
+ignorée. Chaque publication est signée sur GitHub, dans un environnement protégé, et, si le mainteneur
+l'a activé, validée par lui d'un clic ; son compte GitHub est donc protégé par une double authentification. Les notes de version affichées viennent de
 GitHub et ne sont **pas** signées. Sans réseau, Claude se lance avec la version actuelle.
 L'icône de `cercle.exe` et de l'installeur est dessinée par le code (`extension/icone`, refaite par `go generate`).
 
@@ -200,21 +202,7 @@ trouvé. Codes de retour : 0 réussi, 1 action inconnue, 2 profil introuvable ou
 (React DevTools ?), 4 écriture, 5 Claude encore ouvert, 6 fichiers installés modifiés, 7 Claude introuvable, 8 mise à jour
 refusée.
 
-Publier une version (mainteneur) :
-1. une fois : prendre un installeur d'essai (onglet **Actions** du dépôt > dernière exécution « cercle » > **Artifacts** >
-   `cercle-setup-essai` ; un installeur d'essai n'est pas signé : pour soi seulement, jamais à distribuer), l'installer,
-   puis dans un terminal `%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe cle <fichier>` : il crée la clé (chiffrée par
-   une phrase de passe ; à garder hors de GitHub, par exemple dans un gestionnaire de mots de passe) et affiche la clé
-   publique, à mettre dans `extension/cle-publique.txt` et à commiter. Sans elle, la CI refuse de construire une release ;
-2. monter `version` dans `extension/manifest.json`, commiter, pousser le tag `vX.Y.Z` : GitHub Actions teste, construit
-   `cercle.exe` (Linux) puis `cercle-setup.exe` (Inno Setup, Windows), vérifie que le setup contient l'exe tel quel, et
-   crée une release **en brouillon** ;
-3. pour ne pas faire confiance à GitHub Actions, recompiler `cercle.exe` chez soi (build reproductible :
-   `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-buildid= -H windowsgui"
-   -o cercle.exe .` dans `extension/` du tag, Go 1.24.7) ;
-4. télécharger `cercle-setup.exe` du brouillon, puis `cercle signer cercle-setup.exe <fichier de clé> --exe <cercle.exe
-   recompilé>` : il vérifie que le setup contient exactement votre exe, lit la version, vérifie que la clé est celle de
-   `cle-publique.txt`, et écrit `cercle-setup.exe.sig`. L'ajouter au brouillon, publier.
+Publier une version (mainteneur) : voir [PUBLIER.md](PUBLIER.md).
 
 Limites :
 - le chargement passe par un **crochet de développement** de Claude Desktop (`REACT_PROFILE=1` charge le dossier

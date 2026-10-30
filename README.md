@@ -39,7 +39,7 @@ placements exist for the terminal; the desktop app does not draw them.
 
 **The circle extension** (Windows, optional): cache · branch · cost in the **usage circle**'s popover and below
 "Customize" in the sidebar, with the limits' pace from [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude).
-Install it with `cercle-setup.exe`, from the [releases](https://github.com/Gh0st113/sonar/releases/latest): see
+Install it with `cercle-setup.exe`, published in the [releases](https://github.com/Gh0st113/sonar/releases): see
 [Circle extension (Windows)](#circle-extension-windows).
 
 *(Like a ship's sonar: it keeps sounding what lies around you — limits, cache, branch — so you never hit bottom by surprise.)*
@@ -153,8 +153,9 @@ default `footer` placement, which only shows what deserves a glance (if you pick
 display. The sonar mod (0.5.0 or later) is **recommended**, not required: without it, the extension shows the UI+
 part (usage, timeline, limits' pace), without the Cache · Branch · Cost block or the short line.
 
-Install: download **`cercle-setup.exe`** from the [latest release](https://github.com/Gh0st113/sonar/releases/latest)
-and run it: a classic wizard. It first asks **"for me only"** (default, no administrator rights, into
+Install: download **`cercle-setup.exe`** from the [releases](https://github.com/Gh0st113/sonar/releases) (signed installer, recommended). To try the
+current state of `main`: [Actions > cercle > main branch](https://github.com/Gh0st113/sonar/actions/workflows/cercle.yml?query=branch%3Amain) > latest successful run > **Artifacts** >
+`cercle-setup-essai` (unsigned test installer, zipped; a GitHub account is needed). Run it: a classic wizard. It first asks **"for me only"** (default, no administrator rights, into
 `%LOCALAPPDATA%\Programs\sonar-cercle`) or **"for all users"** (`Program Files`, Windows asks for your consent; the
 extension and Claude stay under your account, and updates ask for that consent again), then the folder, which you can
 change. "For me only" refuses a protected folder: pick one of your own, or restart the installer and choose "for all
@@ -178,13 +179,13 @@ program running under your account. So the variable is **never** left set. On ev
   set to 1 permanently, it offers to remove it; an empty variable (left over by an older tool) is removed at install;
 - recognises Claude Desktop by its program's path: an open Claude Code (also `claude.exe`) does not count.
 
-Updates (**not active yet**: the current version does not embed a signing key yet; "Manage Claude (cercle)" says
-so): on every launch, "Claude (cercle)" looks at the latest GitHub release. It only offers a version that is
-**newer** than its own and **signed** with the maintainer's key (ed25519; the public key is embedded in `cercle.exe`, the
-private key is never on GitHub), and only installs it **with your consent**: the lookup never delays Claude by more than
+Updates (active when `cercle.exe` embeds a public key; "Manage Claude (cercle)" tells whether it does): on every
+launch, "Claude (cercle)" looks at the latest GitHub release. It only offers a version that is
+**newer** than its own and **signed** with the maintainer's key (ed25519; the public key is embedded in `cercle.exe`), and only installs it **with your consent**: the lookup never delays Claude by more than
 5 seconds; after your "Yes", it downloads the signed installer, checks it, runs it without the wizard, then starts
-Claude again. A badly signed release is reported and ignored: a hijacked
-GitHub account is not enough to push code into Claude. The release notes shown come from GitHub and are **not** signed.
+Claude again. A badly signed release is reported and ignored. Each release is signed on GitHub, in a protected
+environment, and, when the maintainer has turned it on, approved by them with one click; their GitHub account is therefore protected by two-factor authentication.
+The release notes shown come from GitHub and are **not** signed.
 Offline, Claude starts with the current version.
 The icon of `cercle.exe` and of the installer is drawn by code (`extension/icone`, rebuilt by `go generate`).
 
@@ -195,21 +196,7 @@ starting Claude), `installer` / `retirer` (called by the installer and the unins
 codes: 0 success, 1 unknown action, 2 profile missing or ambiguous, 3 folder used by something else (React DevTools?),
 4 write error, 5 Claude still open, 6 installed files changed, 7 Claude not found, 8 update refused.
 
-Publishing a version (maintainer):
-1. once: take a trial installer (repository **Actions** tab > latest "cercle" run > **Artifacts** > `cercle-setup-essai`;
-   a trial installer is not signed: for yourself only, never to hand out), install it, then in a terminal
-   `%LOCALAPPDATA%\Programs\sonar-cercle\cercle.exe cle <file>`: it creates the key (encrypted with a passphrase; keep it
-   off GitHub, e.g. in a password manager) and prints the public key, to put in `extension/cle-publique.txt` and commit.
-   Without it, CI refuses to build a release;
-2. bump `version` in `extension/manifest.json`, commit, push the `vX.Y.Z` tag: GitHub Actions tests, builds `cercle.exe`
-   (Linux) then `cercle-setup.exe` (Inno Setup, Windows), checks that the setup holds the exe as is, and creates a
-   **draft** release;
-3. to avoid trusting GitHub Actions, rebuild `cercle.exe` locally (reproducible build:
-   `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-buildid= -H windowsgui"
-   -o cercle.exe .` in the tag's `extension/`, Go 1.24.7);
-4. download `cercle-setup.exe` from the draft, then `cercle signer cercle-setup.exe <key file> --exe <rebuilt
-   cercle.exe>`: it checks that the setup holds exactly your exe, reads the version, checks that the key matches
-   `cle-publique.txt`, and writes `cercle-setup.exe.sig`. Add it to the draft, publish.
+Publishing a version (maintainer): see [PUBLIER.md](PUBLIER.md) (in French).
 
 Limits:
 - loading goes through a **development hook** of Claude Desktop (`REACT_PROFILE=1` loads the React DevTools folder,
