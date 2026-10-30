@@ -152,8 +152,10 @@ default `footer` placement, which only shows what deserves a glance (if you pick
 display. The sonar mod (0.5.0 or later) must be installed.
 
 Install: download **`cercle-setup.exe`** from the [latest release](https://github.com/Gh0st113/sonar/releases/latest)
-and run it: a classic wizard, **no administrator rights**. It installs the program into
-`%LOCALAPPDATA%\Programs\sonar-cercle`, adds **"Claude (cercle)"** to the Start menu and an entry to **Settings > Apps**
+and run it: a classic wizard, **no administrator rights** by default. It installs the program into
+`%LOCALAPPDATA%\Programs\sonar-cercle` or the folder of your choice; a protected folder (`Program Files`…) restarts
+the installation as administrator, with your consent (the extension and Claude then stay under your account, and updates
+ask for that consent again). It adds **"Claude (cercle)"** to the Start menu and an entry to **Settings > Apps**
 (uninstall), then copies the extension into Claude's profile. Windows may show a SmartScreen warning (installer without a
 paid code-signing certificate): "More info > Run anyway". Then **quit Claude completely** (notification area > Quit) and
 start it from "Claude (cercle)". Claude started any other way does **not** load the extension: on purpose. No black

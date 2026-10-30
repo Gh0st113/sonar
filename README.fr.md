@@ -152,8 +152,10 @@ revenez-y avec `/sonar pied` pour ne pas voir les infos en double). Les données
 cache seulement l'affichage de sonar. Le mod sonar (0.5.0 ou plus) doit être installé.
 
 Installation : téléchargez **`cercle-setup.exe`** depuis la [dernière release](https://github.com/Gh0st113/sonar/releases/latest)
-et lancez-le : un assistant classique, **sans droits administrateur**. Il installe le programme dans
-`%LOCALAPPDATA%\Programs\sonar-cercle`, ajoute **« Claude (cercle) »** au menu Démarrer et une entrée dans
+et lancez-le : un assistant classique, **sans droits administrateur** par défaut. Il installe le programme dans
+`%LOCALAPPDATA%\Programs\sonar-cercle` ou dans le dossier de votre choix ; un dossier protégé (`Program Files`…)
+relance l'installation en administrateur, avec votre accord (l'extension et Claude restent alors sous votre compte, et
+les mises à jour redemandent cet accord). Il ajoute **« Claude (cercle) »** au menu Démarrer et une entrée dans
 **Paramètres > Applications** (désinstallation), puis copie l'extension dans le profil de Claude. Windows peut afficher un
 avertissement SmartScreen (installeur non signé par un certificat payant) : « Informations complémentaires > Exécuter
 quand même ». Ensuite, **quitter complètement Claude** (zone de notification > Quitter) et le lancer par

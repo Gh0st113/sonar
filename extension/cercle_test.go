@@ -332,3 +332,23 @@ func TestOptionsApresArguments(t *testing.T) {
 		t.Fatalf("signer a --exe b cle : %d", c)
 	}
 }
+
+func TestDossierInscriptible(t *testing.T) {
+	d := t.TempDir()
+	if !dossierInscriptible(d) {
+		t.Fatal("dossier temporaire non inscriptible")
+	}
+	if entrees, _ := os.ReadDir(d); len(entrees) != 0 {
+		t.Fatal("le fichier de test est resté")
+	}
+	if os.Getuid() != 0 {
+		os.Chmod(d, 0o555)
+		defer os.Chmod(d, 0o755)
+		if dossierInscriptible(d) {
+			t.Fatal("dossier en lecture seule vu inscriptible")
+		}
+	}
+	if dossierInscriptible(filepath.Join(d, "absent")) {
+		t.Fatal("dossier absent vu inscriptible")
+	}
+}

@@ -1,8 +1,11 @@
 ; Installeur « Claude (cercle) » (Inno Setup 6). Construit par GitHub Actions (.github/workflows/cercle.yml) :
 ;   ISCC /DVersion=<version du manifeste> /DExe=<chemin de cercle.exe> extension\installeur\cercle.iss
 ;
-; Sans droits administrateur : le programme va dans %LOCALAPPDATA%\Programs\sonar-cercle, le raccourci dans le menu
-; Démarrer de l'utilisateur, la désinstallation dans Paramètres > Applications. cercle.exe est stocké NON compressé :
+; Par défaut sans droits administrateur : le programme va dans %LOCALAPPDATA%\Programs\sonar-cercle (dossier modifiable
+; sur la page « Dossier de destination »), le raccourci dans le menu Démarrer, la désinstallation dans Paramètres >
+; Applications. Un dossier qui demande des droits (Program Files…) : l'installeur se relance en administrateur
+; (/ALLUSERS) avec ce dossier ; l'extension et Claude restent alors sous le compte de l'utilisateur (runasoriginaluser),
+; jamais en administrateur. cercle.exe est stocké NON compressé :
 ; « cercle signer » y lit la version, et y retrouve octet pour octet un cercle.exe recompilé (build reproductible).
 
 #ifndef Version
@@ -24,7 +27,10 @@ AppUpdatesURL=https://github.com/Gh0st113/sonar/releases
 VersionInfoVersion={#Version}
 DefaultDirName={autopf}\sonar-cercle
 PrivilegesRequired=lowest
-DisableDirPage=yes
+; /ALLUSERS (relance en administrateur pour un dossier protégé, mises à jour d'une telle installation).
+PrivilegesRequiredOverridesAllowed=commandline
+DisableDirPage=no
+UsePreviousAppDir=yes
 DisableProgramGroupPage=yes
 DisableReadyPage=no
 WizardStyle=modern
@@ -49,6 +55,10 @@ fr.Installation=Installation de l'extension dans le profil de Claude…
 en.Installation=Installing the extension into Claude's profile…
 fr.Lancer=Lancer Claude avec l'extension (Claude doit être fermé)
 en.Lancer=Start Claude with the extension (Claude must be closed)
+fr.DroitsAdmin=Ce dossier demande des droits administrateur.%n%nRelancer l'installation en administrateur, avec ce dossier ? (Windows va demander votre accord.)%n%nL'extension et Claude resteront sous votre compte.
+en.DroitsAdmin=This folder needs administrator rights.%n%nRestart the installation as administrator, with this folder? (Windows will ask for your consent.)%n%nThe extension and Claude will stay under your account.
+fr.ElevationRefusee=L'installation en administrateur n'a pas pu démarrer. Choisissez un autre dossier.
+en.ElevationRefusee=The installation as administrator could not start. Choose another folder.
 fr.Commentaire=Lance Claude avec l'extension cercle, après vérification des fichiers
 en.Commentaire=Starts Claude with the cercle extension, after checking its files
 
@@ -66,17 +76,62 @@ Name: "{autoprograms}\Claude (cercle)"; Filename: "{app}\cercle.exe"; Comment: "
 
 [Run]
 ; Toujours : copier l'extension dans le profil de Claude (une erreur s'affiche dans une fenêtre).
-Filename: "{app}\cercle.exe"; Parameters: "installer --silencieux"; StatusMsg: "{cm:Installation}"; Flags: waituntilterminated
+; runasoriginaluser : même si l'installeur tourne en administrateur, l'extension va dans le profil de l'utilisateur
+; et Claude démarre sous son compte.
+Filename: "{app}\cercle.exe"; Parameters: "installer --silencieux"; StatusMsg: "{cm:Installation}"; Flags: waituntilterminated runasoriginaluser
 ; Fin de l'assistant : case « Lancer Claude ».
-Filename: "{app}\cercle.exe"; Parameters: "lancer --sans-maj"; Description: "{cm:Lancer}"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\cercle.exe"; Parameters: "lancer --sans-maj"; Description: "{cm:Lancer}"; Flags: nowait postinstall skipifsilent unchecked runasoriginaluser
 ; Mise à jour silencieuse demandée par cercle avant un lancement : relancer Claude ensuite.
-Filename: "{app}\cercle.exe"; Parameters: "lancer --sans-maj"; Flags: nowait; Check: LancerApresMaj
+Filename: "{app}\cercle.exe"; Parameters: "lancer --sans-maj"; Flags: nowait runasoriginaluser; Check: LancerApresMaj
 
 [UninstallRun]
 Filename: "{app}\cercle.exe"; Parameters: "retirer --silencieux"; Flags: waituntilterminated; RunOnceId: "RetirerExtension"
 
 [Code]
+procedure ExitProcess(uExitCode: Integer);
+  external 'ExitProcess@kernel32.dll stdcall';
+
 function LancerApresMaj: Boolean;
 begin
   Result := WizardSilent and (ExpandConstant('{param:LANCER|non}') = 'oui');
+end;
+
+// Peut-on écrire dans ce dossier (ou, s'il n'existe pas encore, dans son premier parent existant) ?
+function DossierInscriptible(Dossier: string): Boolean;
+var
+  Test: string;
+begin
+  while (not DirExists(Dossier)) and (ExtractFileDir(Dossier) <> Dossier) and (Dossier <> '') do
+    Dossier := ExtractFileDir(Dossier);
+  Test := AddBackslash(Dossier) + 'cercle-test-ecriture.tmp';
+  Result := SaveStringToFile(Test, 'x', False);
+  if Result then
+    DeleteFile(Test);
+end;
+
+// Dossier protégé choisi sans droits : proposer de relancer l'installeur en mode « tous les utilisateurs » avec ce
+// dossier. On le relance NORMALEMENT avec /ALLUSERS : c'est Inno Setup qui demande l'élévation, et il garde ainsi le
+// compte d'origine pour runasoriginaluser (lancé directement en administrateur, il ne le connaîtrait pas).
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Dossier: string;
+  Code: Integer;
+begin
+  Result := True;
+  if (CurPageID = wpSelectDir) and (not IsAdminInstallMode) then
+  begin
+    Dossier := WizardDirValue;
+    if not DossierInscriptible(Dossier) then
+    begin
+      Result := False;
+      if MsgBox(CustomMessage('DroitsAdmin'), mbConfirmation, MB_YESNO) = IDYES then
+      begin
+        if ShellExec('', ExpandConstant('{srcexe}'), '/ALLUSERS /DIR="' + Dossier + '" /LANG=' + ActiveLanguage,
+             '', SW_SHOW, ewNoWait, Code) then
+          ExitProcess(0)
+        else
+          MsgBox(CustomMessage('ElevationRefusee'), mbError, MB_OK);
+      end;
+    end;
+  end;
 end;

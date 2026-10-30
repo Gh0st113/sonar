@@ -360,6 +360,12 @@ func appliquerMaj(m *miseAJour, lancer bool) (bool, error) {
 		return true, echec(codeEcriture, "écriture de l'installeur impossible : %v", err)
 	}
 	args := []string{"/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"}
+	// Installé dans un dossier protégé (Program Files…) : l'installeur doit passer en administrateur ; Windows demande
+	// l'accord, et l'extension comme Claude restent sous le compte de l'utilisateur (runasoriginaluser).
+	if installationProtegee() {
+		args = append(args, "/ALLUSERS")
+		dire("L'installation est dans un dossier protégé : Windows va demander votre accord.")
+	}
 	if lancer {
 		args = append(args, "/LANCER=oui")
 	}
@@ -369,6 +375,26 @@ func appliquerMaj(m *miseAJour, lancer bool) (bool, error) {
 	}
 	dire("Installation de la version %s en cours.", m.Version)
 	return true, nil
+}
+
+// installationProtegee : le dossier de cercle.exe n'est pas modifiable par l'utilisateur (installé pour tous).
+func installationProtegee() bool {
+	moi, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	return !dossierInscriptible(filepath.Dir(moi))
+}
+
+func dossierInscriptible(dossier string) bool {
+	f, err := os.CreateTemp(dossier, "cercle-test-*")
+	if err != nil {
+		return false
+	}
+	nom := f.Name()
+	f.Close()
+	_ = os.Remove(nom)
+	return true
 }
 
 func actionMaj(o options) error {
