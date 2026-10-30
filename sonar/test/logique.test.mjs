@@ -6,6 +6,7 @@ import {
   rythme, etatCache, deduireTtl, elementsPied, jauges, ligne, lireStatut, nomDepot, lireCommande, lireConfig,
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
   releve, ajouterReleve, dernierReleve, cheminJournal, cheminArchive, isoUtc, majJournal, besoinMaison, TAILLE_MAX_JOURNAL,
+  chargeExtension, texteExtension, PREFIXE_EXTENSION,
 } from '../hooks/logique.mjs';
 
 const H = 3_600_000;
@@ -311,4 +312,32 @@ test('journal des quotas : chemin du fichier et de l’archive', () => {
   assert.equal(lireConfig({ quotaLogPath: 'D:/q.jsonl' }).journal, null);
   assert.equal(lireConfig({ quotaLog: true }).journal, '');
   assert.equal(lireConfig({ quotaLog: true, quotaLogPath: 'D:/q.jsonl' }).journal, 'D:/q.jsonl');
+});
+
+test('données pour l\'extension : sans langue, segments respectés', () => {
+  const T = Date.parse('2026-10-30T20:00:00Z');
+  const d = {
+    quotas: [{ kind: 'seven_day', percentUsed: 41 }],
+    cout: 4.004,
+    cache: { a: T - 60_000, lu: 99, ecrit: 1, neuf: 0, modele: 'm' },
+    ttlMs: TTL['1h'],
+    modele: 'm',
+    depot: { nom: 'mon-depot', branche: 'master', modifies: 2 },
+  };
+  const c = chargeExtension(d, T);
+  assert.deepEqual(c, {
+    a: T,
+    cache: { etat: 'chaud', expire: T - 60_000 + H, taux: 0.99 },
+    depot: { nom: 'mon-depot', modifies: 2, branche: 'master' },
+    cout: 4,
+  });
+  assert.equal(texteExtension(c), PREFIXE_EXTENSION + JSON.stringify(c));
+  assert.ok(texteExtension(c).startsWith('sonar:1 {'));
+  // Durée de vie inconnue : « au moins » ; autre modèle ; HEAD détachée ; rien sans mesure.
+  assert.deepEqual(chargeExtension({ ...d, ttlMs: undefined }, T).cache, { etat: 'chaud', expire: T - 60_000 + 5 * 60_000, auMoins: true, taux: 0.99 });
+  assert.deepEqual(chargeExtension({ ...d, modele: 'autre' }, T).cache, { etat: 'froid', autreModele: true });
+  assert.deepEqual(chargeExtension({ ...d, depot: { nom: 'r', detachee: true, modifies: 0 } }, T).depot, { nom: 'r', modifies: 0, detachee: true });
+  assert.deepEqual(chargeExtension({ quotas: [] }, T), { a: T });
+  // Segments désactivés : absents.
+  assert.deepEqual(chargeExtension(d, T, { ...DEFAUTS, segments: ['quotas', 'cout'] }), { a: T, cout: 4 });
 });

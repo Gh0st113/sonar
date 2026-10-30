@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "UI+ for Claude (sonar, Windows)",
+  "version": "0.5.0",
+  "description": "Plan usage with pace, active sessions and session context in the Claude desktop app, plus sonar's cost, cache and branch. Based on UI+ for Claude (MIT).",
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["sonar-lecture.js", "widget.js"],
+      "css": ["widget.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

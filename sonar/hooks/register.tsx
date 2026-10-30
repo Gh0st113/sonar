@@ -9,8 +9,8 @@ import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } 
 
 import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
 import {
-  EMPLACEMENTS, TTL, besoinMaison, cheminArchive, cheminJournal, cleReleve, deduireTtl, elementsPied, jauges, ligne,
-  lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, textes,
+  EMPLACEMENTS, TTL, besoinMaison, chargeExtension, cheminArchive, cheminJournal, cleReleve, deduireTtl, elementsPied, jauges,
+  ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -107,7 +107,11 @@ async function calculer($: EngineInterface) {
     depot: (await read($, depot)) ?? undefined,
   }
   const maintenant = await $.clock.now()
-  return { pied: elementsPied(d, maintenant, cfg) as Morceau[], jauges: jauges(d, maintenant, cfg) as Morceau[] }
+  return {
+    pied: elementsPied(d, maintenant, cfg) as Morceau[],
+    jauges: jauges(d, maintenant, cfg) as Morceau[],
+    extension: texteExtension(chargeExtension(d, maintenant, cfg)) as string,
+  }
 }
 
 // Emplacement « ligne » : $.ui.status n'est pas un dessin, il faut le reposer à chaque changement.
@@ -196,6 +200,10 @@ function bloc(u: Vue, el: Morceau, Svg: ReturnType<typeof svgDe>) {
     </Box>
   )
 }
+
+// Porteur des données de l'extension « cercle » : une image transparente de 1 pixel (le moteur refuse 0), dont le
+// texte alternatif porte la charge (logique.mjs, chargeExtension). Rien de visible.
+const SVG_VIDE = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'
 
 // Bandeau : les jauges côte à côte (elles passent à la ligne si la place manque) ; sur le terminal, une ligne de texte.
 async function bandeau($: EngineInterface, e: RenderInput) {
@@ -360,18 +368,30 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     await read($, tic)
-    if ((await lieu($)) !== 'pied' || (await read($, masque))) return next(e)
     // Le pied ne montre que ce qui mérite un coup d'œil (cas normal : la semaine seule).
-    const { pied } = await calculer($)
-    if (pied.length === 0) return next(e)
+    const montrer = (await lieu($)) === 'pied' && !(await read($, masque))
+    // Hors du bureau, pas de porteur : rien à calculer si rien n'est montré.
+    if (!montrer && e.surface !== 'desktop') return next(e)
+    const { pied, extension } = await calculer($)
+    const visibles = montrer ? pied : []
     // L'appli de bureau ne dessine pas les `modes` ajoutés (essai du 27/10) : on y dessine notre propre arbre,
-    // les modes natifs devant, joints comme le moteur le fait.
+    // les modes natifs devant, joints comme le moteur le fait. Sur le bureau, le porteur des données de l'extension
+    // « cercle » y est toujours, quel que soit l'emplacement : invisible, il ne dépend pas de ce que montre sonar.
     if (e.surface === 'desktop') {
       const u = $.ui.resolve(e)
-      const { Text } = u
-      return <Text>{e.props.modes.length > 0 ? <Text dimColor>{`${e.props.modes.join(' & ')} & `}</Text> : null}{phrase(u, pied, SEP_BUREAU)}</Text>
+      const { Box, Text } = u
+      const Svg = svgDe(u, e.surface)
+      if (visibles.length === 0 && !Svg) return next(e)
+      const natifs = e.props.modes.join(' & ')
+      return (
+        <Box flexDirection="row" alignItems="center">
+          <Text>{natifs ? <Text dimColor>{`${natifs}${visibles.length > 0 ? ' & ' : ''}`}</Text> : null}{visibles.length > 0 ? phrase(u, visibles, SEP_BUREAU) : null}</Text>
+          {Svg ? <Svg source={SVG_VIDE} alt={extension} width={1} height={1} /> : null}
+        </Box>
+      )
     }
-    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, ligne(pied, '  ')] } })
+    if (visibles.length === 0) return next(e)
+    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, ligne(visibles, '  ')] } })
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {

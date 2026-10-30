@@ -1,0 +1,151 @@
+# Extension « cercle » :
+#   tests      (Linux)   tests Node + Go, puis cercle.exe (build reproductible) ;
+#   installeur (Windows) cercle-setup.exe avec Inno Setup (déjà installé sur le runner), vérifié : il doit contenir
+#                        tel quel le cercle.exe du job précédent. Artifact d'essai à chaque push et PR ;
+#   release    (tag vX.Y.Z) release en BROUILLON avec cercle-setup.exe et cercle.exe. La signature
+#                        (cercle-setup.exe.sig) se fait hors de GitHub, avec la clé du mainteneur, avant de publier :
+#                        sans elle, aucun cercle installé n'accepte la mise à jour. Voir README.
+name: cercle
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  # Relancer à la main depuis l'onglet Actions (bouton « Run workflow », une fois le workflow sur main).
+  workflow_dispatch:
+
+# Actions épinglées par empreinte de commit (et non par tag, qu'on peut déplacer) : le job release a le droit d'écrire.
+# Versions sous Node 24 ; systèmes fixés plutôt que « -latest », qui changent sans prévenir.
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.24.7'
+          # Pas de go.sum : cercle.exe n'a aucune dépendance, rien à mettre en cache.
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Tests de l'extension (Node)
+        run: node --test extension/test/
+      - name: Tests de la logique du mod (Node)
+        run: node --test sonar/test/logique.test.mjs
+      - name: Tests de cercle.exe (Go)
+        working-directory: extension
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          GOOS=windows GOARCH=amd64 go vet ./...
+          go test ./...
+      # Build reproductible (même Go, -trimpath, sans buildid ni infos git) : on peut le refaire chez soi et comparer.
+      # « windowsgui » : pas de fenêtre noire (fenêtres de dialogue ; console seulement depuis un terminal).
+      - name: Construire cercle.exe
+        working-directory: extension
+        run: |
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags='-buildid= -H windowsgui' -o cercle.exe .
+          sha256sum cercle.exe | tee cercle.exe.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cercle-exe
+          path: |
+            extension/cercle.exe
+            extension/cercle.exe.sha256
+          retention-days: 14
+
+  installeur:
+    needs: tests
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cercle-exe
+          path: extension
+      - name: Construire cercle-setup.exe (Inno Setup)
+        shell: pwsh
+        run: |
+          $v = (Get-Content extension/manifest.json -Raw | ConvertFrom-Json).version
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          & $iscc "/DVersion=$v" "/DExe=..\cercle.exe" extension\installeur\cercle.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # Le setup doit contenir tel quel le cercle.exe reproductible (et donc son manifeste, d'où « signer » lit la version).
+      - name: Vérifier le contenu du setup
+        shell: python
+        run: |
+          import hashlib, sys
+          setup = open('extension/installeur/sortie/cercle-setup.exe', 'rb').read()
+          exe = open('extension/cercle.exe', 'rb').read()
+          if exe not in setup or b'"name": "UI+ for Claude (sonar, Windows)"' not in setup:
+              sys.exit('cercle.exe absent ou compressé dans le setup')
+          print('setup', hashlib.sha256(setup).hexdigest())
+          print('cercle.exe trouvé tel quel', hashlib.sha256(exe).hexdigest())
+      # Installeur d'ESSAI, non signé, construit depuis n'importe quelle PR : pour soi seulement, jamais à distribuer.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cercle-setup-essai
+          path: extension/installeur/sortie/cercle-setup.exe
+          retention-days: 14
+
+  # Essai réel sous Windows : tests Go propres à Windows (registre, verrous, processus), puis installation, raccourcis,
+  # entrée de désinstallation, extension dans un faux profil, détection et réparation, désinstallation.
+  windows:
+    needs: installeur
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.24.7'
+          cache: false
+      - name: Tests de cercle sous Windows (Go)
+        working-directory: extension
+        env:
+          CERCLE_SANS_FENETRE: '1'
+        run: go test -v ./...
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cercle-setup-essai
+          path: sortie
+      - name: Installer, vérifier, désinstaller
+        shell: pwsh
+        run: ./extension/installeur/essai-ci.ps1 -Setup sortie/cercle-setup.exe
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [installeur, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Une clé publique est embarquée (sinon les mises à jour seraient désactivées pour toujours)
+        run: test -s extension/cle-publique.txt
+      - name: Le tag suit la version du manifeste
+        run: |
+          v=$(node -p "require('./extension/manifest.json').version")
+          test "${GITHUB_REF_NAME}" = "v$v" || { echo "tag ${GITHUB_REF_NAME} ≠ manifeste v$v"; exit 1; }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cercle-exe
+          path: sortie
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cercle-setup-essai
+          path: sortie
+      - name: Release en brouillon
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd sortie
+          sha256sum cercle-setup.exe > cercle-setup.exe.sha256
+          gh release create "${GITHUB_REF_NAME}" --draft --verify-tag --title "${GITHUB_REF_NAME}" \
+            --notes "À signer avant de publier : cercle signer cercle-setup.exe <fichier de clé> --exe <cercle.exe recompilé>" \
+            cercle-setup.exe cercle-setup.exe.sha256 cercle.exe cercle.exe.sha256
