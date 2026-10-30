@@ -5,6 +5,11 @@
 name: sonde
 
 on:
+  # Un push qui touche la sonde la lance, sur n'importe quelle branche (sans attendre une PR).
+  push:
+    paths:
+      - '.github/workflows/sonde.yml'
+      - 'outils/sonde/**'
   pull_request:
     paths:
       - '.github/workflows/sonde.yml'
