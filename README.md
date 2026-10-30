@@ -39,7 +39,7 @@ placements exist for the terminal; the desktop app does not draw them.
 
 **The circle extension** (Windows, optional): cache · branch · cost in the **usage circle**'s popover and below
 "Customize" in the sidebar, with the limits' pace from [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude).
-Install it with `cercle-setup.exe` (no release published yet: see the test installer below): see
+Install it with `cercle-setup.exe`, published in the [releases](https://github.com/Gh0st113/sonar/releases): see
 [Circle extension (Windows)](#circle-extension-windows).
 
 *(Like a ship's sonar: it keeps sounding what lies around you — limits, cache, branch — so you never hit bottom by surprise.)*
@@ -153,10 +153,9 @@ default `footer` placement, which only shows what deserves a glance (if you pick
 display. The sonar mod (0.5.0 or later) is **recommended**, not required: without it, the extension shows the UI+
 part (usage, timeline, limits' pace), without the Cache · Branch · Cost block or the short line.
 
-Install: download **`cercle-setup.exe`** from the [latest release](https://github.com/Gh0st113/sonar/releases/latest).
-**No release is published yet** (so that link leads nowhere for now): meanwhile, the unsigned test installer is in
-[Actions > cercle > main branch](https://github.com/Gh0st113/sonar/actions/workflows/cercle.yml?query=branch%3Amain) > latest successful run > **Artifacts** >
-`cercle-setup-essai` (a zip archive to extract; a GitHub account is needed). Run it: a classic wizard. It first asks **"for me only"** (default, no administrator rights, into
+Install: download **`cercle-setup.exe`** from the [releases](https://github.com/Gh0st113/sonar/releases) (signed installer, recommended). To try the
+current state of `main`: [Actions > cercle > main branch](https://github.com/Gh0st113/sonar/actions/workflows/cercle.yml?query=branch%3Amain) > latest successful run > **Artifacts** >
+`cercle-setup-essai` (unsigned test installer, zipped; a GitHub account is needed). Run it: a classic wizard. It first asks **"for me only"** (default, no administrator rights, into
 `%LOCALAPPDATA%\Programs\sonar-cercle`) or **"for all users"** (`Program Files`, Windows asks for your consent; the
 extension and Claude stay under your account, and updates ask for that consent again), then the folder, which you can
 change. "For me only" refuses a protected folder: pick one of your own, or restart the installer and choose "for all
