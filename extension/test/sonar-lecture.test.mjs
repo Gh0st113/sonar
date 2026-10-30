@@ -114,9 +114,9 @@ test('ce qui n\'est pas une charge sonar → null', () => {
   assert.deepEqual(lireCharge('sonar:1 {"a":1,"cache":{"etat":"tiède"},"depot":{"nom":""},"cout":-3}'), { a: 1, cache: null, depot: null, cout: null });
 });
 
-test('popover sans données du mod : une ligne qui dit pourquoi, en fr et en en', () => {
+test('popover sans données du mod : une ligne qui le recommande, en fr et en en', () => {
   assert.deepEqual(lignesDetail(null, 'fr', T), []);
-  assert.match(absent('fr'), /mod sonar \(0\.5\.0 ou plus/);
-  assert.match(absent('en'), /sonar mod \(0\.5\.0 or later/);
+  assert.match(absent('fr'), /mod sonar 0\.5\.0 ou plus \(recommandé\)/);
+  assert.match(absent('en'), /sonar mod 0\.5\.0 or later \(recommended\)/);
   assert.equal(absent('de'), absent('en'));
 });

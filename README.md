@@ -140,8 +140,8 @@ The mod is then read **from that folder**: after an edit, `/reload-plugins` in t
 what sonar knows in two places:
 
 - the **usage circle** (right, below the prompt): its popover keeps what UI+ adds (time line and pace of each limit,
-  session context, settings) and gets a **Cache · Branch · Cost** block, with the time of the reading (without data from the mod, one line says
-  why: mod missing, older than 0.5.0, or no Code tab session open);
+  session context, settings) and gets a **Cache · Branch · Cost** block, with the time of the reading (without data from the mod, one line
+  recommends it: mod missing, older than 0.5.0, or no Code tab session open);
 - the **sidebar**, right below "Customize": a collapsible "Usage" row as in UI+, plus sonar's short line, e.g.
   `🔥 cache → 21:03 · ⎇ main · $4.00` (`🧊 cache cold` when the cache is cold).
 
@@ -150,7 +150,8 @@ Where the data comes from: on the desktop, the sonar mod adds to its footer (nex
 English or French, following the app's language. Nothing is hidden and the banner is not used: sonar can stay in its
 default `footer` placement, which only shows what deserves a glance (if you picked `/sonar banner`, go back with
 `/sonar footer` to avoid seeing things twice). The data still flows with `/sonar hide`, which only hides sonar's own
-display. The sonar mod (0.5.0 or later) must be installed.
+display. The sonar mod (0.5.0 or later) is **recommended**, not required: without it, the extension shows the UI+
+part (usage, timeline, limits' pace), without the Cache · Branch · Cost block or the short line.
 
 Install: download **`cercle-setup.exe`** from the [latest release](https://github.com/Gh0st113/sonar/releases/latest)
 and run it: a classic wizard. It first asks **"for me only"** (default, no administrator rights, into

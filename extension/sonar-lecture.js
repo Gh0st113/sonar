@@ -97,7 +97,7 @@
       detachee: 'HEAD détachée', modifies: (n) => `${n} modifié${n > 1 ? 's' : ''}`,
       cout: (x) => `${x.toFixed(2).replace('.', ',')} $`,
       cache: 'Cache', branche: 'Branche', nomCout: 'Coût', releve: (h) => `relevé à ${h}`,
-      absent: 'Cache · Branche · Coût : aucune donnée du mod sonar (0.5.0 ou plus, dans une session de l\'onglet Code)',
+      absent: 'Cache · Branche · Coût : avec le mod sonar 0.5.0 ou plus (recommandé), dans une session de l\'onglet Code',
     },
     en: {
       chaud: 'warm', froid: 'cold', incertain: 'uncertain', autreModele: 'other model',
@@ -105,7 +105,7 @@
       detachee: 'detached HEAD', modifies: (n) => `${n} modified`,
       cout: (x) => `$${x.toFixed(2)}`,
       cache: 'Cache', branche: 'Branch', nomCout: 'Cost', releve: (h) => `read at ${h}`,
-      absent: 'Cache · Branch · Cost: no data from the sonar mod (0.5.0 or later, in a Code tab session)',
+      absent: 'Cache · Branch · Cost: with the sonar mod 0.5.0 or later (recommended), in a Code tab session',
     },
   };
   const ICONES = { chaud: '🔥', froid: '🧊', incertain: '❔' };
@@ -155,7 +155,7 @@
   }
 
   const releve = (h, langue) => mots(langue).releve(h);
-  // Popover sans données : dire ce qu'il manque (mod absent, trop ancien, ou pas de session Code ouverte).
+  // Popover sans données : dire d'où elles viendraient (mod recommandé, pas requis : le reste marche sans lui).
   const absent = (langue) => mots(langue).absent;
   const froid = (charge, maintenant) => {
     const etat = etatCache(charge?.cache, maintenant);

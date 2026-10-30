@@ -140,7 +140,7 @@ Le dossier `extension/` contient une extension pour **l'appli Claude Desktop sou
 dossier. Elle montre ce que sonar sait, à deux endroits :
 
 - **le cercle d'usage** (à droite sous la zone de saisie) : son popover garde ce qu'ajoute UI+ (ligne de temps et rythme de
-  chaque limite, contexte de la session, réglages) et reçoit un bloc **Cache · Branche · Coût**, avec l'heure du relevé (sans données du mod, une ligne dit pourquoi :
+  chaque limite, contexte de la session, réglages) et reçoit un bloc **Cache · Branche · Coût**, avec l'heure du relevé (sans données du mod, une ligne le recommande :
   mod absent, antérieur à 0.5.0, ou pas de session de l'onglet Code ouverte) ;
 - **la barre latérale**, juste sous « Personnalisation » : une ligne « Utilisation » repliable comme dans UI+, et la
   ligne courte de sonar, par exemple `🔥 cache → 21:03 · ⎇ master · 4,00 $` (`🧊 cache froid` quand le cache est froid).
@@ -150,7 +150,9 @@ transparente de 1 pixel dont le texte alternatif porte ses chiffres en JSON, san
 en français ou en anglais, selon la langue de l'appli. Rien n'est masqué, le bandeau n'est pas utilisé : sonar peut rester
 à son emplacement par défaut (`pied`), qui ne montre que ce qui mérite un coup d'œil (si vous aviez choisi `/sonar bandeau`,
 revenez-y avec `/sonar pied` pour ne pas voir les infos en double). Les données partent même avec `/sonar masquer`, qui
-cache seulement l'affichage de sonar. Le mod sonar (0.5.0 ou plus) doit être installé.
+cache seulement l'affichage de sonar. Le mod sonar (0.5.0 ou plus) est **recommandé**, pas obligatoire : sans lui,
+l'extension montre la partie UI+ (utilisation, ligne de temps, rythme des limites), sans le bloc Cache · Branche · Coût
+ni la ligne courte.
 
 Installation : téléchargez **`cercle-setup.exe`** depuis la [dernière release](https://github.com/Gh0st113/sonar/releases/latest)
 et lancez-le : un assistant classique. Il demande d'abord **« pour moi seulement »** (par défaut, sans droits

@@ -882,7 +882,7 @@
       return;
     }
     const lines = LECTEUR.lignesDetail(sonarCharge, language(), now, clock);
-    // Sans données du mod : une ligne discrète qui dit pourquoi, plutôt qu'un bloc qui manque sans explication.
+    // Sans données du mod : une ligne discrète qui le recommande, plutôt qu'un bloc qui manque sans explication.
     const key = JSON.stringify(lines.length ? [lines, readAtText()] : LECTEUR.absent(language()));
     if (!block) block = element('div', 'up-sonar-block flex flex-col gap-1 px-lg py-xs text-footnote');
     // Clé à la minute : le bloc n'est refait que si ce qu'il montre change.
