@@ -4,7 +4,8 @@
 # on regarde seulement le code de l'appli, les dossiers qu'elle crée, et si une extension témoin se charge.
 #
 #   sonde.sh <dossier de l'appli (contenant app.asar quelque part)> <commande qui lance Claude…>
-set -uo pipefail
+# Compatible avec le bash 3.2 de macOS : ni mapfile, ni « set -u » (tableaux vides).
+set -o pipefail
 
 APP="$1"
 shift
@@ -21,7 +22,8 @@ dire "## Sonde : $(uname -s)"
 dire ""
 
 # 1. Le code de l'appli mentionne-t-il le crochet ? (app.asar est une archive non compressée : grep y lit le JS.)
-mapfile -t ASARS < <(find "$APP" -name 'app.asar' -type f 2>/dev/null)
+ASARS=()
+while IFS= read -r l; do ASARS+=("$l"); done < <(find "$APP" -name 'app.asar' -type f 2>/dev/null)
 dire "- archives app.asar : ${#ASARS[@]} (${ASARS[*]:-aucune})"
 for a in "${ASARS[@]}"; do
   for motif in REACT_PROFILE "$ID" Claude-Data loadExtension; do
@@ -36,7 +38,8 @@ done
 # Lancer Claude 60 s avec REACT_PROFILE=1 (journal du processus principal et des pages : --enable-logging), dans son
 # propre groupe de processus (set -m) : on l'arrête ensuite en entier, sans toucher à ce script.
 lancer() {
-  local nom="$1" prefixe=()
+  local nom="$1"
+  local prefixe=(env) # « env » seul : rien à ajouter (un tableau vide gênerait bash 3.2)
   if [ "$(uname -s)" = Linux ] && command -v strace >/dev/null; then
     prefixe=(strace -f -qq -e trace=%file -o "$SORTIE/$nom-strace.txt")
   fi
@@ -73,9 +76,10 @@ fi
 
 # 3. Une extension témoin là où l'appli range ses profils (dossiers claude_* d'un Claude-Data, sinon tout dossier
 # « extensions » d'un dossier Claude), puis second lancement : son script écrit le témoin dans la console de la page.
-mapfile -t PROFILS < <(find "$HOME" -maxdepth 6 -type d -path '*Claude-Data/claude_*' -prune 2>/dev/null)
+PROFILS=()
+while IFS= read -r l; do PROFILS+=("$l"); done < <(find "$HOME" -maxdepth 6 -type d -path '*Claude-Data/claude_*' -prune 2>/dev/null)
 if [ "${#PROFILS[@]}" -eq 0 ]; then
-  mapfile -t PROFILS < <(find "$HOME" -maxdepth 6 -type d -iname '*claude*' 2>/dev/null | grep -v sonde-sortie | head -5)
+  while IFS= read -r l; do PROFILS+=("$l"); done < <(find "$HOME" -maxdepth 6 -type d -iname '*claude*' 2>/dev/null | grep -v sonde-sortie | head -5)
 fi
 dire "- profils candidats : ${#PROFILS[@]}"
 for p in "${PROFILS[@]}"; do
