@@ -77,11 +77,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # Le setup doit contenir tel quel le cercle.exe reproductible (et donc son manifeste, d'où « signer » lit la version).
       - name: Vérifier le contenu du setup
-        shell: pwsh
+        shell: python
         run: |
-          python -c "import sys; s=open(r'extension/installeur/sortie/cercle-setup.exe','rb').read(); e=open(r'extension/cercle.exe','rb').read(); sys.exit(0 if e in s and b'\"name\": \"UI+ for Claude (sonar, Windows)\"' in s else 1)"
-          if ($LASTEXITCODE -ne 0) { Write-Error 'cercle.exe absent ou compressé dans le setup'; exit 1 }
-          Get-FileHash extension/installeur/sortie/cercle-setup.exe -Algorithm SHA256 | Format-List
+          import hashlib, sys
+          setup = open('extension/installeur/sortie/cercle-setup.exe', 'rb').read()
+          exe = open('extension/cercle.exe', 'rb').read()
+          if exe not in setup or b'"name": "UI+ for Claude (sonar, Windows)"' not in setup:
+              sys.exit('cercle.exe absent ou compressé dans le setup')
+          print('setup', hashlib.sha256(setup).hexdigest())
+          print('cercle.exe trouvé tel quel', hashlib.sha256(exe).hexdigest())
       # Installeur d'ESSAI, non signé, construit depuis n'importe quelle PR : pour soi seulement, jamais à distribuer.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
