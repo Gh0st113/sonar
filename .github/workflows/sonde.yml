@@ -54,12 +54,16 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Installeur universel officiel : https://support.claude.com/en/articles/12611117-deploy-claude-desktop-for-macos
-      - name: Installer Claude Desktop (.pkg d'Anthropic)
+      # claude.ai refuse le téléchargement direct aux machines de GitHub (403, protection anti-robot) : on passe par
+      # le paquet Homebrew « claude », puis on vérifie que l'appli installée est bien signée par Anthropic (Apple).
+      - name: Installer Claude Desktop (Homebrew, signature vérifiée)
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/Claude.pkg" https://claude.ai/api/desktop/darwin/universal/pkg/latest/redirect
-          pkgutil --check-signature "$RUNNER_TEMP/Claude.pkg"
-          sudo installer -pkg "$RUNNER_TEMP/Claude.pkg" -target /
+          brew info --cask claude
+          brew install --cask claude
+          codesign --verify --deep --strict /Applications/Claude.app
+          codesign -dv --verbose=2 /Applications/Claude.app 2>&1 | grep -E '^(Authority|TeamIdentifier)='
+          codesign -dv --verbose=2 /Applications/Claude.app 2>&1 | grep -q '^Authority=Developer ID Application: Anthropic'
+          spctl --assess --type execute -vv /Applications/Claude.app
           defaults read /Applications/Claude.app/Contents/Info.plist CFBundleShortVersionString
       - name: Sonde
         env:
