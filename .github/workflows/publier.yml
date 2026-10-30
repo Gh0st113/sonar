@@ -43,7 +43,7 @@ jobs:
         id: version
         run: |
           test -s windows/cle-publique.txt || { echo "::error::windows/cle-publique.txt est vide : aucune mise à jour ne serait acceptée."; exit 1; }
-          v=$(node -p "require('./extension/manifest.json').version")
+          v=$(node -p "require('./windows/manifest.json').version")
           echo "v=$v" >> "$GITHUB_OUTPUT"
           if gh release view "v$v" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/v$v" >/dev/null; then
             echo "::error::v$v existe déjà : montez « version » dans windows/manifest.json."; exit 1

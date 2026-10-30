@@ -80,8 +80,8 @@ jobs:
         shell: python
         run: |
           import hashlib, sys
-          setup = open('extension/installeur/sortie/sonar-setup.exe', 'rb').read()
-          exe = open('extension/sonar.exe', 'rb').read()
+          setup = open('windows/installeur/sortie/sonar-setup.exe', 'rb').read()
+          exe = open('windows/sonar.exe', 'rb').read()
           if exe not in setup or b'"name": "UI+ for Claude (sonar, Windows)"' not in setup:
               sys.exit('sonar.exe absent ou compressé dans le setup')
           print('setup', hashlib.sha256(setup).hexdigest())
@@ -116,4 +116,4 @@ jobs:
           path: sortie
       - name: Installer, vérifier, désinstaller
         shell: pwsh
-        run: ./extension/installeur/essai-ci.ps1 -Setup sortie/sonar-setup.exe
+        run: ./windows/installeur/essai-ci.ps1 -Setup sortie/sonar-setup.exe
