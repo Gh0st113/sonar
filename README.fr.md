@@ -165,6 +165,13 @@ Limites :
   de React DevTools, `%LOCALAPPDATA%\Claude-Data\claude_<id>\extensions\fmkadmapgofadopljbjfkapdkoienihi`) :
   rien ne garantit qu'Anthropic le garde ; si React DevTools occupe déjà ce dossier, le script refuse ;
 - `REACT_PROFILE` est une variable **utilisateur** : toutes les applis lancées ensuite la voient ;
+- **sécurité** : tant que `REACT_PROFILE=1`, Claude charge sans rien montrer ce que contient ce dossier, dans votre session
+  claude.ai ; tout programme lancé sous votre compte peut y écrire. `install.ps1 etat` compare les empreintes des
+  fichiers installés aux sources ; retirez l'extension quand vous ne vous en servez pas. Audit et provenance du code
+  repris de UI+ : `extension/PROVENANCE.md` ;
+- `install.ps1 installer` refuse des modifications non commitées dans `extension/` et note le commit installé ;
+- avec plusieurs organisations, le cercle peut montrer l'usage d'une autre que celle affichée (comportement de UI+) ;
+- le bouton « Compacter » du bloc contexte de UI+ n'est cherché qu'en anglais et en allemand : en français, il n'apparaît pas ;
 - tout changement demande un **redémarrage complet** de Claude ;
 - le porteur est invisible mais **pas muet** : un lecteur d'écran peut annoncer son texte (`sonar:1 {…}`) dans le pied ;
 - l'hôte du pied n'a pas encore été relevé dans l'appli (seul celui du bandeau l'a été) : à confirmer à l'essai ;

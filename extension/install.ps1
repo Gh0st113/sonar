@@ -100,6 +100,31 @@ function Lire-Etat([string] $Dossier) {
 
 function Valeur-Utilisateur { [Environment]::GetEnvironmentVariable('REACT_PROFILE', 'User') }
 
+# Commit des sources, et refus d'installer des modifications locales non commitées : ce qui part dans Claude doit être
+# ce qui a été relu. Sans git (copie hors dépôt), on installe et on le dit.
+function Commit-Sources {
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return $null }
+  $commit = git -C $PSScriptRoot rev-parse HEAD 2>$null
+  if ($LASTEXITCODE -ne 0) { return $null }
+  $modifs = git -C $PSScriptRoot status --porcelain -- . 2>$null
+  if ($modifs) { Sortir 4 "modifications non commitées dans $PSScriptRoot : commitez-les ou annulez-les avant d'installer.`n$($modifs -join "`n")" }
+  $commit
+}
+
+# Empreintes SHA-256 des fichiers installés comparées aux sources : un fichier changé après coup se voit.
+function Comparer([string] $Dossier) {
+  foreach ($f in $Fichiers) {
+    $installe = Join-Path $Dossier $f
+    $source = Join-Path $PSScriptRoot $f
+    if (-not (Test-Path -LiteralPath $installe)) { Write-Host "  $f : absent du dossier installé" -ForegroundColor Red; continue }
+    $h = (Get-FileHash -LiteralPath $installe -Algorithm SHA256).Hash
+    # manifest.json est réécrit à l'installation (version_name) : on ne compare que les autres.
+    if ($f -eq 'manifest.json') { Write-Host "  $f : $h (réécrit à l'installation)"; continue }
+    $ok = (Test-Path -LiteralPath $source) -and $h -eq (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+    Write-Host ("  $f : $h " + $(if ($ok) { '(identique aux sources)' } else { 'DIFFÉRENT DES SOURCES' })) -ForegroundColor $(if ($ok) { 'Gray' } else { 'Red' })
+  }
+}
+
 function Installer([string] $Dossier) {
   $occupant = Occupant $Dossier
   if ($occupant -eq 'autre') {
@@ -108,6 +133,7 @@ function Installer([string] $Dossier) {
   foreach ($f in $Fichiers) {
     if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot $f))) { Sortir 4 "fichier source absent : $f" }
   }
+  $commit = Commit-Sources
 
   # Valeur de REACT_PROFILE à remettre au retrait. Réinstallation : on garde celle notée la première fois.
   # Après la sonde, qui avait posé la variable elle-même, elle compte comme « n'existait pas » ; de même pour
@@ -134,7 +160,7 @@ function Installer([string] $Dossier) {
     $m = Get-Content -LiteralPath $manifeste -Raw | ConvertFrom-Json
     $m | Add-Member -NotePropertyName version_name -NotePropertyValue ("$($m.version) " + (Get-Date -Format 'yyyyMMddHHmmss')) -Force
     $m | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifeste -Encoding utf8NoBOM
-    [pscustomobject]@{ marque = $Marque; existait = $precedent.existait; valeur = $precedent.valeur; installe = (Get-Date -Format o) } |
+    [pscustomobject]@{ marque = $Marque; existait = $precedent.existait; valeur = $precedent.valeur; installe = (Get-Date -Format o); commit = $commit } |
       ConvertTo-Json | Set-Content -LiteralPath (Join-Path $temp $FichierEtat) -Encoding utf8NoBOM
     if (Test-Path -LiteralPath $Dossier) { Remove-Item -LiteralPath $Dossier -Recurse -Force }
     New-Item -ItemType Directory -Path (Split-Path $Dossier) -Force | Out-Null
@@ -147,12 +173,21 @@ function Installer([string] $Dossier) {
     Sortir 4 "extension copiée, mais REACT_PROFILE n'a pas pu être posée : $($_.Exception.Message)"
   }
   $avant = if ($precedent.existait) { "« $($precedent.valeur) »" } else { 'absente' }
-  Sortir 0 "Installée dans $Dossier. REACT_PROFILE=1 (avant : $avant). Quittez complètement Claude puis relancez-le."
+  $source = if ($commit) { "commit $commit" } else { 'hors dépôt git, sources non vérifiées' }
+  Sortir 0 "Installée dans $Dossier ($source). REACT_PROFILE=1 (avant : $avant). Quittez complètement Claude puis relancez-le."
 }
 
 function Retirer([string] $Dossier) {
   $occupant = Occupant $Dossier
-  if ($occupant -eq 'absent') { Sortir 0 "Rien à retirer : $Dossier n'existe pas. REACT_PROFILE n'a pas été touchée." }
+  if ($occupant -eq 'absent') {
+    # Le crochet reste armé si la variable est encore posée : tout ce qui serait déposé plus tard dans ce dossier
+    # serait chargé par Claude. Valeur d'avant inconnue : on ne la touche pas, on le signale.
+    if ((Valeur-Utilisateur) -eq '1') {
+      Write-Host "Attention : REACT_PROFILE vaut encore 1. Si personne d'autre n'en a besoin, retirez-la :" -ForegroundColor Yellow
+      Write-Host "  [Environment]::SetEnvironmentVariable('REACT_PROFILE', `$null, 'User')"
+    }
+    Sortir 0 "Rien à retirer : $Dossier n'existe pas. REACT_PROFILE n'a pas été touchée."
+  }
   if ($occupant -notin @('nôtre', 'nôtre sans état')) {
     Sortir 3 "$Dossier n'est pas cette extension ($occupant) : rien n'a été supprimé ni changé."
   }
@@ -184,6 +219,12 @@ function Etat([string] $Dossier) {
   if ($occupant -eq 'nôtre') {
     $etat = Lire-Etat $Dossier
     Write-Host ("Valeur à remettre au retrait : " + $(if ($etat.existait) { "« $($etat.valeur) »" } else { 'aucune (variable retirée)' }))
+    $props = (Get-Content -LiteralPath (Join-Path $Dossier $FichierEtat) -Raw | ConvertFrom-Json).PSObject.Properties
+    Write-Host ("Installée depuis : " + $(if ($props['commit']?.Value) { "commit $($props['commit'].Value)" } else { 'commit inconnu' }))
+  }
+  if ($occupant -in @('nôtre', 'nôtre sans état')) {
+    Write-Host 'Empreintes SHA-256 :'
+    Comparer $Dossier
   }
   exit 0
 }

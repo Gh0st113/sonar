@@ -77,6 +77,9 @@ test('choix de la charge : la plus récente des pieds affichés, rien si trop vi
   // Plus aucun pied ne la redessine : au-delà d'AGE_MAX, elle n'est plus montrée.
   assert.equal(choisir([a], T + AGE_MAX), a);
   assert.equal(choisir([a], T + AGE_MAX + 1), null);
+  // Une fausse charge datée du futur ne l'emporte pas.
+  const future = lireCharge(alt({ ...D, cout: 999 }, T + H));
+  assert.equal(choisir([future, a], T), a);
 });
 
 test('autres formes : autre modèle, HEAD détachée, fichiers modifiés, dépôt sans branche', () => {
@@ -103,6 +106,10 @@ test('ce qui n\'est pas une charge sonar → null', () => {
     'sonar:1 {"cache":{"etat":"chaud"}}', 'sonar:2 {"a":1}', 42]) {
     assert.equal(lireCharge(x), null, String(x));
   }
+  // Heures que Date ne sait pas écrire, ou expiration sans rapport avec le relevé.
+  assert.equal(lireCharge('sonar:1 {"a":1e16}'), null);
+  assert.equal(lireCharge(`sonar:1 {"a":${T},"cache":{"etat":"chaud","expire":1e16}}`).cache.expire, null);
+  assert.equal(lireCharge(`sonar:1 {"a":${T},"cache":{"etat":"chaud","expire":${T + 3 * H}}}`).cache.expire, null);
   // Champs douteux écartés un par un.
   assert.deepEqual(lireCharge('sonar:1 {"a":1,"cache":{"etat":"tiède"},"depot":{"nom":""},"cout":-3}'), { a: 1, cache: null, depot: null, cout: null });
 });

@@ -25,6 +25,9 @@
   const ETATS = ['chaud', 'froid', 'incertain'];
 
   const fini = (x) => typeof x === 'number' && Number.isFinite(x);
+  // Une heure en ms que Date sait écrire (au-delà de ±8,64e15, `new Date` est invalide et Intl lève une erreur).
+  const date = (x) => fini(x) && Math.abs(x) <= 8.64e15;
+  const DEUX_H = 2 * 60 * 60_000;
   const texte = (x) => typeof x === 'string' && x.length > 0 && x.length <= 200;
 
   // Texte alternatif → { a, cache, depot, cout } vérifié (champ douteux → null) ; pas sonar ou illisible → null.
@@ -36,7 +39,9 @@
     } catch {
       return null;
     }
-    if (!o || typeof o !== 'object' || !fini(o.a)) return null;
+    // N'importe quel script de la page ou un autre mod peut déposer une fausse image : on borne tout ce qui sert
+    // d'heure, et l'expiration du cache doit suivre le relevé de près (sonar : au plus 1 h).
+    if (!o || typeof o !== 'object' || !date(o.a)) return null;
     const c = o.cache;
     const d = o.depot;
     return {
@@ -44,7 +49,7 @@
       cache: c && ETATS.includes(c.etat)
         ? {
           etat: c.etat,
-          expire: fini(c.expire) ? c.expire : null,
+          expire: date(c.expire) && c.expire >= o.a - DEUX_H && c.expire <= o.a + DEUX_H ? c.expire : null,
           auMoins: c.auMoins === true,
           taux: fini(c.taux) ? Math.min(1, Math.max(0, c.taux)) : null,
           autreModele: c.autreModele === true,
@@ -75,7 +80,8 @@
   function choisir(charges, maintenant) {
     let meilleure = null;
     for (const c of charges) {
-      if (c && maintenant - c.a <= AGE_MAX && (!meilleure || c.a > meilleure.a)) meilleure = c;
+      // Valeur absolue : une charge datée du futur ne doit pas l'emporter sur les vraies.
+      if (c && Math.abs(maintenant - c.a) <= AGE_MAX && (!meilleure || c.a > meilleure.a)) meilleure = c;
     }
     return meilleure;
   }
@@ -153,6 +159,7 @@
   };
 
   const api = { SELECTEURS, PREFIXE, PORTEUR, AGE_MAX, lireCharge, etatCache, choisir, utile, ligneCourte, lignesDetail, releve, froid };
-  if (typeof module === 'object' && module.exports) module.exports = api;
+  // Node (tests) n'a pas de document ; dans la page, un élément d'id « module » ne doit pas faire croire à Node.
+  if (typeof document === 'undefined' && typeof module === 'object' && module.exports) module.exports = api;
   else racine.SonarLecture = api;
 })(typeof globalThis === 'object' ? globalThis : this);

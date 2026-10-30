@@ -165,6 +165,13 @@ Limits:
   `%LOCALAPPDATA%\Claude-Data\claude_<id>\extensions\fmkadmapgofadopljbjfkapdkoienihi`): Anthropic does not
   guarantee it; if React DevTools already uses that folder, the script refuses;
 - `REACT_PROFILE` is a **user** variable: every app started afterwards sees it;
+- **security**: while `REACT_PROFILE=1`, Claude silently loads whatever that folder holds, inside your claude.ai session;
+  any program running under your account can write there. `install.ps1 etat` compares the installed files' hashes with
+  the sources; remove the extension when you do not use it. Audit and provenance of the code taken from UI+:
+  `extension/PROVENANCE.md`;
+- `install.ps1 installer` refuses uncommitted changes in `extension/` and records the installed commit;
+- with several organizations, the circle may show another one's usage than the one displayed (UI+ behaviour);
+- the "Compact" button of UI+'s context block is only looked up in English and German: in French it does not show;
 - every change needs a **full restart** of Claude;
 - the carrier is invisible but **not silent**: a screen reader may read its text (`sonar:1 {…}`) in the footer;
 - the footer's host has not been captured in the app yet (only the banner's was): to be confirmed when trying it;

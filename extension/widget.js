@@ -160,7 +160,7 @@
   if (typeof document === 'undefined') return;
 
   const SECTION_HEADERS = /^(Projects|Projekte|Projets|Pinned|Angeheftet|Épinglés|Recents|Zuletzt verwendet|Récents|Ungrouped|Nicht gruppiert|Non groupés)$/i;
-  const MORE = /^(More|Mehr|Plus|Customize|Personnalisation)$/i;
+  const MORE = /^(More|Mehr|Customize|Personnalisation)$/i;
   const SEL = globalThis.SonarLecture?.SELECTEURS ?? {};
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -207,6 +207,15 @@
 
   function strings() {
     return STRINGS[language()] ?? STRINGS.en;
+  }
+
+  // La langue de la page pour Intl, si elle est valide : un `lang` fantaisiste ferait lever Intl et casserait l'affichage.
+  function locale() {
+    try {
+      return Intl.getCanonicalLocales(document.documentElement.lang || [])[0];
+    } catch {
+      return undefined;
+    }
   }
 
   function language() {
@@ -368,7 +377,12 @@
       headerLabel.textContent = strings().title;
       headerPace.textContent = view?.pace ?? '';
     }
-    renderSonarLine();
+    // Une charge douteuse ne doit jamais casser la partie UI+.
+    try {
+      renderSonarLine();
+    } catch {
+      widget.querySelector(':scope > .up-sonar')?.remove();
+    }
   }
 
   function place() {
@@ -676,7 +690,7 @@
     const pct = context?.pct ?? null;
     const percent = pct === null
       ? ''
-      : new Intl.NumberFormat(document.documentElement.lang || undefined, { style: 'percent', maximumFractionDigits: 0 }).format(pct / 100);
+      : new Intl.NumberFormat(locale(), { style: 'percent', maximumFractionDigits: 0 }).format(pct / 100);
     setText(block.querySelector('.up-context-title'), text.context);
     setText(block.querySelector('.up-context-value'), pct === null ? (context?.text ?? '') : text.used(percent));
     setText(block.querySelector('.up-context-caption'), pct === null ? '' : context.text);
@@ -818,7 +832,7 @@
   }
 
   function clock(ms) {
-    return new Intl.DateTimeFormat(document.documentElement.lang || undefined, { hour: '2-digit', minute: '2-digit' }).format(new Date(ms));
+    return new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit' }).format(new Date(ms));
   }
 
   function readAtText() {
@@ -846,6 +860,14 @@
 
   // Bloc « Sonar » du popover du cercle, après les limites, avant la ligne de réglages.
   function syncSonarPopover(list) {
+    try {
+      syncSonarBlock(list);
+    } catch {
+      list.querySelector(':scope > .up-sonar-block')?.remove();
+    }
+  }
+
+  function syncSonarBlock(list) {
     let block = list.querySelector(':scope > .up-sonar-block');
     const now = Date.now();
     const lines = !LECTEUR || removed || !settings.popover ? [] : LECTEUR.lignesDetail(sonarCharge, language(), now, clock);
@@ -882,7 +904,7 @@
   function render() {
     // Passe aussi par la minuterie de UI+ (60 s) : une charge devenue trop vieille disparaît.
     scanHosts();
-    view = buildView(usage, Date.now(), language(), document.documentElement.lang || undefined);
+    view = buildView(usage, Date.now(), language(), locale());
     version += 1;
     if (view || sonarUtile()) renderSidebar();
     place();
