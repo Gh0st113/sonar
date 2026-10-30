@@ -39,7 +39,7 @@ Dans le terminal, le bandeau et le panneau s'écrivent en texte (le terminal ne 
 
 **L'extension cercle** (Windows, en option) : cache · branche · coût dans le popover du **cercle d'usage** et sous
 « Personnalisation » dans la barre latérale, avec le rythme des limites de [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude).
-Elle s'installe avec `cercle-setup.exe`, à télécharger dans les [releases](https://github.com/Gh0st113/sonar/releases/latest) :
+Elle s'installe avec `cercle-setup.exe` (aucune release publiée pour l'instant : voir l'installeur d'essai ci-dessous) :
 voir [Extension cercle (Windows)](#extension-cercle-windows).
 
 *(Comme le sonar d'un navire : il sonde en continu ce qui vous entoure — quotas, cache, branche — pour ne jamais toucher le fond par surprise.)*
@@ -154,8 +154,10 @@ cache seulement l'affichage de sonar. Le mod sonar (0.5.0 ou plus) est **recomma
 l'extension montre la partie UI+ (utilisation, ligne de temps, rythme des limites), sans le bloc Cache · Branche · Coût
 ni la ligne courte.
 
-Installation : téléchargez **`cercle-setup.exe`** depuis la [dernière release](https://github.com/Gh0st113/sonar/releases/latest)
-et lancez-le : un assistant classique. Il demande d'abord **« pour moi seulement »** (par défaut, sans droits
+Installation : téléchargez **`cercle-setup.exe`** depuis la [dernière release](https://github.com/Gh0st113/sonar/releases/latest).
+**Aucune release n'est encore publiée** (ce lien ne mène donc à rien pour l'instant) : en attendant, l'installeur
+d'essai, non signé, est dans [Actions > cercle > branche main](https://github.com/Gh0st113/sonar/actions/workflows/cercle.yml?query=branch%3Amain) > dernière exécution
+réussie > **Artifacts** > `cercle-setup-essai` (une archive zip à décompresser ; compte GitHub nécessaire). Lancez-le : un assistant classique. Il demande d'abord **« pour moi seulement »** (par défaut, sans droits
 administrateur, dans `%LOCALAPPDATA%\Programs\sonar-cercle`) ou **« pour tous les utilisateurs »** (`Program Files`,
 Windows demande votre accord ; l'extension et Claude restent sous votre compte, et les mises à jour redemandent cet
 accord), puis le dossier, modifiable. « Pour moi seulement » refuse un dossier protégé : choisissez-en un à vous, ou
