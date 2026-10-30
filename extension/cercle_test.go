@@ -328,6 +328,10 @@ func TestOptionsApresArguments(t *testing.T) {
 		t.Fatalf("version --silencieux : %d", c)
 	}
 	silencieux = false
+	// signer refuse de tourner sans console (phrase de passe) : sur la CI Windows, le test n'en a pas.
+	avant := enConsole
+	enConsole = true
+	defer func() { enConsole = avant }()
 	// signer doit échouer plus loin (fichier « a » introuvable : code 4), pas sur l'analyse des options (code 1).
 	if c := executer([]string{"signer", "a", "--exe", "b", "cle"}); c != codeEcriture {
 		t.Fatalf("signer a --exe b cle : %d", c)
