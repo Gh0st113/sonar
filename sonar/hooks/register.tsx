@@ -370,6 +370,8 @@ export const register: Register = (on, options) => {
     await read($, tic)
     // Le pied ne montre que ce qui mérite un coup d'œil (cas normal : la semaine seule).
     const montrer = (await lieu($)) === 'pied' && !(await read($, masque))
+    // Hors du bureau, pas de porteur : rien à calculer si rien n'est montré.
+    if (!montrer && e.surface !== 'desktop') return next(e)
     const { pied, extension } = await calculer($)
     const visibles = montrer ? pied : []
     // L'appli de bureau ne dessine pas les `modes` ajoutés (essai du 27/10) : on y dessine notre propre arbre,

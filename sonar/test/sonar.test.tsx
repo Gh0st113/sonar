@@ -219,6 +219,8 @@ test('pied sur le bureau : porteur invisible des données de l\'extension, quel 
   expect((await charge())?.alt?.startsWith('sonar:1 ')).toBe(true)
   await commande($, 'masquer')
   expect((await charge())?.alt?.startsWith('sonar:1 ')).toBe(true)
+  // Un mode natif, rien de sonar : le mode seul, sans « & » final.
+  expect(await pied($, 'desktop', ['focus'])).toBe('focus')
   // Terminal : pas de porteur.
   await commande($, 'pied')
   await commande($, 'afficher')

@@ -57,12 +57,27 @@
     };
   }
 
-  // L'état du cache à l'instant `maintenant` : un cache chaud dont l'heure est passée a refroidi depuis le relevé
-  // (incertain si sa durée de vie était inconnue, comme le dit sonar).
+  // L'état du cache à l'instant `maintenant` : un cache chaud dont l'heure est passée a refroidi depuis le relevé.
+  // Durée de vie inconnue (« au moins », 5 min sûres) : incertain jusqu'à l'heure, froid au-delà d'1 h, comme sonar.
+  const TTL_MIN = 5 * 60_000;
+  const TTL_MAX = 60 * 60_000;
   function etatCache(cache, maintenant) {
     if (!cache) return null;
-    if (cache.etat === 'chaud' && cache.expire !== null && maintenant >= cache.expire) return cache.auMoins ? 'incertain' : 'froid';
-    return cache.etat;
+    if (cache.etat !== 'chaud' || cache.expire === null || maintenant < cache.expire) return cache.etat;
+    if (!cache.auMoins) return 'froid';
+    return maintenant < cache.expire - TTL_MIN + TTL_MAX ? 'incertain' : 'froid';
+  }
+
+  // Le mod redessine son pied chaque minute : une charge plus vieille que ça veut dire que plus aucun pied ne la porte
+  // (sonar retiré, autre onglet) ; on ne la montre plus. Marge pour les horloges et une minute manquée.
+  const AGE_MAX = 5 * 60_000;
+  // Parmi les charges des pieds affichés, la plus récente encore fraîche ; aucune → null.
+  function choisir(charges, maintenant) {
+    let meilleure = null;
+    for (const c of charges) {
+      if (c && maintenant - c.a <= AGE_MAX && (!meilleure || c.a > meilleure.a)) meilleure = c;
+    }
+    return meilleure;
   }
 
   function utile(charge) {
@@ -137,7 +152,7 @@
     return Boolean(etat && etat !== 'chaud');
   };
 
-  const api = { SELECTEURS, PREFIXE, PORTEUR, lireCharge, etatCache, utile, ligneCourte, lignesDetail, releve, froid };
+  const api = { SELECTEURS, PREFIXE, PORTEUR, AGE_MAX, lireCharge, etatCache, choisir, utile, ligneCourte, lignesDetail, releve, froid };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else racine.SonarLecture = api;
 })(typeof globalThis === 'object' ? globalThis : this);

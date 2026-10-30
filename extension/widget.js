@@ -771,7 +771,8 @@
   // Sur le bureau, le mod sonar ajoute à son pied (à côté du modèle) une image transparente de 1 pixel dont le texte
   // alternatif porte ses données (« sonar:1 {json} », sans langue), dans le shadowRoot ouvert d'un hôte
   // [data-plugin-drawn]. On les lit pour montrer $ · cache · branche dans le popover du cercle et sous
-  // « Personnalisation ». Rien n'est masqué. On garde la dernière charge, qui porte son heure de relevé.
+  // « Personnalisation ». Rien n'est masqué. À chaque passe, la charge vient des seuls pieds affichés : un pied
+  // retiré ou caché (autre session) ne compte plus, et une charge de plus de quelques minutes n'est plus montrée.
   const LECTEUR = globalThis.SonarLecture;
   const observedRoots = new WeakMap();
   const waitingHosts = new WeakMap();
@@ -782,21 +783,17 @@
     return Boolean(LECTEUR?.utile(sonarCharge));
   }
 
-  function readHost(host) {
-    const alt = host.shadowRoot?.querySelector(LECTEUR.PORTEUR)?.getAttribute('alt');
-    const charge = LECTEUR.lireCharge(alt);
-    // Seulement une charge plus récente, et seulement si elle change : un redessin du popover ne doit pas
-    // relancer l'observateur qui l'a causé.
-    if (!charge || (sonarCharge && charge.a <= sonarCharge.a)) return;
-    sonarCharge = charge;
-    renderSonar();
+  function chargeOf(host) {
+    const shown = typeof host.checkVisibility === 'function' ? host.checkVisibility() : host.getClientRects().length > 0;
+    return shown ? LECTEUR.lireCharge(host.shadowRoot?.querySelector(LECTEUR.PORTEUR)?.getAttribute('alt')) : null;
   }
 
   function scanHosts() {
     if (!LECTEUR || !SEL.hote) return;
+    const charges = [];
     for (const host of document.querySelectorAll(SEL.hote)) {
       const root = host.shadowRoot;
-      // Hôte inséré avant son shadowRoot : on repasse à l'image suivante (une seconde au plus).
+      // Hôte inséré avant son shadowRoot : on repasse à l'image suivante (60 passes au plus par hôte).
       const tries = waitingHosts.get(host) ?? 0;
       if (!root && tries < 60) {
         waitingHosts.set(host, tries + 1);
@@ -806,12 +803,18 @@
         });
       }
       if (root && !observedRoots.has(root)) {
-        const observer = new MutationObserver(() => readHost(host));
+        const observer = new MutationObserver(scanHosts);
         observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['alt'] });
         observedRoots.set(root, observer);
       }
-      readHost(host);
+      charges.push(chargeOf(host));
     }
+    // On ne redessine que si la charge montrée change : un redessin du popover ne doit pas relancer l'observateur
+    // qui l'a causé.
+    const charge = LECTEUR.choisir(charges, Date.now());
+    if (JSON.stringify(charge) === JSON.stringify(sonarCharge)) return;
+    sonarCharge = charge;
+    renderSonar();
   }
 
   function clock(ms) {
@@ -877,6 +880,8 @@
   // Without usage (signed out, or an account without plan limits) both
   // places drop what they showed.
   function render() {
+    // Passe aussi par la minuterie de UI+ (60 s) : une charge devenue trop vieille disparaît.
+    scanHosts();
     view = buildView(usage, Date.now(), language(), document.documentElement.lang || undefined);
     version += 1;
     if (view || sonarUtile()) renderSidebar();

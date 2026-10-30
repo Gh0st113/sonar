@@ -137,7 +137,9 @@ dossier. Elle montre ce que sonar sait, à deux endroits :
 D'où viennent les données : sur le bureau, le mod sonar ajoute à son pied (à côté du nom du modèle) une image
 transparente de 1 pixel dont le texte alternatif porte ses chiffres en JSON, sans langue. L'extension la lit et les écrit
 en français ou en anglais, selon la langue de l'appli. Rien n'est masqué, le bandeau n'est pas utilisé : sonar peut rester
-à son emplacement par défaut (`pied`), qui ne montre que ce qui mérite un coup d'œil. Le mod sonar doit être installé.
+à son emplacement par défaut (`pied`), qui ne montre que ce qui mérite un coup d'œil (si vous aviez choisi `/sonar bandeau`,
+revenez-y avec `/sonar pied` pour ne pas voir les infos en double). Les données partent même avec `/sonar masquer`, qui
+cache seulement l'affichage de sonar. Le mod sonar (0.5.0 ou plus) doit être installé.
 
 Installation (PowerShell 7, depuis la racine du dépôt), puis **quitter complètement Claude** (zone de notification >
 Quitter) et le relancer :
@@ -164,6 +166,8 @@ Limites :
   rien ne garantit qu'Anthropic le garde ; si React DevTools occupe déjà ce dossier, le script refuse ;
 - `REACT_PROFILE` est une variable **utilisateur** : toutes les applis lancées ensuite la voient ;
 - tout changement demande un **redémarrage complet** de Claude ;
+- le porteur est invisible mais **pas muet** : un lecteur d'écran peut annoncer son texte (`sonar:1 {…}`) dans le pied ;
+- l'hôte du pied n'a pas encore été relevé dans l'appli (seul celui du bandeau l'a été) : à confirmer à l'essai ;
 - s'il y a plusieurs dossiers `claude_*` (après une réinstallation de Claude), le script s'arrête : précisez lequel avec `-Profil <nom>` ;
 - les sélecteurs viennent de relevés de Claude Desktop Windows en français (`extension/test/fixtures`) : une mise à
   jour de Claude peut les casser.

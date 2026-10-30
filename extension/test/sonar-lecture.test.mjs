@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { chargeExtension, texteExtension, TTL } from '../../sonar/hooks/logique.mjs';
 
-const { lireCharge, etatCache, ligneCourte, lignesDetail, froid, PREFIXE, PORTEUR } = createRequire(import.meta.url)('../sonar-lecture.js');
+const { lireCharge, etatCache, choisir, AGE_MAX, ligneCourte, lignesDetail, froid, PREFIXE, PORTEUR } = createRequire(import.meta.url)('../sonar-lecture.js');
 
 const H = 3_600_000;
 const T = Date.parse('2026-10-30T20:00:00Z');
@@ -62,6 +62,21 @@ test('le cache refroidit à l\'écran après son heure, sans nouvelle charge', (
   assert.equal(ligneCourte(auMoins, 'fr', T, heure), '🔥 cache → ≥ 20:04 · ⎇ master · 4,00 $');
   assert.deepEqual(lignesDetail(auMoins, 'fr', T, heure)[0], ['Cache', '🔥 chaud (99 % relu, au moins jusqu\'à 20:04)']);
   assert.equal(etatCache(auMoins.cache, T + 10 * 60_000), 'incertain');
+  // Au-delà d'une heure, froid même sans durée de vie connue (comme sonar).
+  assert.equal(etatCache(auMoins.cache, T - 60_000 + H - 1), 'incertain');
+  assert.equal(etatCache(auMoins.cache, T - 60_000 + H), 'froid');
+});
+
+test('choix de la charge : la plus récente des pieds affichés, rien si trop vieille', () => {
+  const a = lireCharge(alt(D, T));
+  const b = lireCharge(alt({ ...D, depot: { nom: 'autre', branche: 'dev', modifies: 0 } }, T + 30_000));
+  assert.equal(choisir([a, null, b], T + 30_000), b);
+  assert.equal(choisir([a], T + 30_000), a);
+  assert.equal(choisir([], T), null);
+  assert.equal(choisir([null], T), null);
+  // Plus aucun pied ne la redessine : au-delà d'AGE_MAX, elle n'est plus montrée.
+  assert.equal(choisir([a], T + AGE_MAX), a);
+  assert.equal(choisir([a], T + AGE_MAX + 1), null);
 });
 
 test('autres formes : autre modèle, HEAD détachée, fichiers modifiés, dépôt sans branche', () => {

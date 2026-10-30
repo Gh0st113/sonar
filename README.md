@@ -137,7 +137,9 @@ what sonar knows in two places:
 Where the data comes from: on the desktop, the sonar mod adds to its footer (next to the model name) a transparent
 1-pixel image whose alt text carries its numbers as language-neutral JSON. The extension reads it and words it in
 English or French, following the app's language. Nothing is hidden and the banner is not used: sonar can stay in its
-default `footer` placement, which only shows what deserves a glance. The sonar mod must be installed.
+default `footer` placement, which only shows what deserves a glance (if you picked `/sonar banner`, go back with
+`/sonar footer` to avoid seeing things twice). The data still flows with `/sonar hide`, which only hides sonar's own
+display. The sonar mod (0.5.0 or later) must be installed.
 
 Install (PowerShell 7, from the repository root), then **quit Claude completely** (notification area > Quit) and
 start it again:
@@ -164,6 +166,8 @@ Limits:
   guarantee it; if React DevTools already uses that folder, the script refuses;
 - `REACT_PROFILE` is a **user** variable: every app started afterwards sees it;
 - every change needs a **full restart** of Claude;
+- the carrier is invisible but **not silent**: a screen reader may read its text (`sonar:1 {…}`) in the footer;
+- the footer's host has not been captured in the app yet (only the banner's was): to be confirmed when trying it;
 - with several `claude_*` folders (after reinstalling Claude) the script stops: name the right one with `-Profil <name>`;
 - the selectors come from captures of Claude Desktop for Windows in French (`extension/test/fixtures`): a Claude
   update can break them.
