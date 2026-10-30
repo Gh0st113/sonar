@@ -97,6 +97,7 @@
       detachee: 'HEAD détachée', modifies: (n) => `${n} modifié${n > 1 ? 's' : ''}`,
       cout: (x) => `${x.toFixed(2).replace('.', ',')} $`,
       cache: 'Cache', branche: 'Branche', nomCout: 'Coût', releve: (h) => `relevé à ${h}`,
+      absent: 'Cache · Branche · Coût : aucune donnée du mod sonar (0.5.0 ou plus, dans une session de l\'onglet Code)',
     },
     en: {
       chaud: 'warm', froid: 'cold', incertain: 'uncertain', autreModele: 'other model',
@@ -104,6 +105,7 @@
       detachee: 'detached HEAD', modifies: (n) => `${n} modified`,
       cout: (x) => `$${x.toFixed(2)}`,
       cache: 'Cache', branche: 'Branch', nomCout: 'Cost', releve: (h) => `read at ${h}`,
+      absent: 'Cache · Branch · Cost: no data from the sonar mod (0.5.0 or later, in a Code tab session)',
     },
   };
   const ICONES = { chaud: '🔥', froid: '🧊', incertain: '❔' };
@@ -153,12 +155,14 @@
   }
 
   const releve = (h, langue) => mots(langue).releve(h);
+  // Popover sans données : dire ce qu'il manque (mod absent, trop ancien, ou pas de session Code ouverte).
+  const absent = (langue) => mots(langue).absent;
   const froid = (charge, maintenant) => {
     const etat = etatCache(charge?.cache, maintenant);
     return Boolean(etat && etat !== 'chaud');
   };
 
-  const api = { SELECTEURS, PREFIXE, PORTEUR, AGE_MAX, lireCharge, etatCache, choisir, utile, ligneCourte, lignesDetail, releve, froid };
+  const api = { SELECTEURS, PREFIXE, PORTEUR, AGE_MAX, lireCharge, etatCache, choisir, utile, ligneCourte, lignesDetail, releve, absent, froid };
   // Node (tests) n'a pas de document ; dans la page, un élément d'id « module » ne doit pas faire croire à Node.
   if (typeof document === 'undefined' && typeof module === 'object' && module.exports) module.exports = api;
   else racine.SonarLecture = api;

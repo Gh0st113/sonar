@@ -877,22 +877,25 @@
   function syncSonarBlock(list) {
     let block = list.querySelector(':scope > .up-sonar-block');
     const now = Date.now();
-    const lines = !LECTEUR || removed || !settings.popover ? [] : LECTEUR.lignesDetail(sonarCharge, language(), now, clock);
-    if (lines.length === 0) {
+    if (!LECTEUR || removed || !settings.popover) {
       block?.remove();
       return;
     }
-    // Clé à la minute : le bloc n'est refait que si ce qu'il montre change.
-    const key = JSON.stringify([lines, readAtText()]);
+    const lines = LECTEUR.lignesDetail(sonarCharge, language(), now, clock);
+    // Sans données du mod : une ligne discrète qui dit pourquoi, plutôt qu'un bloc qui manque sans explication.
+    const key = JSON.stringify(lines.length ? [lines, readAtText()] : LECTEUR.absent(language()));
     if (!block) block = element('div', 'up-sonar-block flex flex-col gap-1 px-lg py-xs text-footnote');
+    // Clé à la minute : le bloc n'est refait que si ce qu'il montre change.
     if (block.dataset.key !== key) {
       block.dataset.key = key;
-      block.classList.toggle('up-sonar-cold', LECTEUR.froid(sonarCharge, now));
-      block.replaceChildren(...lines.map(([label, value]) => {
-        const row = element('div', 'up-sonar-row flex items-baseline justify-between gap-x-sm');
-        row.append(element('span', 'text-primary', label), element('span', 'up-sonar-value tabular-nums text-muted-as-secondary', value));
-        return row;
-      }), element('div', 'up-sonar-at text-muted-as-secondary', readAtText()));
+      block.classList.toggle('up-sonar-cold', lines.length > 0 && LECTEUR.froid(sonarCharge, now));
+      block.replaceChildren(...(lines.length
+        ? [...lines.map(([label, value]) => {
+          const row = element('div', 'up-sonar-row flex items-baseline justify-between gap-x-sm');
+          row.append(element('span', 'text-primary', label), element('span', 'up-sonar-value tabular-nums text-muted-as-secondary', value));
+          return row;
+        }), element('div', 'up-sonar-at text-muted-as-secondary', readAtText())]
+        : [element('div', 'up-sonar-absent text-muted-as-secondary', LECTEUR.absent(language()))]));
     }
     const settingsRow = list.querySelector(':scope > .up-settings');
     if (settingsRow ? block.nextElementSibling !== settingsRow : block !== list.lastElementChild) list.insertBefore(block, settingsRow);

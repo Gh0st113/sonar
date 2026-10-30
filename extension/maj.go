@@ -110,16 +110,25 @@ func telecharger(ctx context.Context, url string) ([]byte, error) {
 	return b, err
 }
 
-// miseAJour proposée : la nouvelle version, ses notes, et l'exe déjà vérifié.
-type miseAJour struct {
+// disponible : une release plus récente, avec ses deux fichiers, pas encore téléchargée. La chercher ne demande
+// qu'une petite requête : au lancement de Claude, on n'attend que ça (quelques secondes), et on ne télécharge
+// l'installeur qu'après l'accord de l'utilisateur.
+type disponible struct {
 	Version string
 	Notes   string
+	urlExe  string
+	urlSig  string
+}
+
+// miseAJour : l'installeur téléchargé, signature vérifiée.
+type miseAJour struct {
+	Version string
 	Exe     []byte
 }
 
-// chercherMiseAJour : nil, nil s'il n'y a rien de plus récent. Une release plus récente mais mal signée est une
+// chercherDisponible : nil, nil s'il n'y a rien de plus récent. Une release plus récente sans signature est une
 // erreur (codeMiseAJour) : elle ne doit jamais passer en silence.
-func chercherMiseAJour(ctx context.Context, actuelle string) (*miseAJour, error) {
+func chercherDisponible(ctx context.Context, actuelle string) (*disponible, error) {
 	pub, err := clePublique()
 	if err != nil {
 		return nil, err
@@ -134,34 +143,53 @@ func chercherMiseAJour(ctx context.Context, actuelle string) (*miseAJour, error)
 	if !plusRecente(rel.Tag, actuelle) {
 		return nil, nil
 	}
-	var urlExe, urlSig string
+	d := &disponible{Version: strings.TrimPrefix(rel.Tag, "v"), Notes: rel.Corps}
 	for _, a := range rel.Assets {
 		switch a.Nom {
 		case nomExe:
-			urlExe = a.URL
+			d.urlExe = a.URL
 		case nomSig:
-			urlSig = a.URL
+			d.urlSig = a.URL
 		}
 	}
-	if urlExe == "" || urlSig == "" {
+	if d.urlExe == "" || d.urlSig == "" {
 		return nil, echec(codeMiseAJour, "la release %s n'a pas %s et %s : pas encore signée ?", rel.Tag, nomExe, nomSig)
 	}
-	exe, err := telecharger(ctx, urlExe)
+	return d, nil
+}
+
+// recuperer : télécharge l'installeur et sa signature, et ne le rend que si la signature est bonne et vaut pour
+// cette version.
+func (d *disponible) recuperer(ctx context.Context) (*miseAJour, error) {
+	pub, err := clePublique()
+	if err != nil || pub == nil {
+		return nil, echec(codeMiseAJour, "aucune clé publique embarquée")
+	}
+	exe, err := telecharger(ctx, d.urlExe)
 	if err != nil {
 		return nil, err
 	}
-	sig, err := telecharger(ctx, urlSig)
+	sig, err := telecharger(ctx, d.urlSig)
 	if err != nil {
 		return nil, err
 	}
 	v, err := verifier(pub, string(sig), exe)
 	if err != nil {
-		return nil, echec(codeMiseAJour, "release %s refusée : %v", rel.Tag, err)
+		return nil, echec(codeMiseAJour, "release v%s refusée : %v", d.Version, err)
 	}
-	if strings.TrimPrefix(rel.Tag, "v") != v {
-		return nil, echec(codeMiseAJour, "release %s refusée : la signature vaut pour la version %s", rel.Tag, v)
+	if d.Version != v {
+		return nil, echec(codeMiseAJour, "release v%s refusée : la signature vaut pour la version %s", d.Version, v)
 	}
-	return &miseAJour{Version: v, Notes: rel.Corps, Exe: exe}, nil
+	return &miseAJour{Version: v, Exe: exe}, nil
+}
+
+// chercherMiseAJour : chercher puis récupérer d'un coup (tests).
+func chercherMiseAJour(ctx context.Context, actuelle string) (*miseAJour, error) {
+	d, err := chercherDisponible(ctx, actuelle)
+	if err != nil || d == nil {
+		return nil, err
+	}
+	return d.recuperer(ctx)
 }
 
 func contexteCourt(d time.Duration) (context.Context, context.CancelFunc) {

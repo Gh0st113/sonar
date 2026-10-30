@@ -227,8 +227,13 @@ func TestChercherMiseAJour(t *testing.T) {
 	clePubliqueTexte = pubTexte + "\n"
 
 	fauxGitHub(t, "v0.6.0", map[string][]byte{nomExe: exe, nomSig: []byte(signer(prive, "0.6.0", exe))})
-	m, err := chercherMiseAJour(ctx, "0.5.0")
-	if err != nil || m == nil || m.Version != "0.6.0" || string(m.Exe) != string(exe) || m.Notes != "Notes de version" {
+	// La recherche seule ne télécharge rien : version et notes, et les adresses des deux fichiers.
+	d, err := chercherDisponible(ctx, "0.5.0")
+	if err != nil || d == nil || d.Version != "0.6.0" || d.Notes != "Notes de version" || d.urlExe == "" || d.urlSig == "" {
+		t.Fatalf("recherche : %+v %v", d, err)
+	}
+	m, err := d.recuperer(ctx)
+	if err != nil || m == nil || m.Version != "0.6.0" || string(m.Exe) != string(exe) {
 		t.Fatalf("release signée : %+v %v", m, err)
 	}
 	if m, err := chercherMiseAJour(ctx, "0.6.0"); m != nil || err != nil {
@@ -248,6 +253,32 @@ func TestChercherMiseAJour(t *testing.T) {
 		if m, err := chercherMiseAJour(ctx, "0.5.0"); m != nil || code(err) != codeMiseAJour {
 			t.Errorf("%s : %+v %v", nom, m, err)
 		}
+	}
+}
+
+// Au lancement de Claude, un GitHub qui ne répond pas ne doit pas le retarder plus que le délai de recherche.
+func TestRechercheBornee(t *testing.T) {
+	_, pubTexte, _ := nouvelleCle("une phrase assez longue")
+	ancienne := clePubliqueTexte
+	t.Cleanup(func() { clePubliqueTexte = ancienne })
+	clePubliqueTexte = pubTexte + "\n"
+	bloque := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-bloque:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(func() { close(bloque); srv.Close() })
+	ancien := apiGitHub
+	apiGitHub = srv.URL
+	t.Cleanup(func() { apiGitHub = ancien })
+	debut := time.Now()
+	if d, err := chercher(200 * time.Millisecond); d != nil || err == nil {
+		t.Fatalf("GitHub muet : %+v %v", d, err)
+	}
+	if ecoule := time.Since(debut); ecoule > 2*time.Second {
+		t.Fatalf("recherche trop longue : %v", ecoule)
 	}
 }
 

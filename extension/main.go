@@ -23,6 +23,8 @@
 // la remet (même si le processus est interrompu : signal, puis fichier de reprise relu par chaque action).
 package main
 
+//go:generate go run ./icone/ecrire
+
 import (
 	"bytes"
 	"encoding/json"
@@ -329,12 +331,25 @@ func attendreClaude(cible string) error {
 	return nil
 }
 
-// proposerMaj : s'il y a une version signée plus récente et que l'utilisateur l'accepte, lance son installeur (qui
-// relance Claude si lancer) et renvoie fait = true. Une release mal signée est signalée ; une panne réseau, ignorée.
-func proposerMaj(lancer bool) (bool, error) {
-	ctx, fin := contexteCourt(3 * time.Minute)
+// Délais : au lancement de Claude, la recherche ne doit pas le faire attendre ; à la demande (Gérer, « maj »), on
+// peut patienter un peu plus. Le téléchargement, lui, n'a lieu qu'après l'accord.
+const (
+	delaiRechercheLancement = 5 * time.Second
+	delaiRechercheDemande   = 30 * time.Second
+	delaiTelechargement     = 3 * time.Minute
+)
+
+func chercher(delai time.Duration) (*disponible, error) {
+	ctx, fin := contexteCourt(delai)
 	defer fin()
-	m, err := chercherMiseAJour(ctx, version())
+	return chercherDisponible(ctx, version())
+}
+
+// proposerMaj : au lancement. S'il y a une version plus récente et que l'utilisateur l'accepte, lance son installeur
+// (qui relance Claude) et renvoie fait = true. Une release mal signée est signalée ; une panne réseau ou une réponse
+// trop lente, ignorée : Claude démarre avec la version actuelle.
+func proposerMaj(lancer bool) (bool, error) {
+	d, err := chercher(delaiRechercheLancement)
 	if err != nil {
 		var e *erreurCode
 		if errors.As(err, &e) && e.code == codeMiseAJour {
@@ -344,26 +359,38 @@ func proposerMaj(lancer bool) (bool, error) {
 		}
 		return false, nil
 	}
-	if m == nil {
+	if d == nil {
 		return false, nil
 	}
-	return appliquerMaj(m, lancer)
+	fait, err := installerDisponible(d, lancer)
+	if err != nil {
+		alerter("Mise à jour abandonnée : %v — Claude démarre avec la version actuelle.", err)
+		return false, nil
+	}
+	return fait, nil
 }
 
-func appliquerMaj(m *miseAJour, lancer bool) (bool, error) {
-	alerter("Version %s disponible (actuelle : %s), signature vérifiée.", m.Version, version())
-	if notes := nettoyer(m.Notes, 1500); notes != "" {
+// installerDisponible : présente la version, demande l'accord, télécharge et vérifie l'installeur, puis le lance.
+func installerDisponible(d *disponible, lancer bool) (bool, error) {
+	alerter("Version %s disponible (actuelle : %s).", d.Version, version())
+	if notes := nettoyer(d.Notes, 1500); notes != "" {
 		dire("Notes de la release (texte de GitHub, non signé) :\n%s", notes)
 	}
-	if !oui("Installer la version " + m.Version + " ?") {
+	if !oui("Télécharger et installer la version " + d.Version + " ? (sa signature est vérifiée avant l'installation)") {
 		return false, nil
 	}
+	ctx, fin := contexteCourt(delaiTelechargement)
+	defer fin()
+	m, err := d.recuperer(ctx)
+	if err != nil {
+		return false, err
+	}
 	if err := os.MkdirAll(dossierCercle(), 0o755); err != nil {
-		return true, echec(codeEcriture, "%v", err)
+		return false, echec(codeEcriture, "%v", err)
 	}
 	setup := filepath.Join(dossierCercle(), "cercle-setup-"+m.Version+".exe")
 	if err := os.WriteFile(setup, m.Exe, 0o755); err != nil {
-		return true, echec(codeEcriture, "écriture de l'installeur impossible : %v", err)
+		return false, echec(codeEcriture, "écriture de l'installeur impossible : %v", err)
 	}
 	// /SILENT : la fenêtre de progression s'affiche, sans questions (l'accord est déjà donné).
 	args := []string{"/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART"}
@@ -374,30 +401,32 @@ func appliquerMaj(m *miseAJour, lancer bool) (bool, error) {
 	}
 	// L'installeur remplace cercle.exe : on le démarre et on s'arrête (il ferme ce qui le gênerait encore).
 	if err := exec.Command(setup, args...).Start(); err != nil {
-		return true, echec(codeEcriture, "lancement de l'installeur impossible : %v", err)
+		return false, echec(codeEcriture, "lancement de l'installeur impossible : %v", err)
 	}
-	dire("Installation de la version %s en cours.", m.Version)
+	dire("Signature vérifiée. Installation de la version %s en cours.", m.Version)
 	return true, nil
 }
 
-func actionMaj(o options) error {
-	ctx, fin := contexteCourt(3 * time.Minute)
-	defer fin()
-	m, err := chercherMiseAJour(ctx, version())
+// majDemandee : « cercle maj » et Gérer. Les erreurs sont rendues (pas d'ignorance silencieuse ici).
+func majDemandee() error {
+	d, err := chercher(delaiRechercheDemande)
 	if err != nil {
 		var e *erreurCode
 		if errors.As(err, &e) {
 			return err
 		}
-		return echec(codeMiseAJour, "%v", err)
+		return echec(codeMiseAJour, "recherche impossible : %v", err)
 	}
-	if m == nil {
-		alerter("Déjà à jour (version %s).", version())
+	if d == nil {
+		alerter("Vous avez la dernière version (%s).", version())
+		vider(boiteInfo, true)
 		return nil
 	}
-	_, err = appliquerMaj(m, false)
+	_, err = installerDisponible(d, false)
 	return err
 }
+
+func actionMaj(o options) error { return majDemandee() }
 
 func actionRetirer(o options) error {
 	dossier, err := dossierDe(o)
@@ -510,23 +539,7 @@ func actionGerer(o options) error {
 	if !oui("Chercher une mise à jour maintenant ?") {
 		return nil
 	}
-	ctx, fin := contexteCourt(3 * time.Minute)
-	defer fin()
-	m, err := chercherMiseAJour(ctx, version())
-	if err != nil {
-		var e *erreurCode
-		if errors.As(err, &e) {
-			return err
-		}
-		return echec(codeMiseAJour, "recherche impossible : %v", err)
-	}
-	if m == nil {
-		alerter("Vous avez la dernière version (%s).", version())
-		vider(boiteInfo, true)
-		return nil
-	}
-	_, err = appliquerMaj(m, false)
-	return err
+	return majDemandee()
 }
 
 func actionCle(o options) error {

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { chargeExtension, texteExtension, TTL } from '../../sonar/hooks/logique.mjs';
 
-const { lireCharge, etatCache, choisir, AGE_MAX, ligneCourte, lignesDetail, froid, PREFIXE, PORTEUR } = createRequire(import.meta.url)('../sonar-lecture.js');
+const { lireCharge, etatCache, choisir, AGE_MAX, ligneCourte, lignesDetail, absent, froid, PREFIXE, PORTEUR } = createRequire(import.meta.url)('../sonar-lecture.js');
 
 const H = 3_600_000;
 const T = Date.parse('2026-10-30T20:00:00Z');
@@ -112,4 +112,11 @@ test('ce qui n\'est pas une charge sonar → null', () => {
   assert.equal(lireCharge(`sonar:1 {"a":${T},"cache":{"etat":"chaud","expire":${T + 3 * H}}}`).cache.expire, null);
   // Champs douteux écartés un par un.
   assert.deepEqual(lireCharge('sonar:1 {"a":1,"cache":{"etat":"tiède"},"depot":{"nom":""},"cout":-3}'), { a: 1, cache: null, depot: null, cout: null });
+});
+
+test('popover sans données du mod : une ligne qui dit pourquoi, en fr et en en', () => {
+  assert.deepEqual(lignesDetail(null, 'fr', T), []);
+  assert.match(absent('fr'), /mod sonar \(0\.5\.0 ou plus/);
+  assert.match(absent('en'), /sonar mod \(0\.5\.0 or later/);
+  assert.equal(absent('de'), absent('en'));
 });
