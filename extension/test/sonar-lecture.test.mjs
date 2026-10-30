@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { chargeExtension, texteExtension, TTL } from '../../sonar/hooks/logique.mjs';
 
-const { lireCharge, etatCache, choisir, AGE_MAX, ligneCourte, lignesDetail, absent, froid, PREFIXE, PORTEUR } = createRequire(import.meta.url)('../sonar-lecture.js');
+const { lireCharge, etatCache, choisir, AGE_MAX, ligneCourte, lignesDetail, absent, froid, raison, PREFIXE, PORTEUR } = createRequire(import.meta.url)('../sonar-lecture.js');
 
 const H = 3_600_000;
 const T = Date.parse('2026-10-30T20:00:00Z');
@@ -119,4 +119,14 @@ test('popover sans données du mod : une ligne qui le recommande, en fr et en en
   assert.match(absent('fr'), /mod sonar 0\.5\.0 ou plus \(recommandé\)/);
   assert.match(absent('en'), /sonar mod 0\.5\.0 or later \(recommended\)/);
   assert.equal(absent('de'), absent('en'));
+});
+
+test('diagnostic : la raison pour laquelle un texte porteur est refusé', () => {
+  const bon = PREFIXE + JSON.stringify({ a: T, cout: 1.5 });
+  assert.equal(raison(bon, T), 'ok');
+  assert.equal(raison('autre chose', T), 'préfixe absent');
+  assert.equal(raison(PREFIXE + '{pas du json', T), 'JSON illisible');
+  assert.equal(raison(PREFIXE + JSON.stringify({ a: 'hier', cout: 1 }), T), 'heure « a » invalide');
+  assert.equal(raison(bon, T + 20 * 60_000), 'trop vieux (20 min)');
+  assert.equal(raison(PREFIXE + JSON.stringify({ a: T }), T), 'aucune donnée utile');
 });

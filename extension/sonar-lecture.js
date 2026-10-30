@@ -86,6 +86,56 @@
     return meilleure;
   }
 
+  // Diagnostic : pourquoi un texte porteur trouvé dans la page n'est pas retenu (affiché dans le popover quand
+  // aucune donnée n'arrive). « ok » : il serait retenu.
+  function raison(texte, maintenant) {
+    if (typeof texte !== 'string' || !texte.startsWith(PREFIXE)) return 'préfixe absent';
+    try {
+      JSON.parse(texte.slice(PREFIXE.length));
+    } catch {
+      return 'JSON illisible';
+    }
+    const c = lireCharge(texte);
+    if (!c) return 'heure « a » invalide';
+    const age = Math.round((maintenant - c.a) / 60_000);
+    if (Math.abs(maintenant - c.a) > AGE_MAX) return `trop vieux (${age} min)`;
+    if (!utile(c)) return 'aucune donnée utile';
+    return 'ok';
+  }
+
+  // Diagnostic du lien avec le mod, sur la page entière, zones privées (shadowRoot ouverts) comprises : les zones
+  // dessinées par des mods, et tout attribut qui porte « sonar:1 », où qu'il soit, avec la raison d'un refus.
+  // Deux lignes courtes ; rien n'est envoyé nulle part.
+  function diagnostiquerPage(doc, maintenant) {
+    const zones = [];
+    const traces = [];
+    let vus = 0;
+    const parcourir = (racine, chemin) => {
+      for (const el of racine.querySelectorAll('*')) {
+        if (++vus > 30000) return;
+        const site = el.getAttribute('data-plugin-drawn');
+        if (site !== null) {
+          const ombre = el.shadowRoot;
+          const visible = typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0;
+          zones.push(`${site || '?'}${ombre ? ` ${ombre.querySelectorAll('img').length} img` : ' (fermée)'}${visible ? '' : ' (cachée)'}`);
+        }
+        for (const a of el.attributes) {
+          if (a.value.includes('sonar:1')) traces.push(`${chemin}${el.localName}[${a.name}] : ${raison(a.value, maintenant)}`);
+        }
+        if (el.shadowRoot) parcourir(el.shadowRoot, `${chemin}${site ?? el.localName} › `);
+      }
+    };
+    try {
+      parcourir(doc, '');
+    } catch (e) {
+      return [`diagnostic : erreur ${e?.message ?? e}`];
+    }
+    return [
+      `diagnostic · zones de mods : ${zones.length ? zones.join(', ') : 'aucune'}`,
+      `porteur sonar : ${traces.length ? traces.slice(0, 3).join(' ; ') : 'introuvable dans la page'}`,
+    ];
+  }
+
   function utile(charge) {
     return Boolean(charge && (charge.cache || charge.depot || charge.cout !== null));
   }
@@ -162,7 +212,7 @@
     return Boolean(etat && etat !== 'chaud');
   };
 
-  const api = { SELECTEURS, PREFIXE, PORTEUR, AGE_MAX, lireCharge, etatCache, choisir, utile, ligneCourte, lignesDetail, releve, absent, froid };
+  const api = { SELECTEURS, PREFIXE, PORTEUR, AGE_MAX, lireCharge, etatCache, choisir, utile, ligneCourte, lignesDetail, releve, absent, froid, raison, diagnostiquerPage };
   // Node (tests) n'a pas de document ; dans la page, un élément d'id « module » ne doit pas faire croire à Node.
   if (typeof document === 'undefined' && typeof module === 'object' && module.exports) module.exports = api;
   else racine.SonarLecture = api;

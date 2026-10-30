@@ -874,6 +874,10 @@
     }
   }
 
+  function sonarDiagnostic(now) {
+    return LECTEUR.diagnostiquerPage(document, now);
+  }
+
   function syncSonarBlock(list) {
     let block = list.querySelector(':scope > .up-sonar-block');
     const now = Date.now();
@@ -882,8 +886,10 @@
       return;
     }
     const lines = LECTEUR.lignesDetail(sonarCharge, language(), now, clock);
-    // Sans données du mod : une ligne discrète qui le recommande, plutôt qu'un bloc qui manque sans explication.
-    const key = JSON.stringify(lines.length ? [lines, readAtText()] : LECTEUR.absent(language()));
+    // Sans données du mod : une ligne discrète qui le recommande, plutôt qu'un bloc qui manque sans explication,
+    // suivie du diagnostic (ce que l'extension voit dans la page).
+    const diag = lines.length ? [] : sonarDiagnostic(now);
+    const key = JSON.stringify(lines.length ? [lines, readAtText()] : [LECTEUR.absent(language()), diag]);
     if (!block) block = element('div', 'up-sonar-block flex flex-col gap-1 px-lg py-xs text-footnote');
     // Clé à la minute : le bloc n'est refait que si ce qu'il montre change.
     if (block.dataset.key !== key) {
@@ -895,7 +901,8 @@
           row.append(element('span', 'text-primary', label), element('span', 'up-sonar-value tabular-nums text-muted-as-secondary', value));
           return row;
         }), element('div', 'up-sonar-at text-muted-as-secondary', readAtText())]
-        : [element('div', 'up-sonar-absent text-muted-as-secondary', LECTEUR.absent(language()))]));
+        : [element('div', 'up-sonar-absent text-muted-as-secondary', LECTEUR.absent(language())),
+          ...diag.map((l) => element('div', 'up-sonar-diag text-muted-as-secondary', l))]));
     }
     const settingsRow = list.querySelector(':scope > .up-settings');
     if (settingsRow ? block.nextElementSibling !== settingsRow : block !== list.lastElementChild) list.insertBefore(block, settingsRow);
