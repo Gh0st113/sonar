@@ -1,0 +1,119 @@
+# sonar pour Windows (lanceur, extension, installeur) :
+#   tests      (Linux)   tests Node + Go, puis sonar.exe (build reproductible) ;
+#   installeur (Windows) sonar-setup.exe avec Inno Setup (déjà installé sur le runner), vérifié : il doit contenir
+#                        tel quel le sonar.exe du job précédent. Artifact d'essai à chaque push et PR ;
+#   windows    (Windows) essai réel : installation, vérification, réparation, désinstallation.
+# La publication d'une release est dans publier.yml, qui appelle ce workflow (workflow_call) puis signe.
+name: windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Appelé par publier.yml : mêmes tests, même construction, mêmes essais avant toute release.
+  workflow_call:
+  # Relancer à la main depuis l'onglet Actions (bouton « Run workflow », une fois le workflow sur main).
+  workflow_dispatch:
+
+# Actions épinglées par empreinte de commit (et non par tag, qu'on peut déplacer) ; publier.yml a le droit d'écrire.
+# Versions sous Node 24 ; systèmes fixés plutôt que « -latest », qui changent sans prévenir.
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.24.7'
+          # Pas de go.sum : sonar.exe n'a aucune dépendance, rien à mettre en cache.
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Tests de l'extension (Node)
+        run: node --test windows/test/
+      - name: Tests de la logique du mod (Node)
+        run: node --test mod/test/logique.test.mjs
+      - name: Tests de sonar.exe (Go)
+        working-directory: windows
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          GOOS=windows GOARCH=amd64 go vet ./...
+          go test ./...
+      # Build reproductible (même Go, -trimpath, sans buildid ni infos git) : on peut le refaire chez soi et comparer.
+      # « windowsgui » : pas de fenêtre noire (fenêtres de dialogue ; console seulement depuis un terminal).
+      - name: Construire sonar.exe
+        working-directory: windows
+        run: |
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags='-buildid= -H windowsgui' -o sonar.exe .
+          sha256sum sonar.exe | tee sonar.exe.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sonar-exe
+          path: |
+            windows/sonar.exe
+            windows/sonar.exe.sha256
+          retention-days: 14
+
+  installeur:
+    needs: tests
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sonar-exe
+          path: windows
+      - name: Construire sonar-setup.exe (Inno Setup)
+        shell: pwsh
+        run: |
+          $v = (Get-Content windows/manifest.json -Raw | ConvertFrom-Json).version
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          & $iscc "/DVersion=$v" "/DExe=..\sonar.exe" windows\installeur\sonar.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # Le setup doit contenir tel quel le sonar.exe reproductible (et donc son manifeste, d'où « signer » lit la version).
+      - name: Vérifier le contenu du setup
+        shell: python
+        run: |
+          import hashlib, sys
+          setup = open('windows/installeur/sortie/sonar-setup.exe', 'rb').read()
+          exe = open('windows/sonar.exe', 'rb').read()
+          if exe not in setup or b'"name": "UI+ for Claude (sonar, Windows)"' not in setup:
+              sys.exit('sonar.exe absent ou compressé dans le setup')
+          print('setup', hashlib.sha256(setup).hexdigest())
+          print('sonar.exe trouvé tel quel', hashlib.sha256(exe).hexdigest())
+      # Installeur d'ESSAI, non signé, construit depuis n'importe quelle PR : pour soi seulement, jamais à distribuer.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sonar-setup-essai
+          path: windows/installeur/sortie/sonar-setup.exe
+          retention-days: 14
+
+  # Essai réel sous Windows : tests Go propres à Windows (registre, verrous, processus), puis installation, raccourcis,
+  # entrée de désinstallation, extension dans un faux profil, détection et réparation, désinstallation.
+  windows:
+    needs: installeur
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.24.7'
+          cache: false
+      - name: Tests de sonar.exe sous Windows (Go)
+        working-directory: windows
+        env:
+          SONAR_SANS_FENETRE: '1'
+        run: go test -v ./...
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sonar-setup-essai
+          path: sortie
+      - name: Installer, vérifier, désinstaller
+        shell: pwsh
+        run: ./windows/installeur/essai-ci.ps1 -Setup sortie/sonar-setup.exe

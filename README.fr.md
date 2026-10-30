@@ -37,9 +37,9 @@ coût 12,84 $
 Dans le terminal, le bandeau et le panneau s'écrivent en texte (le terminal ne dessine pas de jauge). Les emplacements
 `indice` et `ligne` servent au terminal ; l'appli de bureau ne les dessine pas.
 
-**L'extension cercle** (Windows, en option) : cache et coût dans le popover du **cercle d'usage** de Claude Desktop,
+**sonar pour Windows** (en option) : cache et coût dans le popover du **cercle d'usage** de Claude Desktop,
 avec le rythme des limites de [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude). Installation, fonctionnement
-et limites : [extension/README.fr.md](extension/README.fr.md).
+et limites : [windows/README.fr.md](windows/README.fr.md).
 
 *(Comme le sonar d'un navire : il sonde en continu ce qui vous entoure — quotas, cache, branche — pour ne jamais toucher le fond par surprise.)*
 
@@ -81,11 +81,11 @@ Le mod est alors lu **depuis ce dossier** : après une modification, `/reload-pl
 | `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | seulement sur `protectedBranches` (`main,master`) | orange sur une branche protégée |
 | `coût` estimé de la session (prix catalogue) | `session.measure` | jamais | — |
 
-Le mod n'affiche le contexte nulle part : Claude Code le montre déjà (l'extension cercle, en option, reprend le bloc
+Le mod n'affiche le contexte nulle part : Claude Code le montre déjà (l'extension sonar pour Windows, en option, reprend le bloc
 contexte de UI+ dans le popover du cercle).
 
 Sur le bureau, le bandeau porte aussi, quel que soit l'emplacement choisi, une image transparente de 1 pixel dont le texte
-alternatif contient le cache, la branche et le coût en JSON (`sonar:1 {…}`) : c'est ce que lit l'extension cercle.
+alternatif contient le cache, la branche et le coût en JSON (`sonar:1 {…}`) : c'est ce que lit l'extension sonar pour Windows.
 Rien de visible ; un lecteur d'écran peut toutefois l'annoncer.
 
 Durée de vie du cache : déduite des réponses (une lecture du cache après plus de 6 minutes prouve 1 h ; une réécriture complète
@@ -135,20 +135,20 @@ utilisé. Au-delà de 3 Mio, son contenu part dans une archive à côté (`quota
 ## Tests
 
 ```powershell
-node --test sonar/test/
-claude plugin validate sonar
-claude plugin test sonar
-node --test extension/test/
+node --test mod/test/
+claude plugin validate mod
+claude plugin test mod
+node --test windows/test/
 ```
 
-Et pour `cercle.exe` (Go 1.24), dans `extension/` : `go test ./...`. GitHub Actions lance l'ensemble à chaque push.
+Et pour `sonar.exe` (Go 1.24), dans `windows/` : `go test ./...`. GitHub Actions lance l'ensemble à chaque push.
 
 ## Crédits et sources
 
 - **[UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude)**, de Lukas van Uden, sous licence MIT : l'extension
-  cercle reprend son code (`widget.js`, `widget.css`, `manifest.json`, un test), à partir du commit
+  sonar pour Windows reprend son code (`widget.js`, `widget.css`, `manifest.json`, un test), à partir du commit
   [`126cf95`](https://github.com/LukasvanUden/ui-plus-for-claude/commit/126cf9540f557466f697f679e9ea20505bf6442a)
-  (fichiers identiques au tag `v0.4.3`). Sa licence est jointe telle quelle (`extension/LICENSE-UI-PLUS`, aussi installée
-  avec `cercle.exe`). Fichiers repris, empreintes git d'origine, modifications et audit : `extension/PROVENANCE.md`.
+  (fichiers identiques au tag `v0.4.3`). Sa licence est jointe telle quelle (`windows/LICENSE-UI-PLUS`, aussi installée
+  avec `sonar.exe`). Fichiers repris, empreintes git d'origine, modifications et audit : `windows/PROVENANCE.md`.
 - **[Inno Setup](https://jrsoftware.org/isinfo.php)** (Jordan Russell et Martijn Laan) : construit l'installeur
-  `cercle-setup.exe`.
+  `sonar-setup.exe`.

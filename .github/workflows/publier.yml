@@ -1,9 +1,9 @@
-# Publier une release de cercle, sans PC : Actions > publier > « Run workflow » (sur main), ou Claude qui le lance.
-#   1. construire : tout cercle.yml (tests Linux, cercle.exe reproductible, installeur, essai réel sous Windows) ;
+# Publier une release de sonar pour Windows, sans PC : Actions > publier > « Run workflow » (sur main), ou Claude qui le lance.
+#   1. construire : tout windows.yml (tests Linux, sonar.exe reproductible, installeur, essai réel sous Windows) ;
 #   2. publier    : dans l'environnement protégé « publication ». S'il exige une approbation (Settings > Environments
 #                   > publication > Required reviewers), GitHub attend le clic « Approve » du mainteneur avant cette
-#                   étape. Puis : version plus récente que la dernière release, signature de cercle-setup.exe avec la
-#                   clé de l'environnement (secrets CERCLE_CLE et CERCLE_PHRASE), vérifiée avec la clé publique
+#                   étape. Puis : version plus récente que la dernière release, signature de sonar-setup.exe avec la
+#                   clé de l'environnement (secrets CERCLE_CLE et CERCLE_PHRASE, noms d'avant le renommage gardés), vérifiée avec la clé publique
 #                   embarquée, et release vX.Y.Z (le tag est créé sur le commit construit).
 # Voir PUBLIER.md.
 name: publier
@@ -22,7 +22,7 @@ concurrency:
 jobs:
   construire:
     if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/cercle.yml
+    uses: ./.github/workflows/windows.yml
 
   publier:
     needs: construire
@@ -42,11 +42,11 @@ jobs:
       - name: Version à publier
         id: version
         run: |
-          test -s extension/cle-publique.txt || { echo "::error::extension/cle-publique.txt est vide : aucune mise à jour ne serait acceptée."; exit 1; }
-          v=$(node -p "require('./extension/manifest.json').version")
+          test -s windows/cle-publique.txt || { echo "::error::windows/cle-publique.txt est vide : aucune mise à jour ne serait acceptée."; exit 1; }
+          v=$(node -p "require('./windows/manifest.json').version")
           echo "v=$v" >> "$GITHUB_OUTPUT"
           if gh release view "v$v" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/v$v" >/dev/null; then
-            echo "::error::v$v existe déjà : montez « version » dans extension/manifest.json."; exit 1
+            echo "::error::v$v existe déjà : montez « version » dans windows/manifest.json."; exit 1
           fi
           derniere=$(gh release view --json tagName -q .tagName 2>/dev/null || true)
           if [ -n "$derniere" ] && [ "$(printf '%s\n%s\n' "${derniere#v}" "$v" | sort -V | tail -1)" != "$v" ]; then
@@ -55,33 +55,33 @@ jobs:
           echo "Publication de v$v (dernière release : ${derniere:-aucune})" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: cercle-exe
+          name: sonar-exe
           path: sortie
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: cercle-setup-essai
+          name: sonar-setup-essai
           path: sortie
-      # « cercle signer » vérifie que le setup contient exactement le cercle.exe construit, que sa version est celle du
+      # « sonar signer » vérifie que le setup contient exactement le sonar.exe construit, que sa version est celle du
       # manifeste, et que la clé est celle de cle-publique.txt ; la clé privée n'existe que le temps de cette étape.
-      - name: Signer cercle-setup.exe
+      - name: Signer sonar-setup.exe
         env:
           CERCLE_CLE: ${{ secrets.CERCLE_CLE }}
           CERCLE_PHRASE: ${{ secrets.CERCLE_PHRASE }}
         run: |
           test -n "$CERCLE_CLE" && test -n "$CERCLE_PHRASE" || { echo "::error::secrets CERCLE_CLE et CERCLE_PHRASE absents de l'environnement « publication »."; exit 1; }
-          (cd extension && CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/cercle" .)
+          (cd windows && CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/sonar" .)
           umask 077
           cle="$RUNNER_TEMP/cle.json"
           printf '%s' "$CERCLE_CLE" > "$cle"
           trap 'rm -f "$cle"' EXIT
-          "$RUNNER_TEMP/cercle" signer sortie/cercle-setup.exe "$cle" --exe sortie/cercle.exe
-          test -s sortie/cercle-setup.exe.sig
+          "$RUNNER_TEMP/sonar" signer sortie/sonar-setup.exe "$cle" --exe sortie/sonar.exe
+          test -s sortie/sonar-setup.exe.sig
       - name: Publier la release
         env:
           v: ${{ steps.version.outputs.v }}
         run: |
           cd sortie
-          sha256sum cercle-setup.exe > cercle-setup.exe.sha256
+          sha256sum sonar-setup.exe > sonar-setup.exe.sha256
           gh release create "v$v" --target "$GITHUB_SHA" --title "v$v" --generate-notes \
-            cercle-setup.exe cercle-setup.exe.sig cercle-setup.exe.sha256 cercle.exe cercle.exe.sha256
+            sonar-setup.exe sonar-setup.exe.sig sonar-setup.exe.sha256 sonar.exe sonar.exe.sha256
           echo "Release v$v : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/v$v" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -1,10 +1,10 @@
 .superpowers/
 # Types écrits par le moteur à chaque chargement du mod
-sonar/.claude-plugin/types/
+mod/.claude-plugin/types/
 node_modules/
 
-# Exe et clé de signature de l'extension cercle : jamais dans le dépôt
-extension/*.exe
-extension/*.sig
+# Exe et clé de signature de sonar pour Windows : jamais dans le dépôt
+windows/*.exe
+windows/*.sig
 *.cle
-extension/installeur/sortie/
+windows/installeur/sortie/

@@ -37,9 +37,9 @@ cost $12.84
 In the terminal, the banner and the pane are written as text (the terminal draws no gauge). The `hint` and `status`
 placements exist for the terminal; the desktop app does not draw them.
 
-**The circle extension** (Windows, optional): cache and cost in Claude Desktop's **usage circle** popover, with the
+**sonar for Windows** (optional): cache and cost in Claude Desktop's **usage circle** popover, with the
 limits' pace from [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude). Install, how it works and limits:
-[extension/README.md](extension/README.md).
+[windows/README.md](windows/README.md).
 
 *(Like a ship's sonar: it keeps sounding what lies around you — limits, cache, branch — so you never hit bottom by surprise.)*
 
@@ -81,11 +81,11 @@ The mod is then read **from that folder**: after an edit, `/reload-plugins` in t
 | `branch`, repo, changed files | `$.session.repo()` + `git status` (at most every 5 s, 3 s timeout) | only on `protectedBranches` (`main,master`) | orange on a protected branch |
 | session `cost` estimate (list price) | `session.measure` | never | — |
 
-The mod shows context nowhere: Claude Code already does (the optional circle extension brings UI+'s context block into
+The mod shows context nowhere: Claude Code already does (the optional sonar for Windows brings UI+'s context block into
 the circle's popover).
 
 On the desktop, the banner also carries, whatever the placement, a transparent 1-pixel image whose alt text holds the
-cache, branch and cost as JSON (`sonar:1 {…}`): that is what the circle extension reads. Nothing visible; a screen
+cache, branch and cost as JSON (`sonar:1 {…}`): that is what sonar for Windows reads. Nothing visible; a screen
 reader may still announce it.
 
 Cache lifetime: inferred from responses (a cache read after more than 6 minutes proves 1 h; a full rewrite points to 5 min),
@@ -135,20 +135,20 @@ Past 3 MiB its content moves to an archive next to it (`quota-log.<date>.jsonl`)
 ## Tests
 
 ```powershell
-node --test sonar/test/
-claude plugin validate sonar
-claude plugin test sonar
-node --test extension/test/
+node --test mod/test/
+claude plugin validate mod
+claude plugin test mod
+node --test windows/test/
 ```
 
-And for `cercle.exe` (Go 1.24), in `extension/`: `go test ./...`. GitHub Actions runs it all on every push.
+And for `sonar.exe` (Go 1.24), in `windows/`: `go test ./...`. GitHub Actions runs it all on every push.
 
 ## Credits and sources
 
-- **[UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude)**, by Lukas van Uden, MIT licence: the cercle
+- **[UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude)**, by Lukas van Uden, MIT licence: the Windows
   extension reuses its code (`widget.js`, `widget.css`, `manifest.json`, one test), from commit
   [`126cf95`](https://github.com/LukasvanUden/ui-plus-for-claude/commit/126cf9540f557466f697f679e9ea20505bf6442a)
-  (files identical to tag `v0.4.3`). Its licence is included as is (`extension/LICENSE-UI-PLUS`, also installed next
-  to `cercle.exe`). Files taken, original git hashes, changes and audit: `extension/PROVENANCE.md`.
-- **[Inno Setup](https://jrsoftware.org/isinfo.php)** (Jordan Russell and Martijn Laan): builds the `cercle-setup.exe`
+  (files identical to tag `v0.4.3`). Its licence is included as is (`windows/LICENSE-UI-PLUS`, also installed next
+  to `sonar.exe`). Files taken, original git hashes, changes and audit: `windows/PROVENANCE.md`.
+- **[Inno Setup](https://jrsoftware.org/isinfo.php)** (Jordan Russell and Martijn Laan): builds the `sonar-setup.exe`
   installer.
