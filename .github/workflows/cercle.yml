@@ -1,0 +1,66 @@
+# Extension « cercle » : tests à chaque push et PR ; sur un tag vX.Y.Z, construit cercle.exe et l'ajoute à une
+# release en BROUILLON. La signature (cercle.exe.sig) se fait hors de GitHub, avec la clé de l'utilisateur, avant de
+# publier : sans elle, aucun cercle.exe installé n'accepte la mise à jour. Voir README, « Extension cercle (Windows) ».
+name: cercle
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.7'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Tests de l'extension (Node)
+        run: node --test extension/test/
+      - name: Tests de la logique du mod (Node)
+        run: node --test sonar/test/logique.test.mjs
+      - name: Tests de cercle.exe (Go)
+        working-directory: extension
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          GOOS=windows GOARCH=amd64 go vet ./...
+          go test ./...
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.7'
+      - name: Le tag suit la version du manifeste
+        run: |
+          v=$(node -p "require('./extension/manifest.json').version")
+          test "${GITHUB_REF_NAME}" = "v$v" || { echo "tag ${GITHUB_REF_NAME} ≠ manifeste v$v"; exit 1; }
+      # Build reproductible (même version de Go, -trimpath, sans buildid) : on peut le refaire chez soi et comparer
+      # l'empreinte avant de signer.
+      - name: Construire cercle.exe
+        working-directory: extension
+        run: |
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags=-buildid= -o cercle.exe .
+          sha256sum cercle.exe | tee cercle.exe.sha256
+      - name: Release en brouillon
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" --draft --verify-tag --title "${GITHUB_REF_NAME}" \
+            --notes "À signer avant de publier : cercle signer cercle.exe <clé> ${GITHUB_REF_NAME#v}" \
+            extension/cercle.exe extension/cercle.exe.sha256

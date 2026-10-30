@@ -50,7 +50,7 @@
       confirmUninstall: 'Remove UI+ from Claude?',
       cancel: 'Cancel',
       remove: 'Remove',
-      removed: 'Hidden. To remove the extension completely, run install.ps1 retirer, or start Claude without the shortcut.',
+      removed: 'Hidden. To remove the extension completely, run "cercle retirer", or start Claude without the shortcut.',
     },
     de: {
       title: 'Nutzung',
@@ -73,7 +73,7 @@
       confirmUninstall: 'UI+ aus Claude entfernen?',
       cancel: 'Abbrechen',
       remove: 'Entfernen',
-      removed: 'Ausgeblendet. Zum vollständigen Entfernen install.ps1 retirer ausführen oder Claude ohne die Verknüpfung starten.',
+      removed: 'Ausgeblendet. Zum vollständigen Entfernen „cercle retirer“ ausführen oder Claude ohne die Verknüpfung starten.',
     },
     fr: {
       title: 'Utilisation',
@@ -96,7 +96,7 @@
       confirmUninstall: 'Retirer UI+ de Claude ?',
       cancel: 'Annuler',
       remove: 'Retirer',
-      removed: 'Masqué. Pour retirer complètement l\'extension : install.ps1 retirer, ou lancer Claude sans le raccourci.',
+      removed: 'Masqué. Pour retirer complètement l\'extension : « cercle retirer », ou lancer Claude sans le raccourci.',
     },
   };
 

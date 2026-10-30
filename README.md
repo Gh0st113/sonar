@@ -141,50 +141,56 @@ default `footer` placement, which only shows what deserves a glance (if you pick
 `/sonar footer` to avoid seeing things twice). The data still flows with `/sonar hide`, which only hides sonar's own
 display. The sonar mod (0.5.0 or later) must be installed.
 
-Install (PowerShell 7, from the repository root, with no uncommitted change):
-
-```powershell
-pwsh -NoProfile -File .\extension\install.ps1 installer
-pwsh -NoProfile -File .\extension\install.ps1 raccourci
-```
-
-Then **quit Claude completely** (notification area > Quit) and start it from the "Claude (cercle)" Start menu shortcut, or
-with `install.ps1 lancer`. Claude started any other way does **not** load the extension: on purpose.
+Install: download `cercle.exe` from the [latest release](https://github.com/Gh0st113/sonar/releases/latest),
+double-click it, pick **1 Installer**. The exe copies itself to `%LOCALAPPDATA%\sonar-cercle\` and creates the
+**"Claude (cercle)"** Start menu shortcut. Then **quit Claude completely** (notification area > Quit) and start it from
+that shortcut. Claude started any other way does **not** load the extension: on purpose. Windows may show a SmartScreen
+warning (the exe has no paid code-signing certificate): "More info > Run anyway".
 
 Why a launcher: Claude loads the extension when `REACT_PROFILE=1` at startup, and that folder can be written by any
-program running under your account. So the variable is **never** left set: `lancer` first checks that the installed
-files match the repository (SHA-256, nothing extra, no uncommitted change), sets `REACT_PROFILE=1`, starts Claude, then
-puts the variable back a few seconds later (even if launching is interrupted: the previous value is recorded and restored
-the next time the script runs).
+program running under your account. So the variable is **never** left set: on every launch, `cercle.exe` compares the
+installed folder with the files it embeds (same bytes, nothing extra; otherwise it offers to reinstall or refuses), sets
+`REACT_PROFILE=1`, starts Claude, then puts the variable back a few seconds later (even if launching is interrupted: the
+previous value is recorded outside the folder and restored on the next run).
 
-Status and file check, changing nothing:
+Updates: on every launch, `cercle.exe` looks at the latest GitHub release. It only offers a version that is **newer** and
+**signed** with the maintainer's key (ed25519; the public key is embedded in the exe, the private key is never on
+GitHub), and only installs it **with your consent**. A badly signed release is reported and ignored: a hijacked GitHub
+account is not enough to push code into Claude. Offline, Claude starts with the current version.
 
-```powershell
-pwsh -NoProfile -File .\extension\install.ps1 etat
-```
+Command line (`%LOCALAPPDATA%\sonar-cercle\cercle.exe <action>`): `installer`, `lancer`, `etat` (files intact or not,
+variable state), `maj`, `retirer` (removes the extension and the shortcut), `version`; options `--profil <claude_…>` with
+several profiles, `--lanceur <claude.exe or shell:AppsFolder\…>` if Claude is not found. Exit codes: 0 success,
+1 unknown action, 2 profile missing or ambiguous, 3 folder used by something else (React DevTools?), 4 write error,
+5 Claude still open, 6 installed files changed, 7 Claude not found, 8 update refused.
 
-Removal (deletes only this extension's folder and the shortcut), then a full restart:
-
-```powershell
-pwsh -NoProfile -File .\extension\install.ps1 retirer
-```
+Publishing a version (maintainer):
+1. once: `cercle cle <file>` creates the key (encrypted with a passphrase; keep it off GitHub, e.g. in a password
+   manager) and prints the public key, to put in `extension/cle-publique.txt` and commit;
+2. bump `version` in `extension/manifest.json`, commit, push the `vX.Y.Z` tag: GitHub Actions tests, builds `cercle.exe`
+   and creates a **draft** release;
+3. download `cercle.exe` from the draft; to avoid trusting GitHub Actions, rebuild it locally (reproducible build:
+   `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags=-buildid= -o cercle.exe .` in `extension/`,
+   Go 1.24.7) and compare the SHA-256;
+4. `cercle signer cercle.exe <key file> X.Y.Z`, add `cercle.exe.sig` to the draft, publish.
 
 Limits:
 - loading goes through a **development hook** of Claude Desktop (`REACT_PROFILE=1` loads the React DevTools folder,
   `%LOCALAPPDATA%\Claude-Data\claude_<id>\extensions\fmkadmapgofadopljbjfkapdkoienihi`): Anthropic does not
-  guarantee it; if React DevTools already uses that folder, the script refuses;
-- if `REACT_PROFILE` is set to 1 **permanently** on your account (older tool, probe), the script says so: remove it;
+  guarantee it; if React DevTools already uses that folder, `cercle.exe` refuses;
+- malware already running under your account can still replace `cercle.exe` itself: the check protects against changes
+  to the extension folder and against tampered updates, not against an already compromised machine;
+- if `REACT_PROFILE` is set to 1 **permanently** on your account (older tool, probe), `cercle.exe` says so: remove it;
 - audit and provenance of the code taken from UI+: `extension/PROVENANCE.md`;
 - every change needs a **full restart** of Claude;
 - the carrier is invisible but **not silent**: a screen reader may read its text (`sonar:1 {…}`) in the footer;
 - the footer's host has not been captured in the app yet (only the banner's was): to be confirmed when trying it;
 - with several organizations, the circle may show another one's usage than the one displayed (UI+ behaviour);
 - the "Compact" button of UI+'s context block is only looked up in English and German: in French it does not show;
-- with several `claude_*` folders (after reinstalling Claude) the script stops: name the right one with `-Profil <name>`;
 - the selectors come from captures of Claude Desktop for Windows in French (`extension/test/fixtures`): a Claude
   update can break them.
 
-Tests (Node 22, no dependency): `node --test extension/test/`.
+Tests (Node 22 and Go 1.24, no dependency): `node --test extension/test/`, and `go test ./...` in `extension/`.
 
 ## Tests
 

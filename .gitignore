@@ -2,3 +2,8 @@
 # Types écrits par le moteur à chaque chargement du mod
 sonar/.claude-plugin/types/
 node_modules/
+
+# Exe et clé de signature de l'extension cercle : jamais dans le dépôt
+extension/*.exe
+extension/*.sig
+*.cle
