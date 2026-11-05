@@ -7,6 +7,7 @@ import {
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
   releve, ajouterReleve, dernierReleve, cheminJournal, cheminArchive, isoUtc, majJournal, besoinMaison, TAILLE_MAX_JOURNAL,
   chargeExtension, texteExtension, PREFIXE_EXTENSION, derniereReponse, brancheCourte, SEP_PIED, MARGE_ENVOI_MS, dossierProjet,
+  reponseFiche,
 } from '../hooks/logique.mjs';
 
 const H = 3_600_000;
@@ -115,6 +116,31 @@ test('cache à durée inconnue : chaud 5 min (au moins), incertain jusqu’à 1 
   assert.equal(c.expire, T0 + 5 * 60_000);
   assert.equal(etatCache(d, undefined, T0 + 10 * 60_000).etat, 'incertain');
   assert.equal(etatCache(d, undefined, T0 + H).etat, 'froid');
+});
+
+test('cache d’après la fiche de Claude Desktop (heure seule) : jamais « rien », pas de taux', () => {
+  const d = { a: T0, lu: 0, ecrit: 0, neuf: 0, approx: true };
+  const c = etatCache(d, undefined, T0 + 60_000, 'claude-opus-5-5');
+  assert.equal(c.etat, 'chaud');
+  assert.equal(c.taux, undefined);
+  assert.equal(c.auMoins, true);
+  assert.equal(etatCache(d, undefined, T0 + 10 * 60_000).etat, 'incertain');
+  assert.equal(etatCache(d, TTL['1h'], T0 + H).etat, 'froid');
+  assert.equal(chargeExtension({ cache: d }, T0 + 60_000).cache.taux, undefined);
+});
+
+test('reponseFiche : lastActivityAt de la bonne session, envoi estimé ; sinon rien', () => {
+  const fiche = (o) => JSON.stringify({ sessionId: 'local_x', cliSessionId: 's1', model: 'opus', completedTurns: 3, ...o });
+  assert.deepEqual(reponseFiche(fiche({ lastActivityAt: T0 - H }), 's1', T0),
+    { a: T0 - H - MARGE_ENVOI_MS, lu: 0, ecrit: 0, neuf: 0, approx: true });
+  assert.equal(reponseFiche(fiche({ lastActivityAt: T0 - H, completedTurns: 0 }), 's1', T0), undefined);
+  assert.equal(reponseFiche(fiche({ lastActivityAt: T0 - H, completedTurns: undefined }), 's1', T0), undefined);
+  // Heure estimée : ne sert pas à déduire la durée de vie du cache.
+  assert.equal(deduireTtl({ a: T0, lu: 0, ecrit: 0, neuf: 0, approx: true }, { a: T0 + 10 * 60_000, lu: 500, ecrit: 2, neuf: 1 }), undefined);
+  assert.equal(reponseFiche(fiche({ lastActivityAt: T0 - H }), 's2', T0), undefined);
+  assert.equal(reponseFiche(fiche({ lastActivityAt: T0 + 1 }), 's1', T0), undefined);
+  assert.equal(reponseFiche(fiche({ lastActivityAt: '2026-10-27' }), 's1', T0), undefined);
+  assert.equal(reponseFiche('{"cliSessionId":"s1","lastAct', 's1', T0), undefined);
 });
 
 test('durée de vie déduite', () => {

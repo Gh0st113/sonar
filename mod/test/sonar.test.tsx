@@ -177,8 +177,9 @@ function projets(on: On, fichiers: Record<string, string>, tailles: Record<strin
   })
   on('fs.list', (_, e) => {
     vu.list++
-    if (p(e.path ?? '') !== PROJETS) throw new Error('ENOENT')
-    const noms = [...new Set(Object.keys(fichiers).map(f => f.slice(PROJETS.length + 1).split('/')[0]!))]
+    const dir = p(e.path ?? '')
+    const noms = [...new Set(Object.keys(fichiers).filter(f => f.startsWith(`${dir}/`)).map(f => f.slice(dir.length + 1).split('/')[0]!))]
+    if (!noms.length) throw new Error('ENOENT')
     return { value: noms.map(name => ({ name, kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false })) }
   })
   on('fs.stat', (_, e) => {
@@ -232,6 +233,41 @@ test('session ouverte avant le mod : journal de plus de 4 Mio non lu, rien ne ca
   await demarrer($)
   await attendre()
   expect(await commande($, '')).not.toMatch(/^cache /m)
+  expect(await pied($, 'desktop')).toBe('1,23 $')
+})
+
+// Claude Desktop : fiche de la session, au chemin que donnent ses variables.
+const APPLI = { USERPROFILE: 'C:\\Users\\moi', LOCALAPPDATA: 'C:\\Users\\moi\\AppData\\Local', CLAUDE_CODE_ACCOUNT_UUID: 'compte-1', CLAUDE_CODE_ORGANIZATION_UUID: 'org-1', CLAUDE_CODE_HOST_SESSION_ID: 'local_abc' }
+const FICHE = 'C:/Users/moi/AppData/Local/Claude-Data/claude_x1/claude-code-sessions/compte-1/org-1/local_abc.json'
+const fiche = (cli: string, t: number) => JSON.stringify({ sessionId: 'local_abc', cliSessionId: cli, model: 'opus', completedTurns: 2, lastActivityAt: t })
+
+test('journal de plus de 4 Mio : l’heure vient de la fiche de Claude Desktop (froid après 1 h, sans taux)', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot' })
+  mock.env(on, APPLI)
+  const f = `${PROJETS}/C--Code-projet-a/${SESSION}.jsonl`
+  projets(on, { [f]: reponseJsonl(T0 - 60_000), [FICHE]: fiche(SESSION, T0 - 2 * H) }, { [f]: 5 * 1024 * 1024 })
+  await demarrer($)
+  await attendre()
+  expect(await pied($, 'desktop')).toBe('❄️ 1,23 $')
+})
+
+// Sans les variables de l'appli (test « plus de 4 Mio » plus haut) : rien, comme avant.
+test('fiche de Claude Desktop seule (journal introuvable), il y a 10 min : incertain, sans taux', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot' })
+  mock.env(on, APPLI)
+  projets(on, { [`${PROJETS}/C--autre/x.jsonl`]: '', [FICHE]: fiche(SESSION, T0 - 10 * 60_000) })
+  await demarrer($)
+  await attendre()
+  expect(await pied($, 'desktop')).toBe('❔ 1,23 $')
+  expect(await commande($, '')).not.toMatch(/relu/)
+})
+
+test('fiche de Claude Desktop d’une autre session : rien', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot' })
+  mock.env(on, APPLI)
+  projets(on, { [`${PROJETS}/C--autre/x.jsonl`]: '', [FICHE]: fiche('autre-session', T0 - 10 * 60_000) })
+  await demarrer($)
+  await attendre()
   expect(await pied($, 'desktop')).toBe('1,23 $')
 })
 

@@ -10,7 +10,7 @@ import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } 
 import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
 import {
   EMPLACEMENTS, TAILLE_MAX_SESSION, TTL, besoinMaison, chargeExtension, cheminArchive, cheminJournal, cleReleve, deduireTtl,
-  SEP_PIED, derniereReponse, dossierProjet, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
+  SEP_PIED, derniereReponse, dossierProjet, reponseFiche, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -92,7 +92,8 @@ function journaliser($: EngineInterface, m: SonarMesure) {
 // prochain message. On lit sa dernière réponse dans le journal local de la session (logique.mjs, derniereReponse) :
 // <dossier de config>/projects/<dossier du projet>/<id de session>.jsonl : d'abord le dossier déduit du dossier courant
 // (dossierProjet), sinon le premier dossier qui contient l'id (session ouverte ailleurs, nom d'une autre version).
-// Une session de plus de 4 Mio ($.fs.read ne lit pas au-delà) reste vide jusqu'au prochain message. Erreurs : rien.
+// Journal de plus de 4 Mio ($.fs.read ne lit pas au-delà) ou introuvable : l'heure seule, prise dans la fiche de
+// Claude Desktop (lireFiche) ; sans fiche, vide jusqu'au prochain message. Erreurs : rien.
 async function reprendreCache($: EngineInterface) {
   if (!cfg.segments.includes('cache') || (await read($, cache))) return
   const id = await $.session.id()
@@ -108,7 +109,7 @@ async function reprendreCache($: EngineInterface) {
   let s = devine ? await statut(devine) : undefined
   if (s?.kind !== 'file') {
     nom = undefined
-    for (const d of await $.fs.list(projets)) {
+    for (const d of await $.fs.list(projets).catch(() => [])) {
       if (d.kind !== 'dir' || d.name === devine) continue
       s = await statut(d.name)
       if (s?.kind === 'file') {
@@ -117,8 +118,9 @@ async function reprendreCache($: EngineInterface) {
       }
     }
   }
-  if (!nom || !s || s.size > TAILLE_MAX_SESSION) return
-  const r = derniereReponse(String(await $.fs.read(`${projets}/${nom}/${id}.jsonl`)))
+  const r = nom && s && s.size <= TAILLE_MAX_SESSION
+    ? derniereReponse(String(await $.fs.read(`${projets}/${nom}/${id}.jsonl`)))
+    : await lireFiche($, id).then(reponse => (reponse ? { reponse, ttl: undefined } : undefined), () => undefined)
   // Un /clear ou une reprise pendant la lecture : la conversation n'est plus la même, on n'écrit rien.
   if (!r || (await $.session.id()) !== id) return
   // Une réponse arrivée pendant la lecture l'emporte : l'écriture ne remplit qu'un cache encore vide (update compare
@@ -126,6 +128,27 @@ async function reprendreCache($: EngineInterface) {
   await update($, cache, cur => cur ?? r.reponse)
   const duree = r.ttl
   if (duree && (await $.store.get('ttl')) === undefined) await update($, ttl, cur => cur ?? duree)
+}
+
+// Journal de plus de 4 Mio ou introuvable : la fiche de la session chez Claude Desktop (logique.mjs, reponseFiche),
+// %LOCALAPPDATA%/Claude-Data/claude_*/claude-code-sessions/<compte>/<organisation>/<id de la session côté appli>.json,
+// chemin donné par les variables que l'appli passe au moteur. Windows seulement : sans ces variables, rien.
+async function lireFiche($: EngineInterface, id: string) {
+  const local = await $.env.get('LOCALAPPDATA')
+  const morceaux = [
+    await $.env.get('CLAUDE_CODE_ACCOUNT_UUID'),
+    await $.env.get('CLAUDE_CODE_ORGANIZATION_UUID'),
+    await $.env.get('CLAUDE_CODE_HOST_SESSION_ID'),
+  ]
+  if (!local || !morceaux.every(m => m && /^[\w-]+$/.test(m))) return undefined
+  const data = `${local.replace(/[\\/]+$/, '')}/Claude-Data`
+  for (const d of await $.fs.list(data)) {
+    if (d.kind !== 'dir' || !d.name.startsWith('claude_')) continue
+    const fiche = `${data}/${d.name}/claude-code-sessions/${morceaux.join('/')}.json`
+    const s = await $.fs.stat(fiche).catch(() => undefined)
+    if (s?.kind === 'file' && s.size <= TAILLE_MAX_SESSION) return reponseFiche(String(await $.fs.read(fiche)), id, await $.clock.now())
+  }
+  return undefined
 }
 
 // L'emplacement choisi par /sonar (gardé dans le store) l'emporte sur l'option du plugin.

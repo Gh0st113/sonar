@@ -103,10 +103,15 @@ or told by the engine on a model switch, or forced with `/sonar ttl`. Until it i
 A session already under way (resumed, app restarted): the mod has not seen any response yet. So on load it reads the
 main thread's last response from the local transcript Claude Code keeps for each session
 (`~/.claude/projects/<project>/<session id>.jsonl`, or under `CLAUDE_CONFIG_DIR`): its time, its cache usage and the
-lifetime it wrote (5 min or 1 h). Read only, no tokens. Limit: the mod does not read a file over 4 MiB (a very long
-session: on the author's machine, about one session in five); there the cache stays unknown until the next
-message. The time used is when the request was sent if the transcript records it, else the response time minus one
-minute (to be safe: the cache counts from the request).
+lifetime it wrote (5 min or 1 h). Read only, no tokens. The time used is when the request was sent if the transcript
+records it, else the response time minus one minute (to be safe: the cache counts from the request).
+
+Limit: the mod does not read a file over 4 MiB (a very long session: on the author's machine, about one session in
+five). In Claude Desktop for Windows it then takes the last activity time the app keeps in its own record of the session
+(`%LOCALAPPDATA%\Claude-Data\claude_*\claude-code-sessions\…\<id>.json`, found through the variables the app hands the
+engine), minus the same minute. The time only, no read ratio or lifetime: warm for 5 min "at least", uncertain up to an
+hour, then cold. It follows the last response within seconds for most sessions, but activity without a response can
+shift it. Elsewhere (other systems, terminal) the cache stays unknown until the next message.
 
 ## `/sonar` command (English or French words)
 

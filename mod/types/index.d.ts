@@ -7,7 +7,7 @@ export type SonarMesure = {
 }
 
 /** dernière réponse du fil principal : heure, jetons lus / écrits / neufs du cache, modèle */
-export type SonarReponse = { a: number; lu: number; ecrit: number; neuf: number; modele?: string }
+export type SonarReponse = { a: number; lu: number; ecrit: number; neuf: number; modele?: string; approx?: boolean }
 
 export type SonarDepot = { nom: string; branche?: string; detachee?: boolean; modifies: number }
 
