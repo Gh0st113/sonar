@@ -15,6 +15,7 @@ Empreintes git des fichiers d'origine à ce commit (`git rev-parse 1e8274f:<chem
 | `LICENSE` | `3750c082cb8c41cb39ceedec3824bdbbbbb0a04a` | `LICENSE-UI-PLUS`, identique |
 | `Tests/widget.test.mjs` | `b0963ce9e3ec4463c75ec56b440d7406a0e170b6` | `test/widget.test.mjs`, chemin du `require` seul |
 | `Windows/ui-plus.ps1` | `ee9e025a3bf4aa5105ef773f2cac533db391a004` | `sonar.ps1`, réécrit : dossier `Claude-Data\claude_*` (celui que Claude charge ici), refus d'écraser une autre extension, pas de tâche planifiée ni de recherche de mise à jour, relance de Claude sur accord |
+| `App/ui-plus.sh` | `f857ff71f4cc02709bd8b7c6dd125aeb2b7e161c` | `mac/installer.sh`, réécrit : mêmes dossier d'extension et agent de connexion (`launchctl setenv REACT_PROFILE 1`), mais fichiers de `windows/`, refus d'écraser une autre extension, pas de recherche de mise à jour ni d'appel périodique |
 
 ## Audits
 

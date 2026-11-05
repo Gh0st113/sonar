@@ -47,7 +47,8 @@ Dans le terminal, le bandeau et le panneau s'écrivent en texte (le terminal ne 
 
 **sonar pour Windows** (en option) : cache et coût dans le popover du **cercle d'usage** de Claude Desktop,
 avec le rythme des limites de [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude). Installation, fonctionnement
-et limites : [windows/README.fr.md](windows/README.fr.md).
+et limites : [windows/README.fr.md](windows/README.fr.md). La même extension existe pour **macOS** (pas encore vérifiée sur un vrai Mac) :
+[mac/README.fr.md](mac/README.fr.md).
 
 *(Comme le sonar d'un navire : il sonde en continu ce qui vous entoure — quotas, cache, branche — pour ne jamais toucher le fond par surprise.)*
 
@@ -79,7 +80,7 @@ claude plugin install sonar@sonar-mods
 Le mod est alors lu **depuis ce dossier** : après une modification, `/reload-plugins` dans la session suffit.
 
 Systèmes : Windows (appli et terminal) et Linux (terminal, essayé sous Ubuntu) ; macOS attendu, pas encore essayé
-([issue #22](https://github.com/Gh0st113/sonar/issues/22)). Seule l'extension sonar pour Windows est propre à Windows.
+([issue #22](https://github.com/Gh0st113/sonar/issues/22)). L'extension de bureau existe pour Windows et, sans essai, pour macOS.
 
 ## Ce qui est affiché
 
