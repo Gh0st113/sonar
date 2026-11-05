@@ -87,7 +87,7 @@ The mod is then read **from that folder**: after an edit, `/reload-plugins` in t
 | other limits (e.g. a gateway's `budget`) | `session.measure` | never | absolute thresholds only (no known window length) |
 | `cache` warm (hit ratio, when it goes cold), uncertain, cold | last request of the main thread (`turn.step`, subagents excluded); when a session already under way is opened, its last response read from the session's local transcript (see below) | 2nd: the icon, stuck to the cost (🔥 warm, ❄️ cold, ❔ uncertain) | cold in orange |
 | `branch`, repo, changed files | `$.session.repo()` + `git status` (at most every 5 s, 3 s timeout) | 3rd: `⎇` and the shortened name | orange on a protected branch |
-| session `cost` estimate (list price) | `session.measure` | 2nd, after the cache icon (`🔥 $2.40`) | — |
+| session `cost` estimate (list price) | `session.measure` | 2nd, after the cache icon (`🔥 $2.40`); nothing when 0 (new session, or an old one whose cost the engine did not keep) | — |
 
 The mod shows context nowhere: Claude Code already does (the optional sonar for Windows brings UI+'s context block into
 the circle's popover).

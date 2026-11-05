@@ -87,7 +87,7 @@ Le mod est alors lu **depuis ce dossier** : après une modification, `/reload-pl
 | autres limites (ex. `budget` d'une passerelle) | `session.measure` | jamais | seuils absolus seulement (durée de fenêtre inconnue) |
 | `cache` chaud (taux de lecture, heure où il refroidit), incertain, froid | dernière requête du fil principal (`turn.step`, sous-agents exclus) ; à l'ouverture d'une session déjà commencée, sa dernière réponse lue dans le journal local de la session (voir plus bas) | 2ᵉ : l'icône, collée au coût (🔥 chaud, ❄️ froid, ❔ incertain) | froid en orange |
 | `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | 3ᵉ : `⎇` et le nom raccourci | orange sur une branche protégée |
-| `coût` estimé de la session (prix catalogue) | `session.measure` | 2ᵉ, après l'icône du cache (`🔥 2,40 $`) | — |
+| `coût` estimé de la session (prix catalogue) | `session.measure` | 2ᵉ, après l'icône du cache (`🔥 2,40 $`) ; rien s'il vaut 0 (session neuve, ou ancienne session dont le moteur n'a pas gardé le coût) | — |
 
 Le mod n'affiche le contexte nulle part : Claude Code le montre déjà (l'extension sonar pour Windows, en option, reprend le bloc
 contexte de UI+ dans le popover du cercle).

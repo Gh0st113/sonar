@@ -226,6 +226,10 @@ export function deduireTtl(avant, apres) {
   return undefined;
 }
 
+// Coût nul : inconnu plutôt que gratuit (session d'avant l'enregistrement du coût, rechargée à 0 par le moteur ;
+// session neuve avant sa première réponse) : rien n'est affiché.
+const coutConnu = (x) => fini(x) && x > 0;
+
 export const montant = (usd, cfg = DEFAUTS) => textes(cfg.langue).cout(usd.toFixed(2).replace('.', textes(cfg.langue).decimale));
 
 // Nom court d'un dépôt : la fin de l'URL du remote, sinon le dernier dossier de la racine.
@@ -270,7 +274,7 @@ export function elementsPied(d, maintenant, cfg = DEFAUTS) {
   }
   const c = actif('cache') ? etatCache(d.cache, d.ttlMs, maintenant, d.modele) : undefined;
   const icone = ICONES[c?.etat];
-  const cout = actif('cout') && fini(d.cout) ? montant(d.cout, cfg) : undefined;
+  const cout = actif('cout') && coutConnu(d.cout) ? montant(d.cout, cfg) : undefined;
   if (icone || cout) {
     e.push({ cle: 'cache', etiquette: '', valeur: [icone, cout].filter(Boolean).join(' '), niveau: c?.etat === 'froid' || c?.etat === 'incertain' ? 'attention' : 'ok' });
   }
@@ -328,7 +332,7 @@ export function jauges(d, maintenant, cfg = DEFAUTS) {
     const detail = [b ? d.depot.nom : '', d.depot.modifies ? t.modifies(d.depot.modifies) : ''];
     j.push({ cle: 'depot', etiquette: t.branche, valeur: b ?? d.depot.nom, detail: detail.filter(Boolean).join(', '), niveau: protegee(d.depot, cfg) ? 'attention' : 'ok' });
   }
-  if (actif('cout') && fini(d.cout)) j.push({ cle: 'cout', etiquette: t.nomCout, valeur: montant(d.cout, cfg), detail: '', niveau: 'ok' });
+  if (actif('cout') && coutConnu(d.cout)) j.push({ cle: 'cout', etiquette: t.nomCout, valeur: montant(d.cout, cfg), detail: '', niveau: 'ok' });
   return j;
 }
 
@@ -357,7 +361,7 @@ export function chargeExtension(d, maintenant, cfg = DEFAUTS) {
     if (d.depot.branche) o.depot.branche = d.depot.branche;
     if (d.depot.detachee) o.depot.detachee = true;
   }
-  if (actif('cout') && fini(d.cout)) o.cout = Math.round(d.cout * 100) / 100;
+  if (actif('cout') && coutConnu(d.cout)) o.cout = Math.round(d.cout * 100) / 100;
   return o;
 }
 export const texteExtension = (charge) => PREFIXE_EXTENSION + JSON.stringify(charge);
