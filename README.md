@@ -109,12 +109,14 @@ main thread's last response from the local transcript Claude Code keeps for each
 lifetime it wrote (5 min or 1 h). Read only, no tokens. The time used is when the request was sent if the transcript
 records it, else the response time minus one minute (to be safe: the cache counts from the request).
 
-Limit: the mod does not read a file over 4 MiB (a very long session: on the author's machine, about one session in
-five). In Claude Desktop for Windows it then takes the last activity time the app keeps in its own record of the session
+Log over 4 MiB (a very long session: on the author's machine, about one session in five): the engine does not read
+such a file. The mod then reads its end with `tail -c` (3 MB, enough to hold the last response), with the same
+result as a small log, where `tail` exists (Linux, macOS; Windows only when it is on the PATH). Otherwise, in Claude
+Desktop, it takes the last activity time the app keeps in its own record of the session
 (`%LOCALAPPDATA%\Claude-Data\claude_*\claude-code-sessions\…\<id>.json`, found through the variables the app hands the
 engine), minus the same minute. The time only, no read ratio or lifetime: warm for 5 min "at least", uncertain up to an
 hour, then cold. It follows the last response within seconds for most sessions, but activity without a response can
-shift it. Elsewhere (other systems, terminal) the cache stays unknown until the next message.
+shift it. With neither `tail` nor that record (Windows terminal): the cache stays unknown until the next message.
 
 ## `/sonar` command (English or French words)
 
