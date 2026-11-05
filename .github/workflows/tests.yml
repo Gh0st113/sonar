@@ -106,7 +106,6 @@ jobs:
 
           sh mac/installer.sh installer
           for f in manifest.json widget.js widget.css sonar-lecture.js LICENSE-UI-PLUS; do [ -f "$ext/$f" ] || { echo "manquant : $f"; exit 1; }; done
-          plutil -lint "$ext/manifest.json"
           node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1]));if(!/^UI\+ for Claude/.test(m.name)||!/^install-/.test(m.version_name))process.exit(1)' "$ext/manifest.json"
           [ -f "$agent" ] || { echo 'agent absent'; exit 1; }
           plutil -lint "$agent"
