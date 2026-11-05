@@ -33,6 +33,8 @@ const TEINTE = { ok: GRIS, attention: '#d4a017', alerte: '#e5484d' } as const
 const PANNEAU = 'sonar'
 const SEP = '   '
 const GIT_DELAI_MS = 3000
+// Fin d'un gros journal lue par tail : sous les 4 Mio que $.process.run rend, et bien plus qu'une réponse.
+const TAILLE_FIN = 3 * 1024 * 1024
 const GIT_ECART_MS = 5000
 
 // Variables du module : repartent de zéro à un rechargement (register et session.start sont rejoués).
@@ -118,9 +120,11 @@ async function reprendreCache($: EngineInterface) {
       }
     }
   }
+  const chemin = `${projets}/${nom}/${id}.jsonl`
   const r = nom && s && s.size <= TAILLE_MAX_SESSION
-    ? derniereReponse(String(await $.fs.read(`${projets}/${nom}/${id}.jsonl`)))
-    : await lireFiche($, id).then(reponse => (reponse ? { reponse, ttl: undefined } : undefined), () => undefined)
+    ? derniereReponse(String(await $.fs.read(chemin)))
+    : (nom && s ? await lireFin($, chemin) : undefined)
+      ?? await lireFiche($, id).then(reponse => (reponse ? { reponse, ttl: undefined } : undefined), () => undefined)
   // Un /clear ou une reprise pendant la lecture : la conversation n'est plus la même, on n'écrit rien.
   if (!r || (await $.session.id()) !== id) return
   // Une réponse arrivée pendant la lecture l'emporte : l'écriture ne remplit qu'un cache encore vide (update compare
@@ -128,6 +132,17 @@ async function reprendreCache($: EngineInterface) {
   await update($, cache, cur => cur ?? r.reponse)
   const duree = r.ttl
   if (duree && (await $.store.get('ttl')) === undefined) await update($, ttl, cur => cur ?? duree)
+}
+
+// Journal de plus de 4 Mio : sa fin par `tail -c` (Linux, macOS ; $.fs.read ne lit pas une partie de fichier, et
+// $.process.run rend jusqu'à 4 Mio). La première ligne, coupée, est illisible et ignorée. Sans tail (Windows) : rien.
+async function lireFin($: EngineInterface, chemin: string) {
+  try {
+    const p = await $.process.run(['tail', '-c', String(TAILLE_FIN), '--', chemin], { timeoutMs: 10_000 })
+    return p.exitCode === 0 ? derniereReponse(p.stdout) : undefined
+  } catch {
+    return undefined
+  }
 }
 
 // Journal de plus de 4 Mio ou introuvable : la fiche de la session chez Claude Desktop (logique.mjs, reponseFiche),

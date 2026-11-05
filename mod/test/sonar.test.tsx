@@ -33,14 +33,21 @@ const PANNEAU = {
 
 // Le « moteur » sous le mod : ce que le test répond à ses appels, et le dessin par défaut de chaque composant.
 // `panneau` : ce que répond $.ui.open (placé ou non).
-function moteur(on: On, opts: { git?: 'ok' | 'main' | 'panne' | 'hors-depot'; panneau?: boolean } = {}) {
+// `tail` : ce que répond `tail -c` (Linux, macOS) ; absent, tail est introuvable (Windows). `argvTail` : son dernier appel.
+let argvTail: string[] = []
+function moteur(on: On, opts: { git?: 'ok' | 'main' | 'panne' | 'hors-depot'; panneau?: boolean; tail?: string } = {}) {
   const horloge = mock.clock(on, { now: T0 })
   mock.store(on)
   on('command.register', () => ({ value: { command: 'sonar' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.usage', () => ({ value: { startedAt: T0, context: { window: 200_000 }, rateLimits: [] } }))
   on('session.repo', () => ({ value: opts.git === 'hors-depot' ? null : { root: 'C:/Code/projet-a', remote: 'git@github.com:octo/projet-a.git', internal: false, name: null } }))
-  on('process.run', () => {
+  on('process.run', (_, e) => {
+    if (e.argv[0] === 'tail') {
+      argvTail = [...e.argv]
+      if (opts.tail === undefined) throw new Error('tail introuvable')
+      return { value: { exitCode: 0, stdout: opts.tail, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     if (opts.git === 'panne') throw new Error('git introuvable')
     const tete = opts.git === 'main' ? '## main...origin/main' : '## feat/x...origin/feat/x'
     return { value: { exitCode: 0, stdout: `${tete}\n M a.js\n?? b.js\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
@@ -236,6 +243,20 @@ test('session ouverte avant le mod : journal de plus de 4 Mio non lu, rien ne ca
   expect(await pied($, 'desktop')).toBe('1,23 $')
 })
 
+test('journal de plus de 4 Mio, Linux / macOS : sa fin lue par tail, état complet (taux et durée)', FR, async ($, on) => {
+  // tail coupe au milieu d'une ligne : la première, illisible, est ignorée.
+  moteur(on, { git: 'hors-depot', tail: `"tronquée","usage":{}}\n${reponseJsonl(T0 - 10 * 60_000)}` })
+  mock.env(on, { HOME: '/home/moi' })
+  const f = `/home/moi/.claude/projects/-home-moi-projet/${SESSION}.jsonl`
+  projets(on, { [f]: 'jamais lu' }, { [f]: 5 * 1024 * 1024 }, '/home/moi/projet')
+  await demarrer($)
+  await attendre()
+  const r = await commande($, '')
+  expect(r).toMatch(/cache chaud \(90 % relu, jusqu'à \d\d:\d\d\)/)
+  expect(r).toContain('durée du cache 1h')
+  expect(argvTail).toEqual(['tail', '-c', String(3 * 1024 * 1024), '--', f])
+})
+
 // Claude Desktop : fiche de la session, au chemin que donnent ses variables.
 const APPLI = { USERPROFILE: 'C:\\Users\\moi', LOCALAPPDATA: 'C:\\Users\\moi\\AppData\\Local', CLAUDE_CODE_ACCOUNT_UUID: 'compte-1', CLAUDE_CODE_ORGANIZATION_UUID: 'org-1', CLAUDE_CODE_HOST_SESSION_ID: 'local_abc' }
 const FICHE = 'C:/Users/moi/AppData/Local/Claude-Data/claude_x1/claude-code-sessions/compte-1/org-1/local_abc.json'
@@ -260,6 +281,16 @@ test('fiche de Claude Desktop seule (journal introuvable), il y a 10 min : incer
   await attendre()
   expect(await pied($, 'desktop')).toBe('❔ 1,23 $')
   expect(await commande($, '')).not.toMatch(/relu/)
+})
+
+test('journal de plus de 4 Mio dont la fin ne contient aucune réponse : repli sur la fiche de Claude Desktop', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot', tail: '{"type":"user"}\n' })
+  mock.env(on, APPLI)
+  const f = `${PROJETS}/C--Code-projet-a/${SESSION}.jsonl`
+  projets(on, { [f]: 'jamais lu', [FICHE]: fiche(SESSION, T0 - 10 * 60_000) }, { [f]: 5 * 1024 * 1024 })
+  await demarrer($)
+  await attendre()
+  expect(await pied($, 'desktop')).toBe('❔ 1,23 $')
 })
 
 test('fiche de Claude Desktop d’une autre session : rien', FR, async ($, on) => {
