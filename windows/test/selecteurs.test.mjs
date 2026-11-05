@@ -71,3 +71,8 @@ test('porteur des données sonar dans le shadowRoot (rendu Svg du moteur : une i
   // Les jauges du bandeau ont aussi une img, mais leur alt n'est pas une charge.
   assert.equal(releve('bandeau-sonar-shadow.fr.html').querySelector(PORTEUR), null);
 });
+
+test('zone au-dessus de la saisie : ancêtre de l\'hôte (carte repliée quand elle ne porte que sonar)', () => {
+  const hote = releve('bandeau-sonar-ancetres.txt.html').querySelector(S.hote);
+  assert.equal(hote.closest(S.zoneSaisie)?.getAttribute('data-engine-site-instance'), 'above-prompt');
+});

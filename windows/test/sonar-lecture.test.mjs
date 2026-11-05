@@ -145,3 +145,28 @@ test('diagnostic : page sans aucune zone de mod (session cloud ou mod absent) : 
   assert.match(lignes[0], /zones de mods : AbovePrompt \(fermée\)/);
   assert.match(lignes[1], /introuvable/);
 });
+
+test('porteur seul : la carte au-dessus de la saisie ne montre que l\'image invisible', async () => {
+  const { porteurSeul } = createRequire(import.meta.url)('../sonar-lecture.js');
+  const { lireHtml } = await import('./mini-dom.mjs');
+  const { readFileSync } = await import('node:fs');
+  const img = `<img src="data:image/svg+xml,x" alt="${alt(D).replace(/"/g, '&quot;')}" style="width:1px;height:1px">`;
+  const style = '<style>:host{display:block}</style>';
+  assert.equal(porteurSeul(lireHtml(`${style}<div data-engine-tree=""><div>${img}</div></div>`)), true);
+  assert.equal(porteurSeul(lireHtml(`${style}<div>\n  ${img}\n</div>`)), true, 'blancs ignorés');
+  // Bandeau de sonar (jauges), autre mod, texte : la carte a un contenu, on n'y touche pas.
+  assert.equal(porteurSeul(lireHtml(readFileSync(new URL('fixtures/bandeau-sonar-shadow.fr.html', import.meta.url), 'utf8'))), false);
+  assert.equal(porteurSeul(lireHtml(`${style}<div>${img}<span>🐋 délégation</span></div>`)), false);
+  assert.equal(porteurSeul(lireHtml(`${style}<div>${img}<img alt="jauge semaine"></div>`)), false);
+  assert.equal(porteurSeul(lireHtml(`${style}<div>${img}<button></button></div>`)), false);
+  // Rien du tout (ou pas encore de shadowRoot) : pas notre carte.
+  assert.equal(porteurSeul(lireHtml(style)), false);
+  assert.equal(porteurSeul(null), false);
+  // Vrai DOM : childNodes / nodeType (commentaire ignoré).
+  const el = (localName, enfants = [], attrs = {}) => ({ nodeType: 1, localName, childNodes: enfants, getAttribute: (n) => attrs[n] ?? null });
+  const txt = (v) => ({ nodeType: 3, nodeValue: v });
+  const racine = (enfants) => ({ nodeType: 11, childNodes: enfants });
+  const porteur = el('img', [], { alt: alt(D) });
+  assert.equal(porteurSeul(racine([el('style', [txt('a{}')]), { nodeType: 8 }, el('div', [txt(' '), porteur])])), true);
+  assert.equal(porteurSeul(racine([el('div', [porteur, txt('5 h 30 %')])])), false);
+});
