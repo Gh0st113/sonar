@@ -60,7 +60,7 @@ cost where no ledger is kept) is simply not shown, and thresholds, language, seg
 
 From GitHub:
 
-```powershell
+```sh
 claude plugin marketplace add Gh0st113/sonar
 claude plugin install sonar@sonar-mods
 ```
@@ -71,12 +71,15 @@ before it, the engine has measured nothing yet. The mod runs in local sessions: 
 
 From a local clone (for hacking on it):
 
-```powershell
+```sh
 claude plugin marketplace add <path-to-this-repo>
 claude plugin install sonar@sonar-mods
 ```
 
 The mod is then read **from that folder**: after an edit, `/reload-plugins` in the session is enough.
+
+Systems: Windows (desktop app and terminal) and Linux (terminal, tried on Ubuntu); macOS expected, not tried yet
+([issue #22](https://github.com/Gh0st113/sonar/issues/22)). Only the sonar for Windows extension is Windows-only.
 
 ## What is shown
 
@@ -134,6 +137,9 @@ Set in `settings.json` under `pluginConfigs["sonar@sonar-mods"].options` (the ke
 `quotas,cache,repo,cost`), `paceWarn`, `paceAlert`, `quotaWarn`, `quotaAlert`, `protectedBranches`.
 An invalid value falls back to its default; `contextWarn`, `contextAlert` and the `context` segment of earlier versions
 are ignored.
+`language` and `clock` set to `auto` follow the system language: French for `fr`, English elsewhere, 12-hour clock for
+`en-US`. When the engine does not know it (on Linux it always answers `en-US`), it is taken from `LC_ALL`, `LC_MESSAGES`
+or `LANG` (`C` and `POSIX` do not count).
 
 ## Usage limit log (off by default)
 
@@ -155,7 +161,7 @@ Past 3 MiB its content moves to an archive next to it (`quota-log.<date>.jsonl`)
 
 ## Tests
 
-```powershell
+```sh
 node --test mod/test/
 claude plugin validate mod
 claude plugin test mod

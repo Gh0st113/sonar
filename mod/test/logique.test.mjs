@@ -7,7 +7,7 @@ import {
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
   releve, ajouterReleve, dernierReleve, cheminJournal, cheminArchive, isoUtc, majJournal, besoinMaison, TAILLE_MAX_JOURNAL,
   chargeExtension, texteExtension, PREFIXE_EXTENSION, derniereReponse, brancheCourte, SEP_PIED, MARGE_ENVOI_MS, dossierProjet,
-  reponseFiche,
+  reponseFiche, localeSysteme, langueHote,
 } from '../hooks/logique.mjs';
 
 const H = 3_600_000;
@@ -18,6 +18,28 @@ const q7 = (utilise, resteMs) => ({ kind: 'seven_day', percentUsed: utilise, res
 const q5 = (utilise, resteMs) => ({ kind: 'five_hour', percentUsed: utilise, resetsAt: iso(T0 + resteMs) });
 const FR = lireConfig({ language: 'fr' });
 const EN = lireConfig({ language: 'en', clock: '24h' });
+
+test('langue du système (LC_ALL, LC_MESSAGES, puis LANG) : Linux et macOS en terminal', () => {
+  assert.equal(localeSysteme(undefined, undefined, 'fr_FR.UTF-8'), 'fr-FR');
+  assert.equal(localeSysteme('', '', 'en_US.UTF-8'), 'en-US');
+  assert.equal(localeSysteme('de_DE@euro', undefined, 'fr_FR.UTF-8'), 'de-DE'); // LC_ALL l'emporte
+  assert.equal(localeSysteme(undefined, 'fr_FR.UTF-8', 'en_US.UTF-8'), 'fr-FR'); // puis LC_MESSAGES
+  assert.equal(localeSysteme(undefined, undefined, 'fr'), 'fr');
+  assert.equal(localeSysteme(undefined, undefined, 'C.UTF-8'), ''); // « pas de langue » : on garde Intl
+  assert.equal(localeSysteme('C', undefined, 'fr_FR.UTF-8'), ''); // LC_ALL=C impose la langue neutre
+  assert.equal(localeSysteme(undefined, undefined, 'POSIX'), '');
+  assert.equal(localeSysteme(undefined, undefined, undefined), ''); // Windows : rien de posé
+});
+
+test('langue retenue : Intl, sauf en-US ou rien (Linux) où celle du système l’emporte', () => {
+  assert.equal(langueHote('en-US', 'fr-FR'), 'fr-FR'); // Linux en français
+  assert.equal(langueHote('fr-FR', 'en-US'), 'fr-FR'); // Windows français, LANG héritée d'un terminal
+  assert.equal(langueHote('en-US', ''), 'en-US'); // Linux en C.UTF-8
+  assert.equal(langueHote('', 'fr-FR'), 'fr-FR');
+  assert.equal(langueHote('de-DE', ''), 'de-DE');
+  assert.equal(lireConfig({}, langueHote('en-US', 'fr-FR')).langue, 'fr');
+  assert.equal(lireConfig({}, langueHote('en-US', 'en-GB')).horloge, '24h');
+});
 
 test('config : défauts, langue auto selon la locale, valeurs invalides ignorées', () => {
   assert.deepEqual(lireConfig(), { ...DEFAUTS, langue: 'en', horloge: '24h' });
