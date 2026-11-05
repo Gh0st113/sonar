@@ -2,7 +2,7 @@
 #   node    (Linux)   tests de l'extension et de la logique du mod ;
 #   windows (Windows) sonar.ps1 sous Windows PowerShell 5.1 : installation, état, désinstallation, dans un faux
 #                     profil Claude (LOCALAPPDATA détourné), sur le runner jetable ;
-#   macos   (macOS)   shellcheck, puis mac/installer.sh de la même façon (HOME détourné).
+#   macos   (macOS)   mac/installer.sh de la même façon (HOME détourné) ; son shellcheck tourne dans le job node.
 name: tests
 
 on:
@@ -27,6 +27,8 @@ jobs:
         run: node --test windows/test/
       - name: Tests de la logique du mod
         run: node --test mod/test/logique.test.mjs
+      - name: shellcheck du script macOS (absent des runners macOS)
+        run: shellcheck mac/installer.sh
 
   windows:
     runs-on: windows-2025
@@ -81,8 +83,6 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: shellcheck
-        run: shellcheck mac/installer.sh
       - name: Installer, vérifier, désinstaller (faux dossier personnel)
         run: |
           set -eu
