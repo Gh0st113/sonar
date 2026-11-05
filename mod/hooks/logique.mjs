@@ -197,12 +197,13 @@ export function rythme(q, maintenant, cfg = DEFAUTS) {
 // Cache de la conversation principale d'après sa dernière requête { a, lu, ecrit, neuf, modele }.
 // ttlMs inconnu (undefined) : chaud sûr pendant 5 min, incertain jusqu'à 1 h, froid ensuite.
 // Froid aussi si le modèle a changé depuis (un autre modèle n'a pas ce cache).
+// `approx` (heure seule, sans usage : fiche de Claude Desktop) : pas de taux ni de « rien ».
 export function etatCache(derniere, ttlMs, maintenant, modeleActuel) {
   if (!derniere || !fini(derniere.a)) return undefined;
   const lu = derniere.lu ?? 0;
   const ecrit = derniere.ecrit ?? 0;
   const total = lu + ecrit + (derniere.neuf ?? 0);
-  if (lu + ecrit === 0) return { etat: 'rien' };
+  if (lu + ecrit === 0 && !derniere.approx) return { etat: 'rien' };
   const taux = total > 0 ? lu / total : undefined;
   if (modeleActuel && derniere.modele && modeleActuel !== derniere.modele) return { etat: 'froid', autreModele: true };
   const ecoule = maintenant - derniere.a;
@@ -214,7 +215,8 @@ export function etatCache(derniere, ttlMs, maintenant, modeleActuel) {
 // Durée de vie du cache déduite de deux requêtes successives du même modèle :
 // une lecture après plus de 6 min d'écart prouve 1 h ; une réécriture complète entre 6 et 60 min fait pencher pour 5 min.
 export function deduireTtl(avant, apres) {
-  if (!avant || !apres || !fini(avant.a) || !fini(apres.a)) return undefined;
+  // Une heure estimée (fiche de Claude Desktop) ne prouve rien.
+  if (!avant || !apres || !fini(avant.a) || !fini(apres.a) || avant.approx || apres.approx) return undefined;
   if (avant.modele && apres.modele && avant.modele !== apres.modele) return undefined;
   const ecart = apres.a - avant.a;
   // Au-delà d'une heure, plus aucun cache ne tient : l'écart ne prouve rien.
@@ -436,6 +438,24 @@ export function derniereReponse(texte) {
   const a = envoi !== undefined && envoi <= debut ? envoi : debut - MARGE_ENVOI_MS;
   const reponse = { a, ...reste };
   return ttl ? { reponse, ttl } : { reponse };
+}
+
+// Journal trop gros ou introuvable : la fiche que Claude Desktop garde pour la session (quelques Ko, JSON) donne
+// `lastActivityAt`, l'heure de la dernière activité (en ms ; à quelques secondes de la fin de la dernière réponse
+// pour la plupart des sessions, relevé du 05/11 ; ouvrir une session ne la change pas). Ni usage ni durée du cache :
+// réponse `approx`, l'envoi estimé comme plus haut (MARGE_ENVOI_MS). Le modèle de la fiche n'est pas repris : ce peut
+// être un alias (« opus »), qui ferait croire à un autre modèle. Fiche d'une autre session, heure absente ou à venir : rien.
+export function reponseFiche(texte, id, maintenant) {
+  let o;
+  try {
+    o = JSON.parse(texte);
+  } catch {
+    return undefined;
+  }
+  const t = o?.lastActivityAt;
+  // Aucun tour terminé (ou compteur absent) : peut-être aucune réponse, donc aucun cache.
+  if (o?.cliSessionId !== id || !fini(t) || t > maintenant || !(o.completedTurns > 0)) return undefined;
+  return { a: t - MARGE_ENVOI_MS, lu: 0, ecrit: 0, neuf: 0, approx: true };
 }
 
 // Repli texte (terminal, ligne d'état, réponse de /sonar) : « semaine 41 % (20 %/j, remise ven. 12:00) ».

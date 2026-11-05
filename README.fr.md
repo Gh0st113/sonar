@@ -103,10 +103,16 @@ le cache est affiché chaud pendant 5 minutes (« au moins jusqu'à »), incerta
 Session déjà commencée (reprise, appli relancée) : le mod n'a encore vu passer aucune réponse. Au chargement, il lit donc
 la dernière réponse du fil principal dans le journal local que Claude Code tient pour chaque session
 (`~/.claude/projects/<projet>/<id de session>.jsonl`, ou sous `CLAUDE_CONFIG_DIR`) : son heure, son usage du cache et
-la durée qu'elle a écrite (5 min ou 1 h). Lecture seule, aucun token. Limite : le mod ne lit pas un fichier de plus de 4 Mio
-(une très longue session : sur le poste de l'auteur, environ une session sur cinq) ; le cache y reste inconnu jusqu'au
-prochain message. L'heure retenue est celle de l'envoi de la requête quand le journal la donne, sinon celle de la réponse
-moins une minute (prudence : le cache court depuis l'envoi).
+la durée qu'elle a écrite (5 min ou 1 h). Lecture seule, aucun token. L'heure retenue est celle de l'envoi de la requête
+quand le journal la donne, sinon celle de la réponse moins une minute (prudence : le cache court depuis l'envoi).
+
+Limite : le mod ne lit pas un fichier de plus de 4 Mio (une très longue session : sur le poste de l'auteur, environ une
+session sur cinq). Dans Claude Desktop pour Windows, il prend alors l'heure de dernière activité que l'appli garde dans
+sa fiche de la session (`%LOCALAPPDATA%\Claude-Data\claude_*\claude-code-sessions\…\<id>.json`, trouvée par les
+variables que l'appli passe au moteur), moins la même minute. L'heure seule, sans taux ni durée du cache : chaud 5 min
+« au moins », incertain jusqu'à une heure, puis froid. Elle suit la dernière réponse à quelques secondes près dans la
+plupart des sessions, mais une activité sans réponse peut la décaler. Ailleurs (autre système, terminal), le cache reste
+inconnu jusqu'au prochain message.
 
 ## Commande `/sonar` (mots français ou anglais)
 
