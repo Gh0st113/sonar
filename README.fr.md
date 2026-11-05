@@ -14,9 +14,15 @@ mérite un coup d'œil. Trois niveaux de lecture :
 sem. 41 %
 ```
 
-S'y ajoutent, seulement quand c'est utile, `5 h rapide` (les 5 h partent plus vite que le temps), `cache froid`
-(la prochaine réponse réécrira tout le cache) et `branche main` (vous êtes sur une branche protégée). L'étiquette est pâle,
-le chiffre net ; la couleur (orange, rouge) ne touche que la valeur en cause.
+Toujours **un seul élément** (l'appli coupe un pied trop long par « … ») : le plus urgent, dans cet ordre fixe :
+
+1. `cache froid` : la prochaine réponse réécrira tout le cache ;
+2. `5 h rapide` : les 5 h partent plus vite que le temps ;
+3. une limite hors norme : la semaine (`sem. 82 %`), sinon une autre limite (`budget 92 %`) ;
+4. sinon la semaine (`sem. 41 %`).
+
+L'étiquette est pâle, le chiffre net ; une seule couleur d'alerte, l'orange, sur la valeur (le rouge est réservé au bandeau
+et au panneau). La branche n'est pas au pied : elle est dans le panneau et dans le popover de sonar pour Windows.
 
 **Le bandeau** (`/sonar bandeau`, en option) au-dessus de la saisie : une jauge par fenêtre et pour le cache. La barre est
 l'usage, le petit trait vertical la part de la fenêtre déjà écoulée : barre au-delà du trait = vous consommez plus vite que
@@ -74,11 +80,11 @@ Le mod est alors lu **depuis ce dossier** : après une modification, `/reload-pl
 
 | Élément | Source | Pied | Couleur |
 |---|---|---|---|
-| `semaine` (quota sur 7 jours), heure de remise, budget par jour | `session.measure` | toujours (`sem. 41 %`) | selon le **rythme** : consommation comparée à la part de la fenêtre déjà écoulée — orange à plus de `paceWarn` (5) points d'avance, rouge à plus de `paceAlert` (15) ; et orange dès `quotaWarn` (70 %), rouge dès `quotaAlert` (90 %) quel que soit le rythme |
-| `5 h`, heure de remise | `session.measure` | `5 h rapide`, sans pourcentage, seulement en avance sur le rythme | orange, rouge au-delà de `paceAlert` |
-| autres limites (ex. `budget` d'une passerelle) | `session.measure` | avec leur pourcentage | seuils absolus seulement (durée de fenêtre inconnue) |
-| `cache` chaud (taux de lecture, heure où il refroidit), incertain, froid | dernière requête du fil principal (`turn.step`, sous-agents exclus) | `cache froid` seulement | froid en orange |
-| `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | seulement sur `protectedBranches` (`main,master`) | orange sur une branche protégée |
+| `semaine` (quota sur 7 jours), heure de remise, budget par jour | `session.measure` | 3ᵉ s'il est hors norme, sinon 4ᵉ (`sem. 41 %`) | selon le **rythme** : consommation comparée à la part de la fenêtre déjà écoulée — orange à plus de `paceWarn` (5) points d'avance, rouge à plus de `paceAlert` (15) ; et orange dès `quotaWarn` (70 %), rouge dès `quotaAlert` (90 %) quel que soit le rythme |
+| `5 h`, heure de remise | `session.measure` | 2ᵉ : `5 h rapide`, sans pourcentage, seulement en avance sur le rythme | orange (rouge au bandeau et au panneau au-delà de `paceAlert`) |
+| autres limites (ex. `budget` d'une passerelle) | `session.measure` | avec leur pourcentage : 3ᵉ hors norme, 4ᵉ sans quota sur 7 jours | seuils absolus seulement (durée de fenêtre inconnue) |
+| `cache` chaud (taux de lecture, heure où il refroidit), incertain, froid | dernière requête du fil principal (`turn.step`, sous-agents exclus) ; à l'ouverture d'une session déjà commencée, sa dernière réponse lue dans le journal local de la session (voir plus bas) | 1ᵉʳ : `cache froid` seulement | froid en orange |
+| `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | jamais (panneau et popover Windows seulement) | orange sur une branche protégée |
 | `coût` estimé de la session (prix catalogue) | `session.measure` | jamais | — |
 
 Le mod n'affiche le contexte nulle part : Claude Code le montre déjà (l'extension sonar pour Windows, en option, reprend le bloc
@@ -91,6 +97,12 @@ Rien de visible ; un lecteur d'écran peut toutefois l'annoncer.
 Durée de vie du cache : déduite des réponses (une lecture du cache après plus de 6 minutes prouve 1 h ; une réécriture complète
 indique 5 min), donnée par le moteur lors d'un changement de modèle, ou forcée par `/sonar ttl`. Tant qu'elle est inconnue,
 le cache est affiché chaud pendant 5 minutes (« au moins jusqu'à »), incertain jusqu'à une heure, puis froid.
+
+Session déjà commencée (reprise, appli relancée) : le mod n'a encore vu passer aucune réponse. Au chargement, il lit donc
+la dernière réponse du fil principal dans le journal local que Claude Code tient pour chaque session
+(`~/.claude/projects/<projet>/<id de session>.jsonl`, ou sous `CLAUDE_CONFIG_DIR`) : son heure, son usage du cache et
+la durée qu'elle a écrite (5 min ou 1 h). Lecture seule, aucun token. Limite : le mod ne lit pas un fichier de plus de 4 Mio
+(une très longue session) ; le cache y reste inconnu jusqu'au prochain message.
 
 ## Commande `/sonar` (mots français ou anglais)
 

@@ -9,8 +9,8 @@ import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } 
 
 import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
 import {
-  EMPLACEMENTS, TTL, besoinMaison, chargeExtension, cheminArchive, cheminJournal, cleReleve, deduireTtl, elementsPied, jauges,
-  ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
+  EMPLACEMENTS, TAILLE_MAX_SESSION, TTL, besoinMaison, chargeExtension, cheminArchive, cheminJournal, cleReleve, deduireTtl,
+  derniereReponse, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -87,6 +87,35 @@ function journaliser($: EngineInterface, m: SonarMesure) {
     if (maj) await $.fs.write(chemin, maj.texte)
     derniereCle = cleReleve(r)
   }).catch(() => undefined)
+}
+
+// Session ouverte avant le mod (reprise, appli relancée) : turn.step n'a encore rien vu, le cache resterait vide jusqu'au
+// prochain message. On lit sa dernière réponse dans le journal local de la session (logique.mjs, derniereReponse) :
+// <dossier de config>/projects/<dossier du projet>/<id de session>.jsonl, le dossier du projet trouvé par l'id.
+// Une session de plus de 4 Mio ($.fs.read ne lit pas au-delà) reste vide jusqu'au prochain message. Erreurs : rien.
+async function reprendreCache($: EngineInterface) {
+  if (!cfg.segments.includes('cache') || (await read($, cache))) return
+  const id = await $.session.id()
+  if (!/^[\w-]+$/.test(id)) return
+  const conf = await $.env.get('CLAUDE_CONFIG_DIR')
+  const maison = conf ? undefined : (await $.env.get('USERPROFILE')) || (await $.env.get('HOME'))
+  const base = conf || (maison ? `${maison}/.claude` : undefined)
+  if (!base) return
+  const projets = `${base.replace(/[\\/]+$/, '')}/projects`
+  for (const d of await $.fs.list(projets)) {
+    if (d.kind !== 'dir') continue
+    const chemin = `${projets}/${d.name}/${id}.jsonl`
+    const s = await $.fs.stat(chemin).catch(() => undefined)
+    if (s?.kind !== 'file') continue
+    if (s.size > TAILLE_MAX_SESSION) return
+    const r = derniereReponse(String(await $.fs.read(chemin)))
+    // Une réponse a pu arriver pendant la lecture : elle l'emporte.
+    if (!r || (await read($, cache))) return
+    await update($, cache, () => r.reponse)
+    const duree = r.ttl
+    if (duree && (await $.store.get('ttl')) === undefined && !(await read($, ttl))) await update($, ttl, () => duree)
+    return
+  }
 }
 
 // L'emplacement choisi par /sonar (gardé dans le store) l'emporte sur l'option du plugin.
@@ -251,6 +280,8 @@ export const register: Register = (on, options) => {
         journaliser($, m)
       }
       demarrerMinuterie($)
+      // Lecture du journal de la session à côté : elle ne retarde pas le démarrage.
+      void reprendreCache($).then(() => poserStatut($)).catch(() => undefined)
       await rafraichirDepot($)
       await poserStatut($)
     } catch { /* le sonar ne bloque jamais le démarrage */ }

@@ -249,34 +249,28 @@ const quotasTries = (quotas) => [...(quotas ?? [])].filter((q) => q && typeof q.
 const protegee = (depot, cfg) => Boolean(depot?.branche && cfg.branches.includes(depot.branche.toLowerCase()));
 const valeurQuota = (r, t, cfg) => (r.remis ? t.remis : r.epuise ? t.epuise : pc(r.utilise, cfg));
 
-// Pied : seulement ce qui mérite un coup d'œil, chacun { cle, etiquette, valeur, niveau }.
-// La semaine toujours ; les 5 h seulement quand leur rythme s'emballe, sans % (Claude Code l'affiche déjà) ;
-// un autre quota (budget d'une passerelle) avec son % ; le cache seulement froid ; la branche seulement protégée.
+// Pied : UN seul élément, le plus urgent, chacun { cle, etiquette, valeur, niveau } (tableau vide ou d'un élément).
+// L'appli coupe le pied par « … » quand il est trop long (vu le 05/11) : un seul mot y tient toujours.
+// Ordre fixe (README, « Ce qui est affiché ») :
+//   1. `cache froid` : la prochaine réponse réécrira tout le cache (moment où l'on hésite à envoyer) ;
+//   2. `5 h rapide` : les 5 h partent plus vite que le temps (sans %, Claude Code l'affiche déjà) ;
+//   3. une limite hors norme : la semaine, sinon un autre quota (budget d'une passerelle) en orange ou rouge ;
+//   4. sinon la semaine (`sem. 41 %`), ou à défaut le premier autre quota.
+// Une seule couleur d'alerte (orange) : le rouge reste au bandeau et au panneau. La branche n'y est plus (panneau, popover).
 export function elementsPied(d, maintenant, cfg = DEFAUTS) {
   const t = textes(cfg.langue);
   const actif = (k) => cfg.segments.includes(k);
-  const e = [];
-  if (actif('quotas')) {
-    for (const q of quotasTries(d.quotas)) {
-      const r = rythme(q, maintenant, cfg);
-      if (!r) continue;
-      const etiquette = t.nomsCourts[r.kind] ?? t.noms[r.kind] ?? r.kind;
-      if (r.kind === 'five_hour') {
-        if (r.remis || !(r.avance > cfg.rythme.attention)) continue;
-        // Le niveau de `rythme` : il tient compte aussi des seuils absolus (97 % avec 7 points d'avance = alerte).
-        e.push({ cle: r.kind, etiquette, valeur: t.rapide, niveau: r.niveau });
-        continue;
-      }
-      e.push({ cle: r.kind, etiquette, valeur: valeurQuota(r, t, cfg), niveau: r.niveau });
-    }
-  }
+  const el = (cle, etiquette, valeur, niveau) => [{ cle, etiquette, valeur, niveau: niveau === 'ok' ? 'ok' : 'attention' }];
   const c = actif('cache') ? etatCache(d.cache, d.ttlMs, maintenant, d.modele) : undefined;
-  if (c?.etat === 'froid') e.push({ cle: 'cache', etiquette: t.cache, valeur: t.froid, niveau: 'attention' });
-  if (actif('depot') && protegee(d.depot, cfg)) e.push({ cle: 'depot', etiquette: t.branche, valeur: d.depot.branche, niveau: 'attention' });
-  // L'appli coupe la fin du pied quand la fenêtre est étroite : alertes, puis attentions, puis le reste (tri stable).
-  return e.sort((a, b) => PRIORITE[a.niveau] - PRIORITE[b.niveau]);
+  if (c?.etat === 'froid') return el('cache', t.cache, t.froid, 'attention');
+  if (!actif('quotas')) return [];
+  const rs = quotasTries(d.quotas).map((q) => rythme(q, maintenant, cfg)).filter(Boolean);
+  const cinq = rs.find((r) => r.kind === 'five_hour');
+  if (cinq && !cinq.remis && cinq.avance > cfg.rythme.attention) return el('five_hour', t.noms.five_hour, t.rapide, 'attention');
+  const autres = rs.filter((r) => r.kind !== 'five_hour');
+  const r = autres.find((x) => x.niveau !== 'ok') ?? autres[0];
+  return r ? el(r.kind, t.nomsCourts[r.kind] ?? t.noms[r.kind] ?? r.kind, valeurQuota(r, t, cfg), r.niveau) : [];
 }
-const PRIORITE = { alerte: 0, attention: 1, ok: 2 };
 
 // Bandeau et panneau : tout le détail, chacun { cle, etiquette, valeur, detail, niveau, part?, repere? }.
 // `part` (0 à 1) remplit la jauge ; `repere` marque la part de fenêtre écoulée (le rythme régulier). Sans `part`, pas de jauge.
@@ -347,6 +341,56 @@ export function chargeExtension(d, maintenant, cfg = DEFAUTS) {
   return o;
 }
 export const texteExtension = (charge) => PREFIXE_EXTENSION + JSON.stringify(charge);
+
+// ——— Cache d'une session ouverte avant le mod (reprise, appli relancée) : le journal local de la session ———
+// Claude Code écrit chaque session dans ~/.claude/projects/<dossier>/<id de session>.jsonl, une ligne JSON par
+// événement. On y lit, depuis la fin, la dernière réponse du fil principal (`assistant`, hors sous-agents) et son usage :
+// le même { a, lu, ecrit, neuf, modele } que turn.step donne. Aucun appel au modèle.
+// Une compaction plus récente (`compact_boundary`) : l'ancien cache ne sert plus, rien.
+// `a` : l'heure de la 1re ligne de ce message (l'appli écrit un bloc par ligne) : quelques secondes après l'envoi de la
+// requête, d'où court le cache. `ttl` : la durée que la réponse a écrite, si elle en a écrit (« ephemeral_1h » ou 5 min).
+// $.fs lit au plus 4 Mio d'un coup : au-delà, le mod ne lit pas (TAILLE_MAX_SESSION).
+export const TAILLE_MAX_SESSION = 4 * 1024 * 1024;
+export function derniereReponse(texte) {
+  const lignes = String(texte ?? '').split(/\r?\n/);
+  const lire = (l) => {
+    try { return JSON.parse(l); } catch { return undefined; }
+  };
+  let r;
+  let id;
+  for (let i = lignes.length - 1; i >= 0; i--) {
+    const l = lignes[i];
+    // Tri grossier avant JSON.parse : la plupart des lignes ne sont pas des réponses.
+    if (r === undefined && l.includes('"compact_boundary"')) {
+      const o = lire(l);
+      if (o?.type === 'system' && o.subtype === 'compact_boundary') return undefined;
+    }
+    if (!l.includes('"type":"assistant"')) {
+      // Un message de l'utilisateur (ou un résultat d'outil) clôt la remontée : la réponse commence après lui.
+      if (r !== undefined && l.includes('"type":"user"') && lire(l)?.type === 'user') break;
+      continue;
+    }
+    const o = lire(l);
+    if (o?.type !== 'assistant' || o.isSidechain) continue;
+    const a = Date.parse(o.timestamp);
+    if (r !== undefined) {
+      if (o.message?.id !== id) break;
+      if (fini(a) && a < r.a) r.a = a;
+      continue;
+    }
+    const u = o.message?.usage;
+    if (!u || !fini(a) || o.message.model === '<synthetic>') continue;
+    id = o.message.id;
+    r = { a, lu: u.cache_read_input_tokens ?? 0, ecrit: u.cache_creation_input_tokens ?? 0, neuf: u.input_tokens ?? 0 };
+    if (typeof o.message.model === 'string') r.modele = o.message.model;
+    const cc = u.cache_creation ?? {};
+    r.ttl = cc.ephemeral_1h_input_tokens > 0 ? '1h' : cc.ephemeral_5m_input_tokens > 0 ? '5m' : undefined;
+    if (id === undefined) break;
+  }
+  if (!r) return undefined;
+  const { ttl, ...reponse } = r;
+  return ttl ? { reponse, ttl } : { reponse };
+}
 
 // Repli texte (terminal, ligne d'état, réponse de /sonar) : « semaine 41 % (20 %/j, remise ven. 12:00) ».
 export const texte = (el) => `${el.etiquette} ${el.valeur}${el.detail ? ` (${el.detail})` : ''}`;

@@ -14,9 +14,15 @@ glance. Three levels of reading:
 week 41%
 ```
 
-Only when it matters, it adds `5h fast` (the 5-hour window is going faster than time), `cache cold` (the next response
-will rewrite the whole cache) and `branch main` (you are on a protected branch). The label is pale, the figure crisp;
-colour (orange, red) touches only the value at fault.
+Always **a single item** (the app cuts a footer that is too long with "…"): the most urgent one, in this fixed order:
+
+1. `cache cold`: the next response will rewrite the whole cache;
+2. `5h fast`: the 5-hour window is going faster than time;
+3. a limit out of bounds: the week (`week 82%`), else another limit (`budget 92%`);
+4. otherwise the week (`week 41%`).
+
+The label is pale, the figure crisp; a single warning colour, orange, on the value (red is kept for the banner and the
+pane). The branch is not in the footer: it is in the pane and in the sonar for Windows popover.
 
 **The banner** (`/sonar banner`, optional) above the prompt: one gauge per window and for the cache. The bar is usage,
 the small vertical tick the share of the window already elapsed: bar past the tick = you are using it faster than an even
@@ -74,11 +80,11 @@ The mod is then read **from that folder**: after an edit, `/reload-plugins` in t
 
 | Item | Source | Footer | Colour |
 |---|---|---|---|
-| `week` (7-day limit), reset time, daily budget | `session.measure` | always (`week 41%`) | by **pace**: usage compared with the share of the window already elapsed — orange more than `paceWarn` (5) points ahead, red more than `paceAlert` (15) ahead; and orange from `quotaWarn` (70 %), red from `quotaAlert` (90 %) whatever the pace |
-| `5h`, reset time | `session.measure` | `5h fast`, no percentage, only when ahead of pace | orange, red past `paceAlert` |
-| other limits (e.g. a gateway's `budget`) | `session.measure` | with their percentage | absolute thresholds only (no known window length) |
-| `cache` warm (hit ratio, when it goes cold), uncertain, cold | last request of the main thread (`turn.step`, subagents excluded) | `cache cold` only | cold in orange |
-| `branch`, repo, changed files | `$.session.repo()` + `git status` (at most every 5 s, 3 s timeout) | only on `protectedBranches` (`main,master`) | orange on a protected branch |
+| `week` (7-day limit), reset time, daily budget | `session.measure` | 3rd when out of bounds, else 4th (`week 41%`) | by **pace**: usage compared with the share of the window already elapsed — orange more than `paceWarn` (5) points ahead, red more than `paceAlert` (15) ahead; and orange from `quotaWarn` (70 %), red from `quotaAlert` (90 %) whatever the pace |
+| `5h`, reset time | `session.measure` | 2nd: `5h fast`, no percentage, only when ahead of pace | orange (red in the banner and pane past `paceAlert`) |
+| other limits (e.g. a gateway's `budget`) | `session.measure` | with their percentage: 3rd when out of bounds, 4th with no 7-day limit | absolute thresholds only (no known window length) |
+| `cache` warm (hit ratio, when it goes cold), uncertain, cold | last request of the main thread (`turn.step`, subagents excluded); when a session already under way is opened, its last response read from the session's local transcript (see below) | 1st: `cache cold` only | cold in orange |
+| `branch`, repo, changed files | `$.session.repo()` + `git status` (at most every 5 s, 3 s timeout) | never (pane and Windows popover only) | orange on a protected branch |
 | session `cost` estimate (list price) | `session.measure` | never | — |
 
 The mod shows context nowhere: Claude Code already does (the optional sonar for Windows brings UI+'s context block into
@@ -91,6 +97,12 @@ reader may still announce it.
 Cache lifetime: inferred from responses (a cache read after more than 6 minutes proves 1 h; a full rewrite points to 5 min),
 or told by the engine on a model switch, or forced with `/sonar ttl`. Until it is known, the cache is shown warm for 5 minutes
 ("at least until"), uncertain up to an hour, then cold.
+
+A session already under way (resumed, app restarted): the mod has not seen any response yet. So on load it reads the
+main thread's last response from the local transcript Claude Code keeps for each session
+(`~/.claude/projects/<project>/<session id>.jsonl`, or under `CLAUDE_CONFIG_DIR`): its time, its cache usage and the
+lifetime it wrote (5 min or 1 h). Read only, no tokens. Limit: the mod does not read a file over 4 MiB (a very long
+session); there the cache stays unknown until the next message.
 
 ## `/sonar` command (English or French words)
 

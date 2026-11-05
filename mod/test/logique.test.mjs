@@ -6,7 +6,7 @@ import {
   rythme, etatCache, deduireTtl, elementsPied, jauges, ligne, lireStatut, nomDepot, lireCommande, lireConfig,
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
   releve, ajouterReleve, dernierReleve, cheminJournal, cheminArchive, isoUtc, majJournal, besoinMaison, TAILLE_MAX_JOURNAL,
-  chargeExtension, texteExtension, PREFIXE_EXTENSION,
+  chargeExtension, texteExtension, PREFIXE_EXTENSION, derniereReponse,
 } from '../hooks/logique.mjs';
 
 const H = 3_600_000;
@@ -188,28 +188,39 @@ test('pied : cas normal = la semaine seule', () => {
   assert.equal(pied(TOUT, EN), 'week 41%');
 });
 
-test('pied : 5 h « rapide » sans % seulement en avance ; cache froid, branche protégée, budget', () => {
-  // 5 h : 3 h écoulées, rythme régulier 60 % ; 70 % = +10 (attention), 80 % = +20 (alerte), 64 % = +4 (rien).
+test('pied : un seul élément, le plus urgent (cache froid > 5 h rapide > limite hors norme > semaine)', () => {
+  const froid = { a: T0 - 2 * H, lu: 9, ecrit: 1, neuf: 0, modele: 'm' };
+  // 5 h : 3 h écoulées, rythme régulier 60 % ; 70 % = +10 (rapide), 64 % = +4 (rien de plus que la semaine).
   assert.deepEqual(elementsPied({ quotas: [q5(70, 2 * H)] }, T0, FR), [{ cle: 'five_hour', etiquette: '5 h', valeur: 'rapide', niveau: 'attention' }]);
-  assert.equal(elementsPied({ quotas: [q5(80, 2 * H)] }, T0, FR)[0].niveau, 'alerte');
   assert.deepEqual(elementsPied({ quotas: [q5(64, 2 * H)] }, T0, FR), []);
   assert.deepEqual(elementsPied({ quotas: [q5(40, -1)] }, T0, FR), []); // remis : rien
   // Jamais le % des 5 h au pied (Claude Code l'affiche déjà), même à 95 %.
   assert.equal(pied({ quotas: [q5(95, 4.5 * H)] }, EN), '5h fast');
-  // 7 points d'avance seulement, mais 97 % : alerte (seuil absolu).
-  assert.equal(elementsPied({ quotas: [q5(97, 0.5 * H)] }, T0, FR)[0].niveau, 'alerte');
-  // Alertes puis attentions en tête : la fin du pied peut être coupée.
-  assert.equal(pied({ quotas: [q7(41, 3 * J), q5(80, 2 * H)], depot: { nom: 'p', branche: 'main', modifies: 0 } }), '5 h rapide  branche main  sem. 41 %');
-  const d = { ...TOUT, quotas: [q7(80, 3 * J), q5(23, 2 * H)], depot: { nom: 'p', branche: 'main', modifies: 0 }, cache: { a: T0 - 2 * H, lu: 9, ecrit: 1, neuf: 0, modele: 'm' } };
-  assert.equal(pied(d), 'sem. 80 %  cache froid  branche main');
-  assert.deepEqual(elementsPied(d, T0, FR).map((x) => x.niveau), ['alerte', 'attention', 'attention']);
+  // Ordre : le cache froid passe devant tout, puis les 5 h rapides, puis la semaine.
+  const tout = { quotas: [q7(95, 3 * J), q5(80, 2 * H)], cache: froid, ttlMs: TTL['1h'], modele: 'm' };
+  assert.equal(pied(tout), 'cache froid');
+  assert.equal(pied({ ...tout, cache: undefined }), '5 h rapide');
+  assert.equal(pied({ ...tout, cache: undefined, quotas: [q7(95, 3 * J), q5(23, 2 * H)] }), 'sem. 95 %');
+  // Une limite hors norme passe devant une semaine tranquille ; sinon la semaine.
+  assert.equal(pied({ quotas: [q7(41, 3 * J), { kind: 'spend_limit', percentUsed: 92 }] }, EN), 'budget 92%');
+  assert.equal(pied({ quotas: [q7(41, 3 * J), { kind: 'spend_limit', percentUsed: 12 }] }, EN), 'week 41%');
   assert.equal(pied({ quotas: [{ kind: 'spend_limit', percentUsed: 62.8 }] }, EN), 'budget 63%');
   assert.equal(pied({ quotas: [q7(100, 2 * J)] }), 'sem. épuisé');
+  // Une seule couleur d'alerte au pied : orange, même quand le panneau dit rouge.
+  for (const d of [tout, { ...tout, cache: undefined }, { quotas: [q7(95, 3 * J)] }, { quotas: [q5(97, 0.5 * H)] }]) {
+    const e = elementsPied(d, T0, FR);
+    assert.equal(e.length, 1);
+    assert.equal(e[0].niveau, 'attention');
+  }
+  // La branche n'est plus au pied, même protégée.
+  assert.equal(pied({ quotas: [q7(41, 3 * J)], depot: { nom: 'p', branche: 'main', modifies: 0 } }), 'sem. 41 %');
+  assert.deepEqual(elementsPied({ quotas: [], depot: { nom: 'p', branche: 'main', modifies: 0 } }, T0, FR), []);
   assert.deepEqual(elementsPied({ quotas: [] }, T0, FR), []);
-  // Segments désactivés : rien ; branches protégées réglables.
-  assert.deepEqual(elementsPied(d, T0, lireConfig({ language: 'fr', segments: 'cost' })), []);
-  assert.equal(pied({ quotas: [], depot: { nom: 'p', branche: 'develop', modifies: 0 } }, lireConfig({ language: 'fr', protectedBranches: 'develop' })), 'branche develop');
-  assert.doesNotMatch(pied(d), SYMBOLES);
+  // Segments désactivés : rien, ou ce qui reste actif.
+  assert.deepEqual(elementsPied(tout, T0, lireConfig({ language: 'fr', segments: 'cost' })), []);
+  assert.equal(pied(tout, lireConfig({ language: 'fr', segments: 'quotas' })), '5 h rapide');
+  assert.equal(pied({ quotas: [], cache: froid, ttlMs: TTL['1h'], modele: 'm' }, lireConfig({ language: 'fr', segments: 'cache' })), 'cache froid');
+  assert.doesNotMatch(pied(tout), SYMBOLES);
 });
 
 test('jauges (fr) : tout le détail, sans contexte ni anciens symboles', () => {
@@ -340,4 +351,45 @@ test('données pour l\'extension : sans langue, segments respectés', () => {
   assert.deepEqual(chargeExtension({ quotas: [] }, T), { a: T });
   // Segments désactivés : absents.
   assert.deepEqual(chargeExtension(d, T, { ...DEFAUTS, segments: ['quotas', 'cout'] }), { a: T, cout: 4 });
+});
+
+// Journal de session tel que Claude Code l'écrit : une ligne JSON par événement, un bloc de réponse par ligne.
+const ts = (ms) => new Date(ms).toISOString();
+const usage = (lu, ecrit, h1 = ecrit, m5 = 0) => ({
+  input_tokens: 4, cache_read_input_tokens: lu, cache_creation_input_tokens: ecrit, output_tokens: 9,
+  cache_creation: { ephemeral_1h_input_tokens: h1, ephemeral_5m_input_tokens: m5 },
+});
+const rep = (id, a, u, extra = {}) => JSON.stringify({ type: 'assistant', isSidechain: false, timestamp: ts(a), message: { id, model: 'claude-x', role: 'assistant', usage: u }, ...extra });
+const util = (a, texte = 'question') => JSON.stringify({ type: 'user', isSidechain: false, timestamp: ts(a), message: { role: 'user', content: texte } });
+const jsonl = (...l) => `${l.join('\n')}\n`;
+
+test('session ouverte avant le mod : dernière réponse du fil principal lue dans son journal', () => {
+  const t = jsonl(
+    util(T0 - 3 * H), rep('m1', T0 - 3 * H + 5000, usage(10, 90)),
+    util(T0 - 2 * H),
+    rep('m2', T0 - 2 * H + 3000, usage(900, 50)), // 1er bloc de la réponse : l'heure retenue
+    rep('m2', T0 - 2 * H + 9000, usage(900, 50)),
+    JSON.stringify({ type: 'system', subtype: 'turn_duration', timestamp: ts(T0 - 2 * H + 9500) }),
+    // Un sous-agent plus récent : son cache n'est pas celui du fil principal.
+    rep('s1', T0 - H, usage(5, 5), { isSidechain: true }),
+    // Réponse « synthétique » (erreur d'API) : ignorée.
+    JSON.stringify({ type: 'assistant', isSidechain: false, timestamp: ts(T0 - H), message: { id: 'x', model: '<synthetic>', usage: usage(0, 0) } }),
+  );
+  assert.deepEqual(derniereReponse(t), { reponse: { a: T0 - 2 * H + 3000, lu: 900, ecrit: 50, neuf: 4, modele: 'claude-x' }, ttl: '1h' });
+  // Un message de l'utilisateur qui cite « "type":"assistant" » ne trompe pas la remontée.
+  const piege = jsonl(rep('m2', T0 - 60_000, usage(1, 1)), util(T0 - 30_000, '"type":"assistant"'), rep('m3', T0 - 10_000, usage(7, 0, 0, 0)));
+  assert.deepEqual(derniereReponse(piege), { reponse: { a: T0 - 10_000, lu: 7, ecrit: 0, neuf: 4, modele: 'claude-x' } });
+  // Écriture sur 5 min ; dernière ligne coupée (écriture en cours) ignorée ; fins de ligne Windows.
+  assert.equal(derniereReponse(`${rep('m', T0, usage(0, 40, 0, 40))}\r\n{"type":"assis`).ttl, '5m');
+  // Une compaction après la dernière réponse : l'ancien cache ne sert plus.
+  assert.equal(derniereReponse(jsonl(rep('m', T0 - H, usage(1, 1)), JSON.stringify({ type: 'system', subtype: 'compact_boundary', timestamp: ts(T0) }))), undefined);
+  // Une compaction plus ancienne ne gêne pas.
+  assert.equal(derniereReponse(jsonl(JSON.stringify({ type: 'system', subtype: 'compact_boundary' }), util(T0 - H), rep('m', T0, usage(3, 0)))).reponse.lu, 3);
+  // Rien d'exploitable.
+  assert.equal(derniereReponse(''), undefined);
+  assert.equal(derniereReponse(undefined), undefined);
+  assert.equal(derniereReponse(jsonl(util(T0), 'pas du json')), undefined);
+  // Ce que la lecture donne s'affiche comme une réponse vue en direct.
+  const { reponse } = derniereReponse(t);
+  assert.equal(chargeExtension({ cache: reponse, ttlMs: TTL['1h'] }, T0 - 2 * H + 60_000, FR).cache.etat, 'chaud');
 });
