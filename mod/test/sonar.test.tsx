@@ -387,6 +387,23 @@ test('options : anglais, segments choisis (« context » ignoré), emplacement p
   expect(await commande($, 'footer')).toBe('Sonar shown: footer.')
 })
 
+// Discriminant là où Intl du moteur répond en-US (Linux : rouge prouvé sous Ubuntu sans le correctif) ; sous un Windows
+// français il passerait aussi sans lui.
+test('Linux / macOS en terminal : la langue vient de LANG (Intl y répond en-US)', { options: { language: 'auto', clock: 'auto' } }, async ($, on) => {
+  moteur(on)
+  mock.env(on, { LANG: 'fr_FR.UTF-8' })
+  await demarrer($)
+  expect(await commande($, 'pied')).toBe('Sonar affiché : pied.')
+  expect(await pied($, 'terminal')).toContain('1,23 $')
+})
+
+test('LANG en français mais option « en » : l’option l’emporte', { options: { language: 'en', clock: '24h' } }, async ($, on) => {
+  moteur(on)
+  mock.env(on, { LANG: 'fr_FR.UTF-8' })
+  await demarrer($)
+  expect(await commande($, 'footer')).toBe('Sonar shown: footer.')
+})
+
 test('hors abonnement : ni quotas ni coût connus, le pied reste vide', FR, async ($, on) => {
   moteur(on, { git: 'hors-depot' })
   await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })

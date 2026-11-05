@@ -60,7 +60,7 @@ coût quand il n'est pas suivi) n'est simplement pas affiché ; seuils, langue, 
 
 Depuis GitHub :
 
-```powershell
+```sh
 claude plugin marketplace add Gh0st113/sonar
 claude plugin install sonar@sonar-mods
 ```
@@ -71,12 +71,15 @@ avant, le moteur n'a encore rien mesuré. Le mod tourne dans les sessions locale
 
 Depuis un clone local (pour le modifier) :
 
-```powershell
+```sh
 claude plugin marketplace add <chemin-du-depot>
 claude plugin install sonar@sonar-mods
 ```
 
 Le mod est alors lu **depuis ce dossier** : après une modification, `/reload-plugins` dans la session suffit.
+
+Systèmes : Windows (appli et terminal) et Linux (terminal, essayé sous Ubuntu) ; macOS attendu, pas encore essayé
+([issue #22](https://github.com/Gh0st113/sonar/issues/22)). Seule l'extension sonar pour Windows est propre à Windows.
 
 ## Ce qui est affiché
 
@@ -135,6 +138,9 @@ Dans `settings.json`, sous `pluginConfigs["sonar@sonar-mods"].options` (la clé 
 `quotas,cache,repo,cost`), `paceWarn`, `paceAlert`, `quotaWarn`, `quotaAlert`, `protectedBranches`.
 Une valeur invalide revient à sa valeur par défaut ; `contextWarn`, `contextAlert` et le segment `context` des versions
 précédentes sont ignorés.
+`language` et `clock` à `auto` suivent la langue du système : français pour `fr`, anglais ailleurs, 12 h pour `en-US`.
+Quand le moteur ne la connaît pas (sous Linux, il répond toujours `en-US`), elle est prise dans `LC_ALL`, `LC_MESSAGES`
+ou `LANG` (`C` et `POSIX` ne comptent pas).
 
 ## Journal des relevés de quota (désactivé par défaut)
 
@@ -156,7 +162,7 @@ utilisé. Au-delà de 3 Mio, son contenu part dans une archive à côté (`quota
 
 ## Tests
 
-```powershell
+```sh
 node --test mod/test/
 claude plugin validate mod
 claude plugin test mod

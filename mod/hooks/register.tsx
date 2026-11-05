@@ -10,7 +10,7 @@ import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } 
 import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
 import {
   EMPLACEMENTS, TAILLE_MAX_SESSION, TTL, besoinMaison, chargeExtension, cheminArchive, cheminJournal, cleReleve, deduireTtl,
-  SEP_PIED, derniereReponse, dossierProjet, reponseFiche, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
+  SEP_PIED, derniereReponse, dossierProjet, reponseFiche, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, langueHote, localeSysteme, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -288,11 +288,24 @@ async function notes($: EngineInterface) {
 
 export const register: Register = (on, options) => {
   cfg = lireConfig(options, localeHote())
-  const t = textes(cfg.langue)
+  let t = textes(cfg.langue)
 
   on('session.start', async ($, e, next) => {
     const r = await next(e)
     try {
+      // Linux, macOS en terminal : la langue est dans LC_ALL / LC_MESSAGES / LANG, Intl y répond en-US (langueHote).
+      // Une variable refusée ou absente ne doit rien casser, que le moteur lève l'erreur tout de suite ou par la promesse.
+      const lire = (f: () => Promise<string | undefined>) => Promise.resolve().then(f).catch(() => undefined)
+      const systeme = localeSysteme(
+        await lire(() => $.env.get('LC_ALL')),
+        await lire(() => $.env.get('LC_MESSAGES')),
+        await lire(() => $.env.get('LANG')),
+      )
+      const langue = langueHote(localeHote(), systeme)
+      if (langue !== localeHote()) {
+        cfg = lireConfig(options, langue)
+        t = textes(cfg.langue)
+      }
       // Le menu ne propose pas de sous-commandes : `argumentHint` les rappelle en gris après le nom.
       await $.command.register({
         name: 'sonar',

@@ -100,6 +100,19 @@ const paire = (a, b, defaut, max = 100) => {
   return x >= 0 && y <= max && x <= y ? { attention: x, alerte: y } : defaut;
 };
 
+// Langue POSIX (LC_ALL, LC_MESSAGES, puis LANG ; ex. « fr_FR.UTF-8 ») → « fr-FR » ; '' si rien, ou C / POSIX (pas de langue).
+// Sous Linux, Intl du moteur répond en-US quelle que soit LANG (mesuré le 05/11 sous Ubuntu) : voir langueHote.
+export function localeSysteme(lcAll, lcMessages, lang) {
+  const v = [lcAll, lcMessages, lang].map((x) => String(x ?? '').trim()).find(Boolean) ?? '';
+  const m = /^([a-z]{2,3})(?:_([a-z]{2}|\d{3}))?(?:[.@]|$)/i.exec(v);
+  if (!m) return '';
+  return m[2] ? `${m[1].toLowerCase()}-${m[2].toUpperCase()}` : m[1].toLowerCase();
+}
+
+// La langue retenue : celle d'Intl, sauf s'il ne répond rien ou seulement en-US (sa valeur par défaut, celle de Linux) ;
+// alors celle du système si elle est posée. Un Windows en français garde fr-FR même si un terminal a hérité de LANG.
+export const langueHote = (intl, systeme) => (systeme && (!intl || /^en-us$/i.test(intl)) ? systeme : intl ?? '');
+
 // Options du plugin (userConfig) → config complète ; une valeur invalide reprend son défaut.
 // `localeHote` : la langue de l'environnement (ex. « fr-FR »), utilisée quand language = auto.
 export function lireConfig(options = {}, localeHote = '') {
