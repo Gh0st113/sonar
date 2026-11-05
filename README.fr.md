@@ -17,13 +17,13 @@ pied trop long par « … ») :
 
 Dans cet ordre, séparés par « · », chacun seulement s'il est connu :
 
-1. `5 h rapide` (orange), seulement quand les 5 h partent plus vite que le temps ;
-2. l'état du cache collé au coût de la session : 🔥 chaud, ❄️ froid (orange, la prochaine réponse réécrira tout le cache),
+1. l'état du cache collé au coût de la session : 🔥 chaud, ❄️ froid (orange, la prochaine réponse réécrira tout le cache),
    ❔ incertain (orange), puis le montant ;
-3. la branche (`⎇`), raccourcie : dernier segment après « / », sans suffixe d'empreinte, 12 caractères au plus
-   (`claude/mod-pied-cache-79d924` → `mod-pied-ca…`) ; orange sur une branche protégée ; `détachée` pour une tête détachée.
+2. la branche (`⎇`), raccourcie : dernier segment après « / », sans suffixe d'empreinte, 20 caractères au plus
+   (`claude/mod-pied-cache-79d924` → `mod-pied-cache`) ; orange sur une branche protégée ; `détachée` pour une tête détachée.
 
-La semaine n'y est jamais, même en alerte : elle est dans le bandeau, le panneau et le popover de sonar pour Windows.
+Les limites (5 h, semaine) n'y sont jamais, même en alerte : elles sont dans le bandeau, le panneau, `/sonar` et le
+popover de sonar pour Windows.
 Une seule couleur d'alerte au pied, l'orange, sur la valeur (le rouge est réservé au bandeau et au panneau).
 
 **Le bandeau** (`/sonar bandeau`, en option) au-dessus de la saisie : une jauge par fenêtre et pour le cache. La barre est
@@ -83,11 +83,11 @@ Le mod est alors lu **depuis ce dossier** : après une modification, `/reload-pl
 | Élément | Source | Pied | Couleur |
 |---|---|---|---|
 | `semaine` (quota sur 7 jours), heure de remise, budget par jour | `session.measure` | jamais, même en alerte | selon le **rythme** : consommation comparée à la part de la fenêtre déjà écoulée — orange à plus de `paceWarn` (5) points d'avance, rouge à plus de `paceAlert` (15) ; et orange dès `quotaWarn` (70 %), rouge dès `quotaAlert` (90 %) quel que soit le rythme |
-| `5 h`, heure de remise | `session.measure` | 1ᵉʳ : `5 h rapide`, sans pourcentage, seulement en avance sur le rythme | orange (rouge au bandeau et au panneau au-delà de `paceAlert`) |
+| `5 h`, heure de remise | `session.measure` | jamais, même en alerte | orange (rouge au bandeau et au panneau au-delà de `paceAlert`) |
 | autres limites (ex. `budget` d'une passerelle) | `session.measure` | jamais | seuils absolus seulement (durée de fenêtre inconnue) |
-| `cache` chaud (taux de lecture, heure où il refroidit), incertain, froid | dernière requête du fil principal (`turn.step`, sous-agents exclus) ; à l'ouverture d'une session déjà commencée, sa dernière réponse lue dans le journal local de la session (voir plus bas) | 2ᵉ : l'icône, collée au coût (🔥 chaud, ❄️ froid, ❔ incertain) | froid en orange |
-| `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | 3ᵉ : `⎇` et le nom raccourci | orange sur une branche protégée |
-| `coût` estimé de la session (prix catalogue) | `session.measure` | 2ᵉ, après l'icône du cache (`🔥 2,40 $`) ; rien s'il vaut 0 (session neuve, ou ancienne session dont le moteur n'a pas gardé le coût) | — |
+| `cache` chaud (taux de lecture, heure où il refroidit), incertain, froid | dernière requête du fil principal (`turn.step`, sous-agents exclus) ; à l'ouverture d'une session déjà commencée, sa dernière réponse lue dans le journal local de la session (voir plus bas) | 1ᵉʳ : l'icône, collée au coût (🔥 chaud, ❄️ froid, ❔ incertain) | froid en orange |
+| `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | 2ᵉ : `⎇` et le nom raccourci | orange sur une branche protégée |
+| `coût` estimé de la session (prix catalogue) | `session.measure` | 1ᵉʳ, après l'icône du cache (`🔥 2,40 $`) ; rien s'il vaut 0 (session neuve, ou ancienne session dont le moteur n'a pas gardé le coût) | — |
 
 Le mod n'affiche le contexte nulle part : Claude Code le montre déjà (l'extension sonar pour Windows, en option, reprend le bloc
 contexte de UI+ dans le popover du cercle).

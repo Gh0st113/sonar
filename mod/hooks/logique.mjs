@@ -33,7 +33,7 @@ const TEXTES = {
   fr: {
     noms: { five_hour: '5 h', seven_day: 'semaine', spend_limit: 'budget' },
     nomsCourts: { seven_day: 'sem.' },
-    remis: 'remis à zéro', epuise: 'épuisé', rapide: 'rapide',
+    remis: 'remis à zéro', epuise: 'épuisé',
     parJour: (p) => `${p} %/j`, reste: (p) => `reste ${p} %`, remet: (e) => `remise ${e}`,
     cache: 'cache', chaud: 'chaud', froid: 'froid', autreModele: 'autre modèle', incertain: 'incertain',
     relu: (p) => `${p} relu`, jusqua: (h, auMoins) => `${auMoins ? 'au moins ' : ''}jusqu'à ${h}`,
@@ -60,7 +60,7 @@ const TEXTES = {
   en: {
     noms: { five_hour: '5h', seven_day: 'week', spend_limit: 'budget' },
     nomsCourts: {},
-    remis: 'reset', epuise: 'exhausted', rapide: 'fast',
+    remis: 'reset', epuise: 'exhausted',
     parJour: (p) => `${p}%/d`, reste: (p) => `${p}% left`, remet: (e) => `resets ${e}`,
     cache: 'cache', chaud: 'warm', froid: 'cold', autreModele: 'other model', incertain: 'uncertain',
     relu: (p) => `${p} reused`, jusqua: (h, auMoins) => `${auMoins ? 'at least ' : ''}until ${h}`,
@@ -255,12 +255,11 @@ const quotasTries = (quotas) => [...(quotas ?? [])].filter((q) => q && typeof q.
 const protegee = (depot, cfg) => Boolean(depot?.branche && cfg.branches.includes(depot.branche.toLowerCase()));
 const valeurQuota = (r, t, cfg) => (r.remis ? t.remis : r.epuise ? t.epuise : pc(r.utilise, cfg));
 
-// Pied (disposition A, choisie par l'utilisateur le 05/11) : court (~25 caractères), dans cet ordre, séparés par « · » :
-//   1. `5 h rapide` (orange), seulement quand les 5 h partent plus vite que le temps (sans %, Claude Code l'affiche) ;
-//   2. l'icône du cache collée au coût de la session : 🔥 chaud, ❄️ froid (orange), ❔ incertain (orange), puis le
+// Pied (choix de l'utilisateur, 05/11) : court, dans cet ordre, séparés par « · » :
+//   1. l'icône du cache collée au coût de la session : 🔥 chaud, ❄️ froid (orange), ❔ incertain (orange), puis le
 //      montant (`🔥 2,40 $`) ; pas d'icône si l'état du cache est inconnu, pas de montant si le coût l'est ;
-//   3. la branche, raccourcie (brancheCourte) : `⎇ master` ; orange sur une branche protégée ; rien hors dépôt.
-// La semaine n'y est jamais, même en alerte : elle reste au bandeau, au panneau et dans le popover de sonar pour Windows.
+//   2. la branche, raccourcie (brancheCourte) : `⎇ master` ; orange sur une branche protégée ; rien hors dépôt.
+// Les limites (5 h, semaine) n'y sont jamais : bandeau, panneau, /sonar et popover de sonar pour Windows.
 // Chacun { cle, etiquette, valeur, niveau } ; l'étiquette peut être vide.
 export const SEP_PIED = ' · ';
 const ICONES = { chaud: '🔥', froid: '❄️', incertain: '❔' };
@@ -268,11 +267,7 @@ export function elementsPied(d, maintenant, cfg = DEFAUTS) {
   const t = textes(cfg.langue);
   const actif = (k) => cfg.segments.includes(k);
   const e = [];
-  if (actif('quotas')) {
-    const cinq = quotasTries(d.quotas).filter((q) => q.kind === 'five_hour').map((q) => rythme(q, maintenant, cfg))[0];
-    if (cinq && !cinq.remis && cinq.avance > cfg.rythme.attention) e.push({ cle: 'five_hour', etiquette: t.noms.five_hour, valeur: t.rapide, niveau: 'attention' });
-  }
-  const c = actif('cache') ? etatCache(d.cache, d.ttlMs, maintenant, d.modele) : undefined;
+  const c =actif('cache') ? etatCache(d.cache, d.ttlMs, maintenant, d.modele) : undefined;
   const icone = ICONES[c?.etat];
   const cout = actif('cout') && coutConnu(d.cout) ? montant(d.cout, cfg) : undefined;
   if (icone || cout) {
@@ -286,9 +281,9 @@ export function elementsPied(d, maintenant, cfg = DEFAUTS) {
 }
 
 // Nom de branche pour le pied : le dernier segment après « / », sans suffixe d'empreinte (« -79d924 » : au moins
-// 6 caractères hexadécimaux dont un chiffre, pour garder « new-facade »), 12 caractères
-// au plus, « … » compris : claude/mod-pied-cache-79d924 → mod-pied-ca….
-export function brancheCourte(branche, max = 12) {
+// 6 caractères hexadécimaux dont un chiffre, pour garder « new-facade »), 20 caractères
+// au plus, « … » compris : fix/cache-reprise-fiche → cache-reprise-fiche (entier).
+export function brancheCourte(branche, max = 20) {
   if (typeof branche !== 'string' || !branche) return undefined;
   const fin = branche.split('/').filter(Boolean).pop() ?? branche;
   const nom = fin.replace(/-(?=[0-9a-f]*\d)[0-9a-f]{6,}$/i, '') || fin;

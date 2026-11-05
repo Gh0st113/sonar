@@ -80,7 +80,7 @@ test('pied (défaut) : cas normal = coût et branche, ni semaine, ni contexte, n
   expect(await pied($, 'desktop', ['focus'])).toBe('focus & 1,23 $ · ⎇ x')
 })
 
-test('pied : 5 h « rapide » en tête, branche protégée en orange, la semaine jamais même en alerte', FR, async ($, on) => {
+test('pied : branche protégée en orange, les limites (5 h, semaine) jamais même en alerte', FR, async ($, on) => {
   moteur(on, { git: 'main' })
   await demarrer($)
   const calme = await $.ui.mount({ ...PIED, surface: 'desktop' })
@@ -88,11 +88,11 @@ test('pied : 5 h « rapide » en tête, branche protégée en orange, la semaine
   expect((await calme.find({ type: 'Text', text: /^1,23 \$$/ }))?.props.color).toBeUndefined()
   expect((await calme.find({ type: 'Text', text: /^main$/ }))?.props.color).toBe('warning')
   await calme.unmount()
-  // 5 h : 3 h écoulées sur 5, 80 % utilisés = 20 points d'avance ; semaine à 95 % : pas au pied.
+  // 5 h : 3 h écoulées sur 5, 80 % utilisés = 20 points d'avance ; semaine à 95 % : ni l'une ni l'autre au pied.
   await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 80 }, { ...QUOTAS[1]!, percentUsed: 95 }] })
-  expect(await pied($, 'terminal')).toBe('5 h rapide · 1,23 $ · ⎇ main')
+  expect(await pied($, 'terminal')).toBe('1,23 $ · ⎇ main')
   const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^rapide$/ }))?.props.color).toBe('warning')
+  expect(await ui.find({ type: 'Text', text: /rapide|80/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /95/ })).toBeUndefined()
   await ui.unmount()
   expect(await commande($, '')).toContain('semaine 95 %')
