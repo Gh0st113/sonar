@@ -167,10 +167,16 @@ const reponseJsonl = (a: number) => [
 ].join('\n') + '\n'
 
 // Le dossier des projets : un sous-dossier par projet, le journal de la session dans l'un d'eux.
-function projets(on: On, fichiers: Record<string, string>, tailles: Record<string, number> = {}) {
+function projets(on: On, fichiers: Record<string, string>, tailles: Record<string, number> = {}, cwd?: string) {
   const p = cle
+  const vu = { list: 0 }
   on('session.id', () => ({ value: SESSION }))
+  on('session.cwd', () => {
+    if (cwd === undefined) throw new Error('inconnu')
+    return { value: cwd }
+  })
   on('fs.list', (_, e) => {
+    vu.list++
     if (p(e.path ?? '') !== PROJETS) throw new Error('ENOENT')
     const noms = [...new Set(Object.keys(fichiers).map(f => f.slice(PROJETS.length + 1).split('/')[0]!))]
     return { value: noms.map(name => ({ name, kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false })) }
@@ -184,6 +190,7 @@ function projets(on: On, fichiers: Record<string, string>, tailles: Record<strin
     if (!(p(e.path) in fichiers)) throw new Error('ENOENT')
     return { value: fichiers[p(e.path)]! }
   })
+  return vu
 }
 
 test('session ouverte avant le mod : l’état du cache vient de son journal, sans attendre un message', FR, async ($, on) => {
@@ -205,6 +212,16 @@ test('session ouverte avant le mod : l’état du cache vient de son journal, sa
   const alt = (await ui.find({ type: 'Svg' } as never) as { props?: { alt?: string } } | undefined)?.props?.alt ?? ''
   expect(JSON.parse(alt.replace(/^sonar:1 /, '')).cache.etat).toBe('chaud')
   await ui.unmount()
+})
+
+test('session ouverte avant le mod : le dossier déduit du dossier courant, sans parcourir projects/', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot' })
+  mock.env(on, { USERPROFILE: 'C:\\Users\\moi' })
+  const vu = projets(on, { [`${PROJETS}/C--Code-projet-a/${SESSION}.jsonl`]: reponseJsonl(T0 - 10 * 60_000) }, {}, 'C:\\Code\\projet-a')
+  await demarrer($)
+  await attendre()
+  expect(await commande($, '')).toMatch(/cache chaud/)
+  expect(vu.list).toBe(0)
 })
 
 test('session ouverte avant le mod : journal de plus de 4 Mio non lu, rien ne casse', FR, async ($, on) => {

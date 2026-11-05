@@ -279,12 +279,13 @@ export function elementsPied(d, maintenant, cfg = DEFAUTS) {
   return e;
 }
 
-// Nom de branche pour le pied : le dernier segment après « / », sans suffixe d'empreinte (« -79d924 »), 12 caractères
+// Nom de branche pour le pied : le dernier segment après « / », sans suffixe d'empreinte (« -79d924 » : au moins
+// 6 caractères hexadécimaux dont un chiffre, pour garder « new-facade »), 12 caractères
 // au plus, « … » compris : claude/mod-pied-cache-79d924 → mod-pied-ca….
 export function brancheCourte(branche, max = 12) {
   if (typeof branche !== 'string' || !branche) return undefined;
   const fin = branche.split('/').filter(Boolean).pop() ?? branche;
-  const nom = fin.replace(/-[0-9a-f]{6,}$/i, '') || fin;
+  const nom = fin.replace(/-(?=[0-9a-f]*\d)[0-9a-f]{6,}$/i, '') || fin;
   const car = [...nom];
   return car.length > max ? `${car.slice(0, max - 1).join('')}…` : nom;
 }
@@ -358,6 +359,10 @@ export function chargeExtension(d, maintenant, cfg = DEFAUTS) {
   return o;
 }
 export const texteExtension = (charge) => PREFIXE_EXTENSION + JSON.stringify(charge);
+
+// Nom du dossier que Claude Code donne à un projet sous projects/ : son chemin, chaque caractère hors [A-Za-z0-9]
+// remplacé par « - » (C:\Code\projet-a → C--Code-projet-a ; /home/moi/sonar → -home-moi-sonar).
+export const dossierProjet = (cwd) => (typeof cwd === 'string' && cwd ? cwd.replace(/[^A-Za-z0-9]/g, '-') : undefined);
 
 // ——— Cache d'une session ouverte avant le mod (reprise, appli relancée) : le journal local de la session ———
 // Claude Code écrit chaque session dans ~/.claude/projects/<dossier>/<id de session>.jsonl, une ligne JSON par

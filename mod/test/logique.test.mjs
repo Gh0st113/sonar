@@ -6,7 +6,7 @@ import {
   rythme, etatCache, deduireTtl, elementsPied, jauges, ligne, lireStatut, nomDepot, lireCommande, lireConfig,
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
   releve, ajouterReleve, dernierReleve, cheminJournal, cheminArchive, isoUtc, majJournal, besoinMaison, TAILLE_MAX_JOURNAL,
-  chargeExtension, texteExtension, PREFIXE_EXTENSION, derniereReponse, brancheCourte, SEP_PIED, MARGE_ENVOI_MS,
+  chargeExtension, texteExtension, PREFIXE_EXTENSION, derniereReponse, brancheCourte, SEP_PIED, MARGE_ENVOI_MS, dossierProjet,
 } from '../hooks/logique.mjs';
 
 const H = 3_600_000;
@@ -179,7 +179,7 @@ const TOUT = {
   cache: { a: T0 - 60_000, lu: 92, ecrit: 4, neuf: 4, modele: 'm' }, ttlMs: TTL['1h'], modele: 'm',
   depot: { nom: 'projet-a', branche: 'feat/x', modifies: 3 },
 };
-// Symboles de l'ancien affichage : plus aucun dans un rendu.
+// Symboles de l'ancien affichage : plus aucun dans les jauges (le pied, lui, montre 🔥 ❄️ ❔ ⎇ et « · »).
 const SYMBOLES = /[⚠🔥❄❔⎇●→≈↺·]/u;
 const pied = (d, cfg = FR, m = T0) => ligne(elementsPied(d, m, cfg), SEP_PIED);
 
@@ -230,6 +230,14 @@ test('pied : 5 h rapide en tête, icônes du cache, branche raccourcie ; la sema
   assert.equal(pied(tout, lireConfig({ language: 'fr', segments: 'cost' })), '1,23 $');
 });
 
+test('dossier du projet sous projects/ : le chemin, hors [A-Za-z0-9] remplacé par « - »', () => {
+  assert.equal(dossierProjet('C:\\Code\\projet-a'), 'C--Code-projet-a');
+  assert.equal(dossierProjet('/home/user/sonar'), '-home-user-sonar');
+  assert.equal(dossierProjet('D:/Données/été 2026'), 'D--Donn-es--t--2026');
+  assert.equal(dossierProjet(''), undefined);
+  assert.equal(dossierProjet(undefined), undefined);
+});
+
 test('pied : nom de branche raccourci', () => {
   assert.equal(brancheCourte('claude/mod-pied-cache-79d924'), 'mod-pied-ca…');
   assert.equal(brancheCourte('master'), 'master');
@@ -238,6 +246,7 @@ test('pied : nom de branche raccourci', () => {
   assert.equal(brancheCourte('fonctionnalité-très-longue'), 'fonctionnal…');
   assert.equal(brancheCourte('abc-123'), 'abc-123'); // moins de 6 caractères d'empreinte : gardé
   assert.equal(brancheCourte('deadbeef'), 'deadbeef'); // pas de tiret : rien à retirer
+  assert.equal(brancheCourte('fix/new-facade'), 'new-facade'); // un mot en lettres a à f, sans chiffre : gardé
   assert.equal(brancheCourte('a/'), 'a');
   assert.equal(brancheCourte(''), undefined);
   assert.equal(brancheCourte(undefined), undefined);

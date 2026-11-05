@@ -10,7 +10,7 @@ import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } 
 import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
 import {
   EMPLACEMENTS, TAILLE_MAX_SESSION, TTL, besoinMaison, chargeExtension, cheminArchive, cheminJournal, cleReleve, deduireTtl,
-  SEP_PIED, derniereReponse, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
+  SEP_PIED, derniereReponse, dossierProjet, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -90,7 +90,8 @@ function journaliser($: EngineInterface, m: SonarMesure) {
 
 // Session ouverte avant le mod (reprise, appli relancée) : turn.step n'a encore rien vu, le cache resterait vide jusqu'au
 // prochain message. On lit sa dernière réponse dans le journal local de la session (logique.mjs, derniereReponse) :
-// <dossier de config>/projects/<dossier du projet>/<id de session>.jsonl, le dossier du projet trouvé par l'id.
+// <dossier de config>/projects/<dossier du projet>/<id de session>.jsonl : d'abord le dossier déduit du dossier courant
+// (dossierProjet), sinon le premier dossier qui contient l'id (session ouverte ailleurs, nom d'une autre version).
 // Une session de plus de 4 Mio ($.fs.read ne lit pas au-delà) reste vide jusqu'au prochain message. Erreurs : rien.
 async function reprendreCache($: EngineInterface) {
   if (!cfg.segments.includes('cache') || (await read($, cache))) return
@@ -101,22 +102,30 @@ async function reprendreCache($: EngineInterface) {
   const base = conf || (maison ? `${maison}/.claude` : undefined)
   if (!base) return
   const projets = `${base.replace(/[\\/]+$/, '')}/projects`
-  for (const d of await $.fs.list(projets)) {
-    if (d.kind !== 'dir') continue
-    const chemin = `${projets}/${d.name}/${id}.jsonl`
-    const s = await $.fs.stat(chemin).catch(() => undefined)
-    if (s?.kind !== 'file') continue
-    if (s.size > TAILLE_MAX_SESSION) return
-    const r = derniereReponse(String(await $.fs.read(chemin)))
-    // Un /clear ou une reprise pendant la lecture : la conversation n'est plus la même, on n'écrit rien.
-    if (!r || (await $.session.id()) !== id) return
-    // Une réponse arrivée pendant la lecture l'emporte : l'écriture ne remplit qu'un cache encore vide (update compare
-    // et réessaie, sans fenêtre entre le test et l'écriture).
-    await update($, cache, cur => cur ?? r.reponse)
-    const duree = r.ttl
-    if (duree && (await $.store.get('ttl')) === undefined) await update($, ttl, cur => cur ?? duree)
-    return
+  const statut = (nom: string) => $.fs.stat(`${projets}/${nom}/${id}.jsonl`).catch(() => undefined)
+  const devine = dossierProjet(await $.session.cwd().catch(() => undefined))
+  let nom = devine
+  let s = devine ? await statut(devine) : undefined
+  if (s?.kind !== 'file') {
+    nom = undefined
+    for (const d of await $.fs.list(projets)) {
+      if (d.kind !== 'dir' || d.name === devine) continue
+      s = await statut(d.name)
+      if (s?.kind === 'file') {
+        nom = d.name
+        break
+      }
+    }
   }
+  if (!nom || !s || s.size > TAILLE_MAX_SESSION) return
+  const r = derniereReponse(String(await $.fs.read(`${projets}/${nom}/${id}.jsonl`)))
+  // Un /clear ou une reprise pendant la lecture : la conversation n'est plus la même, on n'écrit rien.
+  if (!r || (await $.session.id()) !== id) return
+  // Une réponse arrivée pendant la lecture l'emporte : l'écriture ne remplit qu'un cache encore vide (update compare
+  // et réessaie, sans fenêtre entre le test et l'écriture).
+  await update($, cache, cur => cur ?? r.reponse)
+  const duree = r.ttl
+  if (duree && (await $.store.get('ttl')) === undefined) await update($, ttl, cur => cur ?? duree)
 }
 
 // L'emplacement choisi par /sonar (gardé dans le store) l'emporte sur l'option du plugin.
