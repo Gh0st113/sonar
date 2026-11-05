@@ -141,14 +141,13 @@ claude plugin test mod
 node --test windows/test/
 ```
 
-And for `sonar.exe` (Go 1.24), in `windows/`: `go test ./...`. GitHub Actions runs it all on every push.
+GitHub Actions runs the Node tests and a trial of the Windows install script on every push.
 
 ## Credits and sources
 
-- **[UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude)**, by Lukas van Uden, MIT licence: the Windows
-  extension reuses its code (`widget.js`, `widget.css`, `manifest.json`, one test), from commit
-  [`126cf95`](https://github.com/LukasvanUden/ui-plus-for-claude/commit/126cf9540f557466f697f679e9ea20505bf6442a)
-  (files identical to tag `v0.4.3`). Its licence is included as is (`windows/LICENSE-UI-PLUS`, also installed next
-  to `sonar.exe`). Files taken, original git hashes, changes and audit: `windows/PROVENANCE.md`.
-- **[Inno Setup](https://jrsoftware.org/isinfo.php)** (Jordan Russell and Martijn Laan): builds the `sonar-setup.exe`
-  installer.
+- **[UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude)**, by Lukas van Uden (Windows support by
+  DarkstarDEV), MIT licence: sonar for Windows reuses its code (`widget.js`, `widget.css`, `manifest.json`, one test,
+  the install script), at commit
+  [`1e8274f`](https://github.com/LukasvanUden/ui-plus-for-claude/commit/1e8274fc149a49979c8688a447ae9bf9bd0d3028)
+  (tag `v0.5.0`). Its licence is included as is (`windows/LICENSE-UI-PLUS`, also copied with the extension).
+  Files taken, original git hashes, changes and audit: `windows/PROVENANCE.md` (in French).
