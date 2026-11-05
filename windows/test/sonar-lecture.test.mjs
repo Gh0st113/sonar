@@ -133,3 +133,15 @@ test('diagnostic : la raison pour laquelle un texte porteur est refusé', () => 
   assert.equal(raison(bon, T + 20 * 60_000), 'trop vieux (20 min)');
   assert.equal(raison(PREFIXE + JSON.stringify({ a: T }), T), 'aucune donnée utile');
 });
+
+test('diagnostic : page sans aucune zone de mod (session cloud ou mod absent) : une ligne qui le dit', () => {
+  const { diagnostiquerPage } = createRequire(import.meta.url)('../sonar-lecture.js');
+  const vide = { querySelectorAll: () => [] };
+  assert.deepEqual(diagnostiquerPage(vide, T), ['diagnostic · session cloud ou sans mod : pas de données']);
+  // Une zone de mod présente mais sans porteur : les deux lignes détaillées, comme avant.
+  const zone = { getAttribute: (n) => (n === 'data-plugin-drawn' ? 'AbovePrompt' : null), shadowRoot: null, attributes: [], checkVisibility: () => true };
+  const lignes = diagnostiquerPage({ querySelectorAll: () => [zone] }, T);
+  assert.equal(lignes.length, 2);
+  assert.match(lignes[0], /zones de mods : AbovePrompt \(fermée\)/);
+  assert.match(lignes[1], /introuvable/);
+});

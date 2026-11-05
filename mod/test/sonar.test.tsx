@@ -71,29 +71,31 @@ async function pied($: Moteur, surface: 'terminal' | 'desktop', modes: string[] 
   return t === '(rien)' ? '' : t
 }
 
-test('pied (défaut) : cas normal = la semaine seule, ni contexte ni % des 5 h', FR, async ($, on) => {
+test('pied (défaut) : cas normal = coût et branche, ni semaine, ni contexte, ni % des 5 h', FR, async ($, on) => {
   moteur(on)
   await demarrer($)
-  expect(await pied($, 'terminal')).toBe('sem. 41 %')
-  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  expect(await pied($, 'terminal')).toBe('1,23 $ · ⎇ x')
+  expect(await pied($, 'desktop')).toBe('1,23 $ · ⎇ x')
   // Sur le bureau, notre dessin remplace celui du moteur : un mode natif reste devant.
-  expect(await pied($, 'desktop', ['focus'])).toBe('focus & sem. 41 %')
+  expect(await pied($, 'desktop', ['focus'])).toBe('focus & 1,23 $ · ⎇ x')
 })
 
-test('pied : 5 h « rapide » sans %, branche protégée ; couleur sur la valeur seule', FR, async ($, on) => {
+test('pied : 5 h « rapide » en tête, branche protégée en orange, la semaine jamais même en alerte', FR, async ($, on) => {
   moteur(on, { git: 'main' })
   await demarrer($)
-  // 5 h : 3 h écoulées sur 5, 80 % utilisés = 20 points d'avance (alerte).
-  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 80 }, QUOTAS[1]!] })
-  // Alertes puis attentions en tête : l'appli coupe la fin du pied quand la fenêtre est étroite.
-  expect(await pied($, 'terminal')).toBe('5 h rapide  branche main  sem. 41 %')
+  const calme = await $.ui.mount({ ...PIED, surface: 'desktop' })
+  expect((await calme.find({ type: 'Text' }))?.text).toBe('1,23 $ · ⎇ main')
+  expect((await calme.find({ type: 'Text', text: /^1,23 \$$/ }))?.props.color).toBeUndefined()
+  expect((await calme.find({ type: 'Text', text: /^main$/ }))?.props.color).toBe('warning')
+  await calme.unmount()
+  // 5 h : 3 h écoulées sur 5, 80 % utilisés = 20 points d'avance ; semaine à 95 % : pas au pied.
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 80 }, { ...QUOTAS[1]!, percentUsed: 95 }] })
+  expect(await pied($, 'terminal')).toBe('5 h rapide · 1,23 $ · ⎇ main')
   const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text' }))?.text).toMatch(/^5 h rapide   branche main   sem\. 41 %$/)
-  expect((await ui.find({ type: 'Text', text: /^rapide$/ }))?.props.color).toBe('error')
-  expect((await ui.find({ type: 'Text', text: /^main$/ }))?.props.color).toBe('warning')
-  // La semaine, dans les clous, n'a pas de couleur.
-  expect((await ui.find({ type: 'Text', text: /^41 %$/ }))?.props.color).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /^rapide$/ }))?.props.color).toBe('warning')
+  expect(await ui.find({ type: 'Text', text: /95/ })).toBeUndefined()
   await ui.unmount()
+  expect(await commande($, '')).toContain('semaine 95 %')
 })
 
 test('/sonar : le panneau s’ouvre (jauges sur le bureau, texte sur le terminal) ; sinon le détail en texte', FR, async ($, on) => {
@@ -140,13 +142,97 @@ test('cache : la réponse du fil principal compte, celle d’un sous-agent non ;
   await demarrer($)
   for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 3 })) { /* rien */ }
   for await (const _ of $.turn.step({ turnId: 't2', index: 0, model: 'claude-haiku-5-5', messageCount: 1, agentId: 'a1' })) { /* rien */ }
-  // Cache chaud : rien au pied ; le détail (durée de vie encore inconnue : « au moins ») dans /sonar.
-  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  // Cache chaud : 🔥 devant le coût ; le détail (durée de vie encore inconnue : « au moins ») dans /sonar.
+  expect(await pied($, 'desktop')).toBe('🔥 1,23 $ · ⎇ x')
   expect(await commande($, '')).toMatch(/cache chaud \(92 % relu, au moins jusqu'à \d\d:\d\d\)/)
   await horloge.advance(H + 60_000)
-  expect(await pied($, 'desktop')).toMatch(/^cache froid   sem\. 41 %$/)
-  expect(await pied($, 'terminal')).toBe('cache froid  sem. 41 %')
+  // Froid : ❄️, en orange.
+  expect(await pied($, 'desktop')).toBe('❄️ 1,23 $ · ⎇ x')
+  expect(await pied($, 'terminal')).toBe('❄️ 1,23 $ · ⎇ x')
+  const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^❄️ 1,23 \$$/ }))?.props.color).toBe('warning')
+  await ui.unmount()
   expect(await commande($, '')).toContain('cache froid')
+})
+
+// Journal local d'une session, tel que Claude Code l'écrit : une ligne JSON par événement.
+const SESSION = 'c0ffee00-1111-2222-3333-444455556666'
+const PROJETS = 'C:/Users/moi/.claude/projects'
+const reponseJsonl = (a: number) => [
+  JSON.stringify({ type: 'user', isSidechain: false, timestamp: iso(a - 2000), message: { role: 'user', content: 'q' } }),
+  JSON.stringify({
+    type: 'assistant', isSidechain: false, timestamp: iso(a),
+    message: { id: 'm1', model: 'claude-opus-5-5', usage: { input_tokens: 4, cache_read_input_tokens: 900, cache_creation_input_tokens: 96, cache_creation: { ephemeral_1h_input_tokens: 96, ephemeral_5m_input_tokens: 0 } } },
+  }),
+].join('\n') + '\n'
+
+// Le dossier des projets : un sous-dossier par projet, le journal de la session dans l'un d'eux.
+function projets(on: On, fichiers: Record<string, string>, tailles: Record<string, number> = {}, cwd?: string) {
+  const p = cle
+  const vu = { list: 0 }
+  on('session.id', () => ({ value: SESSION }))
+  on('session.cwd', () => {
+    if (cwd === undefined) throw new Error('inconnu')
+    return { value: cwd }
+  })
+  on('fs.list', (_, e) => {
+    vu.list++
+    if (p(e.path ?? '') !== PROJETS) throw new Error('ENOENT')
+    const noms = [...new Set(Object.keys(fichiers).map(f => f.slice(PROJETS.length + 1).split('/')[0]!))]
+    return { value: noms.map(name => ({ name, kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false })) }
+  })
+  on('fs.stat', (_, e) => {
+    const f = p(e.path)
+    if (!(f in fichiers)) throw new Error('ENOENT')
+    return { value: { kind: 'file' as const, size: tailles[f] ?? fichiers[f]!.length, mtimeMs: 0, isLink: false } }
+  })
+  on('fs.read', (_, e) => {
+    if (!(p(e.path) in fichiers)) throw new Error('ENOENT')
+    return { value: fichiers[p(e.path)]! }
+  })
+  return vu
+}
+
+test('session ouverte avant le mod : l’état du cache vient de son journal, sans attendre un message', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot' })
+  mock.env(on, { USERPROFILE: 'C:\\Users\\moi' })
+  projets(on, {
+    [`${PROJETS}/C--autre/autre-session.jsonl`]: reponseJsonl(T0 - 1000),
+    [`${PROJETS}/C--Code-projet-a/${SESSION}.jsonl`]: reponseJsonl(T0 - 10 * 60_000),
+  })
+  await demarrer($)
+  await attendre()
+  // Réponse d'il y a 10 min qui a écrit sur 1 h : chaud, durée déduite du journal.
+  const r = await commande($, '')
+  expect(r).toMatch(/cache chaud \(90 % relu, jusqu'à \d\d:\d\d\)/)
+  expect(r).toContain('durée du cache 1h')
+  expect(await pied($, 'desktop')).toBe('🔥 1,23 $')
+  // Le porteur de l'extension Windows l'a aussi.
+  const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  const alt = (await ui.find({ type: 'Svg' } as never) as { props?: { alt?: string } } | undefined)?.props?.alt ?? ''
+  expect(JSON.parse(alt.replace(/^sonar:1 /, '')).cache.etat).toBe('chaud')
+  await ui.unmount()
+})
+
+test('session ouverte avant le mod : le dossier déduit du dossier courant, sans parcourir projects/', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot' })
+  mock.env(on, { USERPROFILE: 'C:\\Users\\moi' })
+  const vu = projets(on, { [`${PROJETS}/C--Code-projet-a/${SESSION}.jsonl`]: reponseJsonl(T0 - 10 * 60_000) }, {}, 'C:\\Code\\projet-a')
+  await demarrer($)
+  await attendre()
+  expect(await commande($, '')).toMatch(/cache chaud/)
+  expect(vu.list).toBe(0)
+})
+
+test('session ouverte avant le mod : journal de plus de 4 Mio non lu, rien ne casse', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot' })
+  mock.env(on, { USERPROFILE: 'C:\\Users\\moi' })
+  const f = `${PROJETS}/C--Code-projet-a/${SESSION}.jsonl`
+  projets(on, { [f]: reponseJsonl(T0 - 60_000) }, { [f]: 5 * 1024 * 1024 })
+  await demarrer($)
+  await attendre()
+  expect(await commande($, '')).not.toMatch(/^cache /m)
+  expect(await pied($, 'desktop')).toBe('1,23 $')
 })
 
 test('/sonar bandeau : jauges sur le bureau, une ligne sur le terminal, couleur sur la valeur en alerte ; masquer puis afficher', FR, async ($, on) => {
@@ -192,7 +278,7 @@ test('/sonar indice : remplace la ligne d’aide sous la saisie', FR, async ($, 
 test('git en panne ou hors dépôt : pas de branche, le reste s’affiche', FR, async ($, on) => {
   moteur(on, { git: 'panne' })
   await demarrer($)
-  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  expect(await pied($, 'desktop')).toBe('1,23 $')
   expect(await commande($, '')).not.toMatch(/^branche /m)
 })
 
@@ -247,7 +333,7 @@ test('quota remis à zéro pendant l’attente : écrit en toutes lettres au tic
   const horloge = moteur(on, { git: 'hors-depot' })
   await demarrer($)
   await horloge.advance(2 * H + 60_000)
-  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  expect(await pied($, 'desktop')).toBe('1,23 $')
   expect(await commande($, '')).toContain('5 h remis à zéro')
 })
 
@@ -274,9 +360,15 @@ test('hors abonnement : ni quotas ni coût connus, le pied reste vide', FR, asyn
 })
 
 // Le disque sous le mod : un dictionnaire chemin → texte. Le moteur rend les chemins absolus (antislashs sous Windows).
+// Hors Windows (session cloud), « C:/Users/moi/… » n'est pas absolu : le moteur le met sous le dossier courant
+// (« /…/C:/Users/moi/… »), ce qui faisait échouer le test du journal le 30/10. La clé repart de la lettre de lecteur.
+const cle = (x: string) => {
+  const s = x.replace(/\\/g, '/')
+  return /[A-Za-z]:\/.*$/.exec(s)?.[0] ?? s
+}
 function disque(on: On, fichiers: Record<string, string> = {}) {
   const etat = { fichiers, panne: false }
-  const p = (x: string) => x.replace(/\\/g, '/')
+  const p = cle
   on('fs.exists', (_, e) => ({ value: p(e.path) in fichiers }))
   on('fs.read', (_, e) => {
     if (!(p(e.path) in fichiers)) throw new Error('ENOENT')

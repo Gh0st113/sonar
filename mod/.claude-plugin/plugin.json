@@ -1,7 +1,7 @@
 {
   "name": "sonar",
-  "version": "0.5.1",
-  "description": "A quiet status line for the Claude Desktop Code tab: weekly usage pace, prompt cache, branch, with gauges on demand; no tokens used",
+  "version": "0.6.0",
+  "description": "A quiet status line for the Claude Desktop Code tab: prompt cache and cost, branch, usage pace with gauges on demand; no tokens used",
   "author": { "name": "Gh0st113" },
   "license": "MIT",
   "repository": "https://github.com/Gh0st113/sonar",

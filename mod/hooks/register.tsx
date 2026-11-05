@@ -9,8 +9,8 @@ import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } 
 
 import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
 import {
-  EMPLACEMENTS, TTL, besoinMaison, chargeExtension, cheminArchive, cheminJournal, cleReleve, deduireTtl, elementsPied, jauges,
-  ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
+  EMPLACEMENTS, TAILLE_MAX_SESSION, TTL, besoinMaison, chargeExtension, cheminArchive, cheminJournal, cleReleve, deduireTtl,
+  SEP_PIED, derniereReponse, dossierProjet, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -32,7 +32,6 @@ const GRIS = '#888'
 const TEINTE = { ok: GRIS, attention: '#d4a017', alerte: '#e5484d' } as const
 const PANNEAU = 'sonar'
 const SEP = '   '
-const SEP_BUREAU = '   '
 const GIT_DELAI_MS = 3000
 const GIT_ECART_MS = 5000
 
@@ -87,6 +86,46 @@ function journaliser($: EngineInterface, m: SonarMesure) {
     if (maj) await $.fs.write(chemin, maj.texte)
     derniereCle = cleReleve(r)
   }).catch(() => undefined)
+}
+
+// Session ouverte avant le mod (reprise, appli relancée) : turn.step n'a encore rien vu, le cache resterait vide jusqu'au
+// prochain message. On lit sa dernière réponse dans le journal local de la session (logique.mjs, derniereReponse) :
+// <dossier de config>/projects/<dossier du projet>/<id de session>.jsonl : d'abord le dossier déduit du dossier courant
+// (dossierProjet), sinon le premier dossier qui contient l'id (session ouverte ailleurs, nom d'une autre version).
+// Une session de plus de 4 Mio ($.fs.read ne lit pas au-delà) reste vide jusqu'au prochain message. Erreurs : rien.
+async function reprendreCache($: EngineInterface) {
+  if (!cfg.segments.includes('cache') || (await read($, cache))) return
+  const id = await $.session.id()
+  if (!/^[\w-]+$/.test(id)) return
+  const conf = await $.env.get('CLAUDE_CONFIG_DIR')
+  const maison = conf ? undefined : (await $.env.get('USERPROFILE')) || (await $.env.get('HOME'))
+  const base = conf || (maison ? `${maison}/.claude` : undefined)
+  if (!base) return
+  const projets = `${base.replace(/[\\/]+$/, '')}/projects`
+  const statut = (nom: string) => $.fs.stat(`${projets}/${nom}/${id}.jsonl`).catch(() => undefined)
+  const devine = dossierProjet(await $.session.cwd().catch(() => undefined))
+  let nom = devine
+  let s = devine ? await statut(devine) : undefined
+  if (s?.kind !== 'file') {
+    nom = undefined
+    for (const d of await $.fs.list(projets)) {
+      if (d.kind !== 'dir' || d.name === devine) continue
+      s = await statut(d.name)
+      if (s?.kind === 'file') {
+        nom = d.name
+        break
+      }
+    }
+  }
+  if (!nom || !s || s.size > TAILLE_MAX_SESSION) return
+  const r = derniereReponse(String(await $.fs.read(`${projets}/${nom}/${id}.jsonl`)))
+  // Un /clear ou une reprise pendant la lecture : la conversation n'est plus la même, on n'écrit rien.
+  if (!r || (await $.session.id()) !== id) return
+  // Une réponse arrivée pendant la lecture l'emporte : l'écriture ne remplit qu'un cache encore vide (update compare
+  // et réessaie, sans fenêtre entre le test et l'écriture).
+  await update($, cache, cur => cur ?? r.reponse)
+  const duree = r.ttl
+  if (duree && (await $.store.get('ttl')) === undefined) await update($, ttl, cur => cur ?? duree)
 }
 
 // L'emplacement choisi par /sonar (gardé dans le store) l'emporte sur l'option du plugin.
@@ -168,7 +207,7 @@ function phrase(u: Vue, els: Morceau[], sep = SEP) {
   return (
     <Text>
       {els.flatMap((el, i) => [
-        <Text key={`${el.cle}-e`} dimColor size="caption">{`${i > 0 ? sep : ''}${el.etiquette} `}</Text>,
+        <Text key={`${el.cle}-e`} dimColor size="caption">{`${i > 0 ? sep : ''}${el.etiquette ? `${el.etiquette} ` : ''}`}</Text>,
         <Text key={`${el.cle}-v`} weight="medium" tabular {...(el.niveau === 'ok' ? {} : { color: COULEUR[el.niveau] })}>{el.valeur}</Text>,
         ...(el.detail ? [<Text key={`${el.cle}-d`} dimColor size="caption">{` (${el.detail})`}</Text>] : []),
       ])}
@@ -251,6 +290,8 @@ export const register: Register = (on, options) => {
         journaliser($, m)
       }
       demarrerMinuterie($)
+      // Lecture du journal de la session à côté : elle ne retarde pas le démarrage.
+      void reprendreCache($).then(() => poserStatut($)).catch(() => undefined)
       await rafraichirDepot($)
       await poserStatut($)
     } catch { /* le sonar ne bloque jamais le démarrage */ }
@@ -368,7 +409,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     await read($, tic)
-    // Le pied ne montre que ce qui mérite un coup d'œil (cas normal : la semaine seule).
+    // Le pied, court (logique.mjs, elementsPied) : cas normal « 🔥 2,40 $ · ⎇ master ».
     if ((await lieu($)) !== 'pied' || (await read($, masque))) return next(e)
     const { pied } = await calculer($)
     if (pied.length === 0) return next(e)
@@ -378,9 +419,9 @@ export const register: Register = (on, options) => {
       const u = $.ui.resolve(e)
       const { Text } = u
       const natifs = e.props.modes.join(' & ')
-      return <Text>{natifs ? <Text dimColor>{`${natifs} & `}</Text> : null}{phrase(u, pied, SEP_BUREAU)}</Text>
+      return <Text>{natifs ? <Text dimColor>{`${natifs} & `}</Text> : null}{phrase(u, pied, SEP_PIED)}</Text>
     }
-    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, ligne(pied, '  ')] } })
+    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, ligne(pied, SEP_PIED)] } })
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {

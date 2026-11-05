@@ -130,6 +130,8 @@
     } catch (e) {
       return [`diagnostic : erreur ${e?.message ?? e}`];
     }
+    // Aucune zone de mod : session cloud (les mods n'y tournent pas) ou mod absent ; rien à chercher plus loin.
+    if (!zones.length && !traces.length) return ['diagnostic · session cloud ou sans mod : pas de données'];
     return [
       `diagnostic · zones de mods : ${zones.length ? zones.join(', ') : 'aucune'}`,
       `porteur sonar : ${traces.length ? traces.slice(0, 3).join(' ; ') : 'introuvable dans la page'}`,

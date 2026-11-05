@@ -6,7 +6,7 @@ import {
   rythme, etatCache, deduireTtl, elementsPied, jauges, ligne, lireStatut, nomDepot, lireCommande, lireConfig,
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
   releve, ajouterReleve, dernierReleve, cheminJournal, cheminArchive, isoUtc, majJournal, besoinMaison, TAILLE_MAX_JOURNAL,
-  chargeExtension, texteExtension, PREFIXE_EXTENSION,
+  chargeExtension, texteExtension, PREFIXE_EXTENSION, derniereReponse, brancheCourte, SEP_PIED, MARGE_ENVOI_MS, dossierProjet,
 } from '../hooks/logique.mjs';
 
 const H = 3_600_000;
@@ -179,37 +179,78 @@ const TOUT = {
   cache: { a: T0 - 60_000, lu: 92, ecrit: 4, neuf: 4, modele: 'm' }, ttlMs: TTL['1h'], modele: 'm',
   depot: { nom: 'projet-a', branche: 'feat/x', modifies: 3 },
 };
-// Symboles de l'ancien affichage : plus aucun dans un rendu.
+// Symboles de l'ancien affichage : plus aucun dans les jauges (le pied, lui, montre 🔥 ❄️ ❔ ⎇ et « · »).
 const SYMBOLES = /[⚠🔥❄❔⎇●→≈↺·]/u;
-const pied = (d, cfg = FR, m = T0) => ligne(elementsPied(d, m, cfg), '  ');
+const pied = (d, cfg = FR, m = T0) => ligne(elementsPied(d, m, cfg), SEP_PIED);
 
-test('pied : cas normal = la semaine seule', () => {
-  assert.deepEqual(elementsPied(TOUT, T0, FR), [{ cle: 'seven_day', etiquette: 'sem.', valeur: '41 %', niveau: 'ok' }]);
-  assert.equal(pied(TOUT, EN), 'week 41%');
+test('pied : cas normal = icône du cache et coût, puis la branche ; jamais la semaine', () => {
+  assert.deepEqual(elementsPied(TOUT, T0, FR), [
+    { cle: 'cache', etiquette: '', valeur: '🔥 1,23 $', niveau: 'ok' },
+    { cle: 'depot', etiquette: '⎇', valeur: 'x', niveau: 'ok' },
+  ]);
+  assert.equal(pied(TOUT), '🔥 1,23 $ · ⎇ x');
+  assert.equal(pied({ ...TOUT, depot: { nom: 'p', branche: 'master', modifies: 0 } }, EN), '🔥 $1.23 · ⎇ master');
+  // Cible : environ 25 caractères dans le cas normal.
+  assert.ok([...pied({ ...TOUT, cout: 2.4, depot: { nom: 'p', branche: 'claude/mod-pied-cache-79d924', modifies: 2 } })].length <= 25);
 });
 
-test('pied : 5 h « rapide » sans % seulement en avance ; cache froid, branche protégée, budget', () => {
-  // 5 h : 3 h écoulées, rythme régulier 60 % ; 70 % = +10 (attention), 80 % = +20 (alerte), 64 % = +4 (rien).
-  assert.deepEqual(elementsPied({ quotas: [q5(70, 2 * H)] }, T0, FR), [{ cle: 'five_hour', etiquette: '5 h', valeur: 'rapide', niveau: 'attention' }]);
-  assert.equal(elementsPied({ quotas: [q5(80, 2 * H)] }, T0, FR)[0].niveau, 'alerte');
+test('pied : 5 h rapide en tête, icônes du cache, branche raccourcie ; la semaine jamais, même en alerte', () => {
+  // 5 h : 3 h écoulées, rythme régulier 60 % ; 70 % = +10 (rapide, orange), 64 % = +4 (rien), remis : rien.
+  assert.equal(pied({ quotas: [q5(70, 2 * H)] }), '5 h rapide');
+  assert.equal(elementsPied({ quotas: [q5(80, 2 * H)] }, T0, FR)[0].niveau, 'attention');
   assert.deepEqual(elementsPied({ quotas: [q5(64, 2 * H)] }, T0, FR), []);
-  assert.deepEqual(elementsPied({ quotas: [q5(40, -1)] }, T0, FR), []); // remis : rien
-  // Jamais le % des 5 h au pied (Claude Code l'affiche déjà), même à 95 %.
+  assert.deepEqual(elementsPied({ quotas: [q5(40, -1)] }, T0, FR), []);
   assert.equal(pied({ quotas: [q5(95, 4.5 * H)] }, EN), '5h fast');
-  // 7 points d'avance seulement, mais 97 % : alerte (seuil absolu).
-  assert.equal(elementsPied({ quotas: [q5(97, 0.5 * H)] }, T0, FR)[0].niveau, 'alerte');
-  // Alertes puis attentions en tête : la fin du pied peut être coupée.
-  assert.equal(pied({ quotas: [q7(41, 3 * J), q5(80, 2 * H)], depot: { nom: 'p', branche: 'main', modifies: 0 } }), '5 h rapide  branche main  sem. 41 %');
-  const d = { ...TOUT, quotas: [q7(80, 3 * J), q5(23, 2 * H)], depot: { nom: 'p', branche: 'main', modifies: 0 }, cache: { a: T0 - 2 * H, lu: 9, ecrit: 1, neuf: 0, modele: 'm' } };
-  assert.equal(pied(d), 'sem. 80 %  cache froid  branche main');
-  assert.deepEqual(elementsPied(d, T0, FR).map((x) => x.niveau), ['alerte', 'attention', 'attention']);
-  assert.equal(pied({ quotas: [{ kind: 'spend_limit', percentUsed: 62.8 }] }, EN), 'budget 63%');
-  assert.equal(pied({ quotas: [q7(100, 2 * J)] }), 'sem. épuisé');
-  assert.deepEqual(elementsPied({ quotas: [] }, T0, FR), []);
-  // Segments désactivés : rien ; branches protégées réglables.
-  assert.deepEqual(elementsPied(d, T0, lireConfig({ language: 'fr', segments: 'cost' })), []);
-  assert.equal(pied({ quotas: [], depot: { nom: 'p', branche: 'develop', modifies: 0 } }, lireConfig({ language: 'fr', protectedBranches: 'develop' })), 'branche develop');
-  assert.doesNotMatch(pied(d), SYMBOLES);
+  // La semaine, même à 95 % ou épuisée : jamais au pied.
+  assert.deepEqual(elementsPied({ quotas: [q7(95, 3 * J)] }, T0, FR), []);
+  assert.deepEqual(elementsPied({ quotas: [q7(100, 2 * J), { kind: 'spend_limit', percentUsed: 92 }] }, T0, FR), []);
+  // Ordre : 5 h, cache + coût, branche.
+  const tout = { ...TOUT, quotas: [q7(95, 3 * J), q5(80, 2 * H)], depot: { nom: 'p', branche: 'main', modifies: 0 } };
+  assert.equal(pied(tout), '5 h rapide · 🔥 1,23 $ · ⎇ main');
+  // Branche protégée en orange, les autres sans couleur.
+  assert.deepEqual(elementsPied(tout, T0, FR).map((x) => x.niveau), ['attention', 'ok', 'attention']);
+  // Cache : froid ❄️ et incertain ❔ en orange ; autre modèle = froid ; rien si inconnu ou sans lecture/écriture.
+  const sans = { cout: 2.4 };
+  const froid = elementsPied({ ...sans, cache: { a: T0 - 2 * H, lu: 9, ecrit: 1, neuf: 0, modele: 'm' } }, T0, FR)[0];
+  assert.deepEqual(froid, { cle: 'cache', etiquette: '', valeur: '❄️ 2,40 $', niveau: 'attention' });
+  assert.equal(pied({ ...sans, cache: { a: T0 - 30 * 60_000, lu: 9, ecrit: 1, neuf: 0 } }), '❔ 2,40 $');
+  assert.equal(pied({ ...sans, cache: { a: T0 - 60_000, lu: 9, ecrit: 1, neuf: 0, modele: 'a' }, modele: 'b' }), '❄️ 2,40 $');
+  assert.equal(pied({ ...sans, cache: { a: T0, lu: 0, ecrit: 0, neuf: 5 } }), '2,40 $');
+  assert.equal(pied(sans), '2,40 $');
+  // Sans coût : l'icône seule ; ni l'un ni l'autre : rien.
+  assert.equal(pied({ cache: TOUT.cache, ttlMs: TTL['1h'], modele: 'm' }), '🔥');
+  assert.deepEqual(elementsPied({}, T0, FR), []);
+  // Branche : tête détachée, hors dépôt.
+  assert.equal(pied({ depot: { nom: 'p', detachee: true, modifies: 0 } }), '⎇ détachée');
+  assert.equal(pied({ depot: { nom: 'p', detachee: true, modifies: 0 } }, EN), '⎇ detached');
+  assert.deepEqual(elementsPied({ depot: undefined }, T0, FR), []);
+  // Segments désactivés : retirés un à un.
+  assert.deepEqual(elementsPied(tout, T0, lireConfig({ language: 'fr', segments: 'quotas' })).map((x) => x.cle), ['five_hour']);
+  assert.equal(pied(tout, lireConfig({ language: 'fr', segments: 'cache,repo' })), '🔥 · ⎇ main');
+  assert.equal(pied(tout, lireConfig({ language: 'fr', segments: 'cost' })), '1,23 $');
+});
+
+test('dossier du projet sous projects/ : le chemin, hors [A-Za-z0-9] remplacé par « - »', () => {
+  assert.equal(dossierProjet('C:\\Code\\projet-a'), 'C--Code-projet-a');
+  assert.equal(dossierProjet('/home/user/sonar'), '-home-user-sonar');
+  assert.equal(dossierProjet('D:/Données/été 2026'), 'D--Donn-es--t--2026');
+  assert.equal(dossierProjet(''), undefined);
+  assert.equal(dossierProjet(undefined), undefined);
+});
+
+test('pied : nom de branche raccourci', () => {
+  assert.equal(brancheCourte('claude/mod-pied-cache-79d924'), 'mod-pied-ca…');
+  assert.equal(brancheCourte('master'), 'master');
+  assert.equal(brancheCourte('feat/x'), 'x');
+  assert.equal(brancheCourte('fix/ab-1234567890ab'), 'ab');
+  assert.equal(brancheCourte('fonctionnalité-très-longue'), 'fonctionnal…');
+  assert.equal(brancheCourte('abc-123'), 'abc-123'); // moins de 6 caractères d'empreinte : gardé
+  assert.equal(brancheCourte('deadbeef'), 'deadbeef'); // pas de tiret : rien à retirer
+  assert.equal(brancheCourte('fix/new-facade'), 'new-facade'); // un mot en lettres a à f, sans chiffre : gardé
+  assert.equal(brancheCourte('a/'), 'a');
+  assert.equal(brancheCourte(''), undefined);
+  assert.equal(brancheCourte(undefined), undefined);
+  assert.equal([...brancheCourte('x'.repeat(40))].length, 12);
 });
 
 test('jauges (fr) : tout le détail, sans contexte ni anciens symboles', () => {
@@ -340,4 +381,55 @@ test('données pour l\'extension : sans langue, segments respectés', () => {
   assert.deepEqual(chargeExtension({ quotas: [] }, T), { a: T });
   // Segments désactivés : absents.
   assert.deepEqual(chargeExtension(d, T, { ...DEFAUTS, segments: ['quotas', 'cout'] }), { a: T, cout: 4 });
+});
+
+// Journal de session tel que Claude Code l'écrit : une ligne JSON par événement, un bloc de réponse par ligne,
+// la requête envoyée (`api-request`) reliée à sa réponse par `requestRef`.
+const ts = (ms) => new Date(ms).toISOString();
+const usage = (lu, ecrit, h1 = ecrit, m5 = 0) => ({
+  input_tokens: 4, cache_read_input_tokens: lu, cache_creation_input_tokens: ecrit, output_tokens: 9,
+  cache_creation: { ephemeral_1h_input_tokens: h1, ephemeral_5m_input_tokens: m5 },
+});
+const rep = (id, a, u, extra = {}) => JSON.stringify({ type: 'assistant', isSidechain: false, requestRef: `r-${id}`, timestamp: ts(a), message: { id, model: 'claude-x', role: 'assistant', usage: u }, ...extra });
+const req = (id, a) => JSON.stringify({ type: 'api-request', id: `r-${id}`, timestamp: ts(a), params: {} });
+const util = (a, texte = 'question') => JSON.stringify({ type: 'user', isSidechain: false, timestamp: ts(a), message: { role: 'user', content: texte } });
+const jsonl = (...l) => `${l.join('\n')}\n`;
+
+test('session ouverte avant le mod : dernière réponse du fil principal lue dans son journal', () => {
+  const t = jsonl(
+    util(T0 - 3 * H), req('m1', T0 - 3 * H + 1000), rep('m1', T0 - 3 * H + 5000, usage(10, 90)),
+    util(T0 - 2 * H), req('m2', T0 - 2 * H + 500),
+    rep('m2', T0 - 2 * H + 3000, usage(900, 50)),
+    // Un résultat d'outil s'intercale entre deux blocs de la même réponse.
+    util(T0 - 2 * H + 4000, 'résultat'),
+    rep('m2', T0 - 2 * H + 9000, usage(900, 50)),
+    JSON.stringify({ type: 'system', subtype: 'turn_duration', timestamp: ts(T0 - 2 * H + 9500) }),
+    // Un sous-agent plus récent : son cache n'est pas celui du fil principal.
+    rep('s1', T0 - H, usage(5, 5), { isSidechain: true }),
+    // Réponse « synthétique » (erreur d'API) : ignorée.
+    JSON.stringify({ type: 'assistant', isSidechain: false, timestamp: ts(T0 - H), message: { id: 'x', model: '<synthetic>', usage: usage(0, 0) } }),
+  );
+  // L'heure retenue est celle de l'envoi de la requête : c'est de là que court le cache.
+  assert.deepEqual(derniereReponse(t), { reponse: { a: T0 - 2 * H + 500, lu: 900, ecrit: 50, neuf: 4, modele: 'claude-x' }, ttl: '1h' });
+  // Sans ligne de requête : le 1er bloc, malgré le résultat d'outil intercalé, moins la marge de prudence.
+  const sansRequete = t.split('\n').filter((l) => !l.includes('"api-request"')).join('\n');
+  assert.equal(derniereReponse(sansRequete).reponse.a, T0 - 2 * H + 3000 - MARGE_ENVOI_MS);
+  // Une requête datée après la réponse (incohérente) est ignorée.
+  assert.equal(derniereReponse(jsonl(rep('m', T0, usage(1, 1)), req('m', T0 + 5000))).reponse.a, T0 - MARGE_ENVOI_MS);
+  // Un message de l'utilisateur qui cite « "type":"assistant" » ne trompe pas la remontée.
+  const piege = jsonl(rep('m2', T0 - 60_000, usage(1, 1)), util(T0 - 30_000, '"type":"assistant"'), req('m3', T0 - 12_000), rep('m3', T0 - 10_000, usage(7, 0, 0, 0)));
+  assert.deepEqual(derniereReponse(piege), { reponse: { a: T0 - 12_000, lu: 7, ecrit: 0, neuf: 4, modele: 'claude-x' } });
+  // Écriture sur 5 min ; dernière ligne coupée (écriture en cours) ignorée ; fins de ligne Windows.
+  assert.equal(derniereReponse(`${rep('m', T0, usage(0, 40, 0, 40))}\r\n{"type":"assis`).ttl, '5m');
+  // Une compaction après la dernière réponse : l'ancien cache ne sert plus.
+  assert.equal(derniereReponse(jsonl(rep('m', T0 - H, usage(1, 1)), JSON.stringify({ type: 'system', subtype: 'compact_boundary', timestamp: ts(T0) }))), undefined);
+  // Une compaction plus ancienne ne gêne pas.
+  assert.equal(derniereReponse(jsonl(JSON.stringify({ type: 'system', subtype: 'compact_boundary' }), util(T0 - H), rep('m', T0, usage(3, 0)))).reponse.lu, 3);
+  // Rien d'exploitable.
+  assert.equal(derniereReponse(''), undefined);
+  assert.equal(derniereReponse(undefined), undefined);
+  assert.equal(derniereReponse(jsonl(util(T0), 'pas du json')), undefined);
+  // Ce que la lecture donne s'affiche comme une réponse vue en direct.
+  const { reponse } = derniereReponse(t);
+  assert.equal(chargeExtension({ cache: reponse, ttlMs: TTL['1h'] }, T0 - 2 * H + 60_000, FR).cache.etat, 'chaud');
 });
