@@ -867,8 +867,10 @@
     }
     // Carte vide (seulement l'image invisible de sonar) : repliée par widget.css, sans display:none, pour que l'hôte
     // reste « visible » et que chargeOf le lise encore. Dès qu'un mod y dessine quelque chose, elle revient.
+    // La carte (fond, arrondi, marges de 10 px) est le parent de la zone (sonde du 05/11), on le replie s'il n'a qu'elle.
     for (const [zone, seul] of zones) {
-      if (seul !== zone.hasAttribute('data-sonar-vide')) zone.toggleAttribute('data-sonar-vide', seul);
+      const carte = LECTEUR.carteDe(zone);
+      if (seul !== carte.hasAttribute('data-sonar-vide')) carte.toggleAttribute('data-sonar-vide', seul);
     }
     // On ne redessine que si la charge montrée change : un redessin du popover ne doit pas relancer l'observateur
     // qui l'a causé.

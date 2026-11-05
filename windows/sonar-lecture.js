@@ -169,6 +169,14 @@
     return vide(ombre) && porteur;
   }
 
+  // La carte grise qui encadre la zone : son parent quand il n'a qu'elle pour enfant (relevé du 05/11 : div à fond,
+  // arrondi 10 px, marges 10 px) ; sinon la zone elle-même, pour ne jamais replier le contenu d'un autre.
+  function carteDe(zone) {
+    const parent = zone.parentElement ?? zone.parent;
+    const enfants = parent ? [...(parent.children ?? [])].filter((c) => c.tag !== '#text') : [];
+    return parent && parent.tag !== null && enfants.length === 1 && enfants[0] === zone ? parent : zone;
+  }
+
   function utile(charge) {
     return Boolean(charge && (charge.cache || charge.depot || charge.cout !== null));
   }
@@ -240,7 +248,7 @@
     return Boolean(etat && etat !== 'chaud');
   };
 
-  const api = { SELECTEURS, PREFIXE, PORTEUR, AGE_MAX, lireCharge, etatCache, choisir, utile, ligneCourte, lignesDetail, releve, absent, froid, raison, diagnostiquerPage, porteurSeul };
+  const api = { SELECTEURS, PREFIXE, PORTEUR, AGE_MAX, lireCharge, etatCache, choisir, utile, ligneCourte, lignesDetail, releve, absent, froid, raison, diagnostiquerPage, porteurSeul, carteDe };
   // Node (tests) n'a pas de document ; dans la page, un élément d'id « module » ne doit pas faire croire à Node.
   if (typeof document === 'undefined' && typeof module === 'object' && module.exports) module.exports = api;
   else racine.SonarLecture = api;

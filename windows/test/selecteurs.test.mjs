@@ -76,3 +76,15 @@ test('zone au-dessus de la saisie : ancêtre de l\'hôte (carte repliée quand e
   const hote = releve('bandeau-sonar-ancetres.txt.html').querySelector(S.hote);
   assert.equal(hote.closest(S.zoneSaisie)?.getAttribute('data-engine-site-instance'), 'above-prompt');
 });
+
+test('carte de la zone : le parent seul s\'il n\'a qu\'elle, sinon la zone', () => {
+  const { carteDe } = createRequire(import.meta.url)('../sonar-lecture.js');
+  const doc = lireHtml('<div id="carte"><div data-engine-site="AbovePrompt" id="z1"></div></div><div id="partage"><div data-engine-site="AbovePrompt" id="z2"></div><p>autre</p></div>');
+  const [z1, z2] = doc.querySelectorAll(S.zoneSaisie);
+  assert.equal(carteDe(z1).getAttribute('id'), 'carte');
+  assert.equal(carteDe(z2).getAttribute('id'), 'z2');
+  // Relevé du 30/10 : la zone a un parent div qui n'a qu'elle.
+  const zone = releve('bandeau-sonar-ancetres.txt.html').querySelector(S.zoneSaisie);
+  assert.equal(carteDe(zone).tag, 'div');
+  assert.notEqual(carteDe(zone), zone);
+});
