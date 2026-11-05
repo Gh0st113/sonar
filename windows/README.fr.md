@@ -16,10 +16,8 @@ au-dessus de la saisie. Sans le mod, la partie UI+ fonctionne quand même.
 
 ## Installer
 
-1. Si l'ancienne version est installée (`sonar.exe`, « Claude + sonar » ou « Claude (cercle) ») : la désinstaller
-   d'abord, dans **Paramètres > Applications**.
-2. Récupérer ce dossier (`git clone`, ou *Code > Download ZIP* sur GitHub).
-3. Double-cliquer **`windows\installer.cmd`** (Claude Desktop doit avoir été lancé au moins une fois). Si Claude est
+1. Récupérer ce dossier (`git clone`, ou *Code > Download ZIP* sur GitHub).
+2. Double-cliquer **`windows\installer.cmd`** (Claude Desktop doit avoir été lancé au moins une fois). Si Claude est
    ouvert, il propose de le relancer.
 
 Ensuite, lancer Claude comme d'habitude (menu Démarrer, barre des tâches, à l'ouverture de session) : l'extension est

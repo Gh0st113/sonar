@@ -16,10 +16,8 @@ prompt. Without the mod, the UI+ part still works.
 
 ## Install
 
-1. Coming from the former version (`sonar.exe`, "Claude + sonar" or "Claude (cercle)"): uninstall it first, in
-   **Settings > Apps**.
-2. Get this folder (`git clone`, or *Code > Download ZIP* on GitHub).
-3. Double-click **`windows\installer.cmd`** (Claude Desktop must have been started at least once). If Claude is open,
+1. Get this folder (`git clone`, or *Code > Download ZIP* on GitHub).
+2. Double-click **`windows\installer.cmd`** (Claude Desktop must have been started at least once). If Claude is open,
    it offers to restart it.
 
 Then start Claude as usual (Start menu, taskbar, at sign-in): the extension is there. If it does not show, sign out of
