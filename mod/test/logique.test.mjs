@@ -220,6 +220,15 @@ test('pied : cas normal = icône du cache et coût, puis la branche ; jamais la 
   assert.ok([...pied({ ...TOUT, cout: 2.4, depot: { nom: 'p', branche: 'claude/mod-pied-cache-79d924', modifies: 2 } })].length <= 25);
 });
 
+test('coût nul (vieille session rechargée à 0, session neuve) : rien au pied, au détail ni au porteur', () => {
+  const zero = { ...TOUT, cout: 0, cache: { ...TOUT.cache, a: T0 - 2 * H } };
+  assert.equal(pied(zero), '❄️ · ⎇ x');
+  assert.equal(pied({ cout: 0 }), '');
+  assert.ok(!jauges(zero, T0, FR).some(j => j.cle === 'cout'));
+  assert.equal(chargeExtension(zero, T0).cout, undefined);
+  assert.equal(chargeExtension({ ...zero, cout: 0.004 }, T0).cout, 0);
+});
+
 test('pied : 5 h rapide en tête, icônes du cache, branche raccourcie ; la semaine jamais, même en alerte', () => {
   // 5 h : 3 h écoulées, rythme régulier 60 % ; 70 % = +10 (rapide, orange), 64 % = +4 (rien), remis : rien.
   assert.equal(pied({ quotas: [q5(70, 2 * H)] }), '5 h rapide');
