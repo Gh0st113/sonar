@@ -843,8 +843,12 @@
   function scanHosts() {
     if (!LECTEUR || !SEL.hote) return;
     const charges = [];
+    // Zone au-dessus de la saisie → tous ses hôtes ne montrent-ils que le porteur ? (sinon la carte a un contenu).
+    const zones = new Map();
     for (const host of document.querySelectorAll(SEL.hote)) {
       const root = host.shadowRoot;
+      const zone = SEL.zoneSaisie ? host.closest(SEL.zoneSaisie) : null;
+      if (zone) zones.set(zone, (zones.get(zone) ?? true) && LECTEUR.porteurSeul(root));
       // Hôte inséré avant son shadowRoot : on repasse à l'image suivante (60 passes au plus par hôte).
       const tries = waitingHosts.get(host) ?? 0;
       if (!root && tries < 60) {
@@ -856,10 +860,17 @@
       }
       if (root && !observedRoots.has(root)) {
         const observer = new MutationObserver(scanHosts);
-        observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['alt'] });
+        observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['alt'] });
         observedRoots.set(root, observer);
       }
       charges.push(chargeOf(host));
+    }
+    // Carte vide (seulement l'image invisible de sonar) : repliée par widget.css, sans display:none, pour que l'hôte
+    // reste « visible » et que chargeOf le lise encore. Dès qu'un mod y dessine quelque chose, elle revient.
+    // La carte (fond, arrondi, marges de 10 px) est le parent de la zone (sonde du 05/11), on le replie s'il n'a qu'elle.
+    for (const [zone, seul] of zones) {
+      const carte = LECTEUR.carteDe(zone);
+      if (seul !== carte.hasAttribute('data-sonar-vide')) carte.toggleAttribute('data-sonar-vide', seul);
     }
     // On ne redessine que si la charge montrée change : un redessin du popover ne doit pas relancer l'observateur
     // qui l'a causé.

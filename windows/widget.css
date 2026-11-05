@@ -99,3 +99,6 @@ div[data-row]:is(:hover, [data-menu-open], :has(:focus-visible)) [data-up-badge]
 .up-sonar-block.up-sonar-cold .up-sonar-row:first-child .up-sonar-value { color: var(--cds-text-warning, #e0913a); }
 .up-sonar-at { font-size: 11px; }
 .up-sonar-diag { font-size: 10px; overflow-wrap: anywhere; user-select: text; }
+/* Zone au-dessus de la saisie qui ne porte que l'image invisible du mod sonar : carte vide repliée (widget.js, scanHosts).
+   Pas de display:none : l'hôte doit rester visible pour que la lecture continue. */
+[data-sonar-vide] { height: 0 !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; }

@@ -8,6 +8,8 @@
   const SELECTEURS = {
     // Tout hôte de dessin d'un mod : relevé pour le bandeau (« AbovePrompt ») ; le pied n'en est pas un (essai du 30/10).
     hote: '[data-plugin-drawn]',
+    // La zone qui encadre les hôtes au-dessus de la saisie (la carte grise) : repliée quand elle ne porte que sonar.
+    zoneSaisie: '[data-engine-site="AbovePrompt"]',
     cercle: 'button[aria-haspopup="dialog"]',
     // Début de l'aria-label du cercle : « Utilisation : Hebdomadaire · … » (fr), « Usage: … » (en).
     cercleLibelle: /^(Utilisation|Usage)\b/,
@@ -138,6 +140,43 @@
     ];
   }
 
+  // Une zone de mod qui ne montre que le porteur : au moins une image porteuse, aucune autre image ni contrôle, aucun
+  // texte hors <style>. La zone au-dessus de la saisie est alors une carte vide (sonde du 05/11) : widget.js la replie.
+  // Marche sur un vrai DOM (childNodes, nodeType) comme sur test/mini-dom.mjs (children, tag '#text').
+  const MUETS = new Set(['style', 'script', 'template']);
+  const VISIBLES = new Set(['svg', 'canvas', 'video', 'iframe', 'button', 'input', 'select', 'textarea']);
+  function porteurSeul(ombre) {
+    if (!ombre) return false;
+    let porteur = false;
+    const vide = (n) => {
+      for (const c of n.childNodes ?? n.children ?? []) {
+        if (c.nodeType === 3 || c.tag === '#text') {
+          if ((c.nodeValue ?? c.texte ?? '').trim()) return false;
+          continue;
+        }
+        if (c.nodeType !== undefined && c.nodeType !== 1) continue;
+        const nom = String(c.localName ?? c.tag ?? '').toLowerCase();
+        if (MUETS.has(nom)) continue;
+        if (nom === 'img') {
+          if (!String(c.getAttribute('alt') ?? '').startsWith(PREFIXE)) return false;
+          porteur = true;
+          continue;
+        }
+        if (VISIBLES.has(nom) || !vide(c)) return false;
+      }
+      return true;
+    };
+    return vide(ombre) && porteur;
+  }
+
+  // La carte grise qui encadre la zone : son parent quand il n'a qu'elle pour enfant (relevé du 05/11 : div à fond,
+  // arrondi 10 px, marges 10 px) ; sinon la zone elle-même, pour ne jamais replier le contenu d'un autre.
+  function carteDe(zone) {
+    const parent = zone.parentElement ?? zone.parent;
+    const enfants = parent ? [...(parent.children ?? [])].filter((c) => c.tag !== '#text') : [];
+    return parent && parent.tag !== null && enfants.length === 1 && enfants[0] === zone ? parent : zone;
+  }
+
   function utile(charge) {
     return Boolean(charge && (charge.cache || charge.depot || charge.cout !== null));
   }
@@ -209,7 +248,7 @@
     return Boolean(etat && etat !== 'chaud');
   };
 
-  const api = { SELECTEURS, PREFIXE, PORTEUR, AGE_MAX, lireCharge, etatCache, choisir, utile, ligneCourte, lignesDetail, releve, absent, froid, raison, diagnostiquerPage };
+  const api = { SELECTEURS, PREFIXE, PORTEUR, AGE_MAX, lireCharge, etatCache, choisir, utile, ligneCourte, lignesDetail, releve, absent, froid, raison, diagnostiquerPage, porteurSeul, carteDe };
   // Node (tests) n'a pas de document ; dans la page, un élément d'id « module » ne doit pas faire croire à Node.
   if (typeof document === 'undefined' && typeof module === 'object' && module.exports) module.exports = api;
   else racine.SonarLecture = api;
