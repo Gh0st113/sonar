@@ -47,7 +47,8 @@ placements exist for the terminal; the desktop app does not draw them.
 
 **sonar for Windows** (optional): cache and cost in Claude Desktop's **usage circle** popover, with the
 limits' pace from [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude). Install, how it works and limits:
-[windows/README.md](windows/README.md).
+[windows/README.md](windows/README.md). The same extension exists for **macOS** (not verified on a real Mac yet):
+[mac/README.md](mac/README.md).
 
 *(Like a ship's sonar: it keeps sounding what lies around you — limits, cache, branch — so you never hit bottom by surprise.)*
 
@@ -79,7 +80,7 @@ claude plugin install sonar@sonar-mods
 The mod is then read **from that folder**: after an edit, `/reload-plugins` in the session is enough.
 
 Systems: Windows (desktop app and terminal) and Linux (terminal, tried on Ubuntu); macOS expected, not tried yet
-([issue #22](https://github.com/Gh0st113/sonar/issues/22)). Only the sonar for Windows extension is Windows-only.
+([issue #22](https://github.com/Gh0st113/sonar/issues/22)). The desktop extension exists for Windows and, untried, for macOS.
 
 ## What is shown
 

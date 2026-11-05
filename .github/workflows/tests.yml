@@ -1,7 +1,8 @@
 # Tests de sonar :
 #   node    (Linux)   tests de l'extension et de la logique du mod ;
 #   windows (Windows) sonar.ps1 sous Windows PowerShell 5.1 : installation, état, désinstallation, dans un faux
-#                     profil Claude (LOCALAPPDATA détourné), sur le runner jetable.
+#                     profil Claude (LOCALAPPDATA détourné), sur le runner jetable ;
+#   macos   (macOS)   mac/installer.sh de la même façon (HOME détourné) ; son shellcheck tourne dans le job node.
 name: tests
 
 on:
@@ -26,6 +27,8 @@ jobs:
         run: node --test windows/test/
       - name: Tests de la logique du mod
         run: node --test mod/test/logique.test.mjs
+      - name: shellcheck du script macOS (absent des runners macOS)
+        run: shellcheck mac/installer.sh
 
   windows:
     runs-on: windows-2025
@@ -75,3 +78,45 @@ jobs:
           if (-not (Test-Path (Join-Path $autre 'manifest.json'))) { throw 'extension étrangère retirée' }
           if ($null -ne [Environment]::GetEnvironmentVariable('REACT_PROFILE', 'User')) { throw 'REACT_PROFILE non retirée' }
           'Installation et désinstallation : OK'
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Installer, vérifier, désinstaller (faux dossier personnel)
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/h"
+          ext="$HOME/Library/Application Support/Claude/extensions/fmkadmapgofadopljbjfkapdkoienihi"
+          agent="$HOME/Library/LaunchAgents/io.github.gh0st113.sonar.plist"
+          trap 'sh mac/installer.sh desinstaller >/dev/null 2>&1 || true; /bin/launchctl unsetenv REACT_PROFILE' EXIT
+          code() { set +e; "$@" >/dev/null 2>&1; r=$?; set -e; echo "$r"; }
+
+          mkdir -p "$HOME/Library/LaunchAgents"
+          [ "$(code sh mac/installer.sh installer)" = 1 ] || { echo 'refus attendu sans profil Claude'; exit 1; }
+
+          mkdir -p "$ext"
+          echo '{"name":"React Developer Tools"}' > "$ext/manifest.json"
+          [ "$(code sh mac/installer.sh installer)" = 1 ] || { echo 'refus attendu (autre extension)'; exit 1; }
+          [ ! -e "$agent" ] || { echo 'agent posé sans extension'; exit 1; }
+          grep -q React "$ext/manifest.json" || { echo 'extension étrangère écrasée'; exit 1; }
+          [ "$(code sh mac/installer.sh desinstaller)" = 0 ]
+          grep -q React "$ext/manifest.json" || { echo 'extension étrangère retirée'; exit 1; }
+          rm -rf "$ext"
+
+          sh mac/installer.sh installer
+          for f in manifest.json widget.js widget.css sonar-lecture.js LICENSE-UI-PLUS; do [ -f "$ext/$f" ] || { echo "manquant : $f"; exit 1; }; done
+          node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1]));if(!/^UI\+ for Claude/.test(m.name)||!/^install-/.test(m.version_name))process.exit(1)' "$ext/manifest.json"
+          [ -f "$agent" ] || { echo 'agent absent'; exit 1; }
+          plutil -lint "$agent"
+          v1="$(plutil -extract version_name raw -o - "$ext/manifest.json")"
+          sh mac/installer.sh etat
+
+          sleep 1
+          (cd / && sh "$GITHUB_WORKSPACE/mac/installer.sh" installer)
+          [ "$(plutil -extract version_name raw -o - "$ext/manifest.json")" != "$v1" ] || { echo 'version_name inchangé'; exit 1; }
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1]))' "$ext/manifest.json"
+
+          sh mac/installer.sh desinstaller
+          [ ! -e "$ext" ] && [ ! -e "$agent" ] || { echo 'désinstallation incomplète'; exit 1; }
+          echo 'Installation et désinstallation : OK'
