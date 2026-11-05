@@ -216,8 +216,8 @@ test('pied : cas normal = icône du cache et coût, puis la branche ; jamais la 
   ]);
   assert.equal(pied(TOUT), '🔥 1,23 $ · ⎇ x');
   assert.equal(pied({ ...TOUT, depot: { nom: 'p', branche: 'master', modifies: 0 } }, EN), '🔥 $1.23 · ⎇ master');
-  // Cible : environ 25 caractères dans le cas normal.
-  assert.ok([...pied({ ...TOUT, cout: 2.4, depot: { nom: 'p', branche: 'claude/mod-pied-cache-79d924', modifies: 2 } })].length <= 25);
+  // Cible : 35 caractères au plus dans le cas normal (branche coupée à 20) : « 🔥 12,40 $ · ⎇ cache-reprise-fiche » = 33.
+  assert.ok([...pied({ ...TOUT, cout: 12.4, depot: { nom: 'p', branche: 'fix/cache-reprise-fiche', modifies: 2 } })].length <= 35);
 });
 
 test('coût nul (vieille session rechargée à 0, session neuve) : rien au pied, au détail ni au porteur', () => {
@@ -229,21 +229,16 @@ test('coût nul (vieille session rechargée à 0, session neuve) : rien au pied,
   assert.equal(chargeExtension({ ...zero, cout: 0.004 }, T0).cout, 0);
 });
 
-test('pied : 5 h rapide en tête, icônes du cache, branche raccourcie ; la semaine jamais, même en alerte', () => {
-  // 5 h : 3 h écoulées, rythme régulier 60 % ; 70 % = +10 (rapide, orange), 64 % = +4 (rien), remis : rien.
-  assert.equal(pied({ quotas: [q5(70, 2 * H)] }), '5 h rapide');
-  assert.equal(elementsPied({ quotas: [q5(80, 2 * H)] }, T0, FR)[0].niveau, 'attention');
-  assert.deepEqual(elementsPied({ quotas: [q5(64, 2 * H)] }, T0, FR), []);
-  assert.deepEqual(elementsPied({ quotas: [q5(40, -1)] }, T0, FR), []);
-  assert.equal(pied({ quotas: [q5(95, 4.5 * H)] }, EN), '5h fast');
-  // La semaine, même à 95 % ou épuisée : jamais au pied.
+test('pied : icônes du cache, branche raccourcie ; les limites (5 h, semaine) jamais, même en alerte', () => {
+  assert.deepEqual(elementsPied({ quotas: [q5(95, 4.5 * H)] }, T0, FR), []);
+  assert.deepEqual(elementsPied({ quotas: [q5(100, 2 * H)] }, T0, EN), []);
   assert.deepEqual(elementsPied({ quotas: [q7(95, 3 * J)] }, T0, FR), []);
   assert.deepEqual(elementsPied({ quotas: [q7(100, 2 * J), { kind: 'spend_limit', percentUsed: 92 }] }, T0, FR), []);
-  // Ordre : 5 h, cache + coût, branche.
+  // Ordre : cache + coût, branche.
   const tout = { ...TOUT, quotas: [q7(95, 3 * J), q5(80, 2 * H)], depot: { nom: 'p', branche: 'main', modifies: 0 } };
-  assert.equal(pied(tout), '5 h rapide · 🔥 1,23 $ · ⎇ main');
+  assert.equal(pied(tout), '🔥 1,23 $ · ⎇ main');
   // Branche protégée en orange, les autres sans couleur.
-  assert.deepEqual(elementsPied(tout, T0, FR).map((x) => x.niveau), ['attention', 'ok', 'attention']);
+  assert.deepEqual(elementsPied(tout, T0, FR).map((x) => x.niveau), ['ok', 'attention']);
   // Cache : froid ❄️ et incertain ❔ en orange ; autre modèle = froid ; rien si inconnu ou sans lecture/écriture.
   const sans = { cout: 2.4 };
   const froid = elementsPied({ ...sans, cache: { a: T0 - 2 * H, lu: 9, ecrit: 1, neuf: 0, modele: 'm' } }, T0, FR)[0];
@@ -260,7 +255,7 @@ test('pied : 5 h rapide en tête, icônes du cache, branche raccourcie ; la sema
   assert.equal(pied({ depot: { nom: 'p', detachee: true, modifies: 0 } }, EN), '⎇ detached');
   assert.deepEqual(elementsPied({ depot: undefined }, T0, FR), []);
   // Segments désactivés : retirés un à un.
-  assert.deepEqual(elementsPied(tout, T0, lireConfig({ language: 'fr', segments: 'quotas' })).map((x) => x.cle), ['five_hour']);
+  assert.deepEqual(elementsPied(tout, T0, lireConfig({ language: 'fr', segments: 'quotas' })).map((x) => x.cle), []);
   assert.equal(pied(tout, lireConfig({ language: 'fr', segments: 'cache,repo' })), '🔥 · ⎇ main');
   assert.equal(pied(tout, lireConfig({ language: 'fr', segments: 'cost' })), '1,23 $');
 });
@@ -274,18 +269,19 @@ test('dossier du projet sous projects/ : le chemin, hors [A-Za-z0-9] remplacé p
 });
 
 test('pied : nom de branche raccourci', () => {
-  assert.equal(brancheCourte('claude/mod-pied-cache-79d924'), 'mod-pied-ca…');
+  assert.equal(brancheCourte('claude/mod-pied-cache-79d924'), 'mod-pied-cache');
+  assert.equal(brancheCourte('fix/cache-reprise-fiche'), 'cache-reprise-fiche');
   assert.equal(brancheCourte('master'), 'master');
   assert.equal(brancheCourte('feat/x'), 'x');
   assert.equal(brancheCourte('fix/ab-1234567890ab'), 'ab');
-  assert.equal(brancheCourte('fonctionnalité-très-longue'), 'fonctionnal…');
+  assert.equal(brancheCourte('fonctionnalité-très-longue-encore'), 'fonctionnalité-très…');
   assert.equal(brancheCourte('abc-123'), 'abc-123'); // moins de 6 caractères d'empreinte : gardé
   assert.equal(brancheCourte('deadbeef'), 'deadbeef'); // pas de tiret : rien à retirer
   assert.equal(brancheCourte('fix/new-facade'), 'new-facade'); // un mot en lettres a à f, sans chiffre : gardé
   assert.equal(brancheCourte('a/'), 'a');
   assert.equal(brancheCourte(''), undefined);
   assert.equal(brancheCourte(undefined), undefined);
-  assert.equal([...brancheCourte('x'.repeat(40))].length, 12);
+  assert.equal([...brancheCourte('x'.repeat(40))].length, 20);
 });
 
 test('jauges (fr) : tout le détail, sans contexte ni anciens symboles', () => {

@@ -17,13 +17,13 @@ that is too long with "…"):
 
 In this order, separated by "·", each only when known:
 
-1. `5h fast` (orange), only when the 5-hour window is going faster than time;
-2. the cache state stuck to the session cost: 🔥 warm, ❄️ cold (orange, the next response will rewrite the whole cache),
+1. the cache state stuck to the session cost: 🔥 warm, ❄️ cold (orange, the next response will rewrite the whole cache),
    ❔ uncertain (orange), then the amount;
-3. the branch (`⎇`), shortened: last segment after "/", without a hash suffix, 12 characters at most
-   (`claude/mod-pied-cache-79d924` → `mod-pied-ca…`); orange on a protected branch; `detached` for a detached HEAD.
+2. the branch (`⎇`), shortened: last segment after "/", without a hash suffix, 20 characters at most
+   (`claude/mod-pied-cache-79d924` → `mod-pied-cache`); orange on a protected branch; `detached` for a detached HEAD.
 
-The week is never there, even when it is in alert: it is in the banner, the pane and the sonar for Windows popover.
+The limits (5h, week) are never there, even in alert: they are in the banner, the pane, `/sonar` and the sonar for
+Windows popover.
 A single warning colour in the footer, orange, on the value (red is kept for the banner and the pane).
 
 **The banner** (`/sonar banner`, optional) above the prompt: one gauge per window and for the cache. The bar is usage,
@@ -83,11 +83,11 @@ The mod is then read **from that folder**: after an edit, `/reload-plugins` in t
 | Item | Source | Footer | Colour |
 |---|---|---|---|
 | `week` (7-day limit), reset time, daily budget | `session.measure` | never, even in alert | by **pace**: usage compared with the share of the window already elapsed — orange more than `paceWarn` (5) points ahead, red more than `paceAlert` (15) ahead; and orange from `quotaWarn` (70 %), red from `quotaAlert` (90 %) whatever the pace |
-| `5h`, reset time | `session.measure` | 1st: `5h fast`, no percentage, only when ahead of pace | orange (red in the banner and pane past `paceAlert`) |
+| `5h`, reset time | `session.measure` | never, even in alert | orange (red in the banner and pane past `paceAlert`) |
 | other limits (e.g. a gateway's `budget`) | `session.measure` | never | absolute thresholds only (no known window length) |
-| `cache` warm (hit ratio, when it goes cold), uncertain, cold | last request of the main thread (`turn.step`, subagents excluded); when a session already under way is opened, its last response read from the session's local transcript (see below) | 2nd: the icon, stuck to the cost (🔥 warm, ❄️ cold, ❔ uncertain) | cold in orange |
-| `branch`, repo, changed files | `$.session.repo()` + `git status` (at most every 5 s, 3 s timeout) | 3rd: `⎇` and the shortened name | orange on a protected branch |
-| session `cost` estimate (list price) | `session.measure` | 2nd, after the cache icon (`🔥 $2.40`); nothing when 0 (new session, or an old one whose cost the engine did not keep) | — |
+| `cache` warm (hit ratio, when it goes cold), uncertain, cold | last request of the main thread (`turn.step`, subagents excluded); when a session already under way is opened, its last response read from the session's local transcript (see below) | 1st: the icon, stuck to the cost (🔥 warm, ❄️ cold, ❔ uncertain) | cold in orange |
+| `branch`, repo, changed files | `$.session.repo()` + `git status` (at most every 5 s, 3 s timeout) | 2nd: `⎇` and the shortened name | orange on a protected branch |
+| session `cost` estimate (list price) | `session.measure` | 1st, after the cache icon (`🔥 $2.40`); nothing when 0 (new session, or an old one whose cost the engine did not keep) | — |
 
 The mod shows context nowhere: Claude Code already does (the optional sonar for Windows brings UI+'s context block into
 the circle's popover).
