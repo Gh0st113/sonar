@@ -37,7 +37,7 @@ const TEXTES = {
     parJour: (p) => `${p} %/j`, reste: (p) => `reste ${p} %`, remet: (e) => `remise ${e}`,
     cache: 'cache', chaud: 'chaud', froid: 'froid', autreModele: 'autre modèle', incertain: 'incertain',
     relu: (p) => `${p} relu`, jusqua: (h, auMoins) => `${auMoins ? 'au moins ' : ''}jusqu'à ${h}`,
-    branche: 'branche', detachee: 'HEAD détachée', modifies: (n) => `${n} modifié${n > 1 ? 's' : ''}`,
+    branche: 'branche', detachee: 'HEAD détachée', detacheeCourt: 'détachée', modifies: (n) => `${n} modifié${n > 1 ? 's' : ''}`,
     nomCout: 'coût', vide: 'Pas encore de mesure : elle arrive avec la prochaine réponse.',
     jours: ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'], decimale: ',',
     cout: (x) => `${x} $`,
@@ -64,7 +64,7 @@ const TEXTES = {
     parJour: (p) => `${p}%/d`, reste: (p) => `${p}% left`, remet: (e) => `resets ${e}`,
     cache: 'cache', chaud: 'warm', froid: 'cold', autreModele: 'other model', incertain: 'uncertain',
     relu: (p) => `${p} reused`, jusqua: (h, auMoins) => `${auMoins ? 'at least ' : ''}until ${h}`,
-    branche: 'branch', detachee: 'detached HEAD', modifies: (n) => `${n} modified`,
+    branche: 'branch', detachee: 'detached HEAD', detacheeCourt: 'detached', modifies: (n) => `${n} modified`,
     nomCout: 'cost', vide: 'No reading yet: it comes with the next response.',
     jours: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], decimale: '.',
     cout: (x) => `$${x}`,
@@ -249,27 +249,44 @@ const quotasTries = (quotas) => [...(quotas ?? [])].filter((q) => q && typeof q.
 const protegee = (depot, cfg) => Boolean(depot?.branche && cfg.branches.includes(depot.branche.toLowerCase()));
 const valeurQuota = (r, t, cfg) => (r.remis ? t.remis : r.epuise ? t.epuise : pc(r.utilise, cfg));
 
-// Pied : UN seul élément, le plus urgent, chacun { cle, etiquette, valeur, niveau } (tableau vide ou d'un élément).
-// L'appli coupe le pied par « … » quand il est trop long (vu le 05/11) : un seul mot y tient toujours.
-// Ordre fixe (README, « Ce qui est affiché ») :
-//   1. `cache froid` : la prochaine réponse réécrira tout le cache (moment où l'on hésite à envoyer) ;
-//   2. `5 h rapide` : les 5 h partent plus vite que le temps (sans %, Claude Code l'affiche déjà) ;
-//   3. une limite hors norme : la semaine, sinon un autre quota (budget d'une passerelle) en orange ou rouge ;
-//   4. sinon la semaine (`sem. 41 %`), ou à défaut le premier autre quota.
-// Une seule couleur d'alerte (orange) : le rouge reste au bandeau et au panneau. La branche n'y est plus (panneau, popover).
+// Pied (disposition A, choisie par l'utilisateur le 05/11) : court (~25 caractères), dans cet ordre, séparés par « · » :
+//   1. `5 h rapide` (orange), seulement quand les 5 h partent plus vite que le temps (sans %, Claude Code l'affiche) ;
+//   2. l'icône du cache collée au coût de la session : 🔥 chaud, ❄️ froid (orange), ❔ incertain (orange), puis le
+//      montant (`🔥 2,40 $`) ; pas d'icône si l'état du cache est inconnu, pas de montant si le coût l'est ;
+//   3. la branche, raccourcie (brancheCourte) : `⎇ master` ; orange sur une branche protégée ; rien hors dépôt.
+// La semaine n'y est jamais, même en alerte : elle reste au bandeau, au panneau et dans le popover de sonar pour Windows.
+// Chacun { cle, etiquette, valeur, niveau } ; l'étiquette peut être vide.
+export const SEP_PIED = ' · ';
+const ICONES = { chaud: '🔥', froid: '❄️', incertain: '❔' };
 export function elementsPied(d, maintenant, cfg = DEFAUTS) {
   const t = textes(cfg.langue);
   const actif = (k) => cfg.segments.includes(k);
-  const el = (cle, etiquette, valeur, niveau) => [{ cle, etiquette, valeur, niveau: niveau === 'ok' ? 'ok' : 'attention' }];
+  const e = [];
+  if (actif('quotas')) {
+    const cinq = quotasTries(d.quotas).filter((q) => q.kind === 'five_hour').map((q) => rythme(q, maintenant, cfg))[0];
+    if (cinq && !cinq.remis && cinq.avance > cfg.rythme.attention) e.push({ cle: 'five_hour', etiquette: t.noms.five_hour, valeur: t.rapide, niveau: 'attention' });
+  }
   const c = actif('cache') ? etatCache(d.cache, d.ttlMs, maintenant, d.modele) : undefined;
-  if (c?.etat === 'froid') return el('cache', t.cache, t.froid, 'attention');
-  if (!actif('quotas')) return [];
-  const rs = quotasTries(d.quotas).map((q) => rythme(q, maintenant, cfg)).filter(Boolean);
-  const cinq = rs.find((r) => r.kind === 'five_hour');
-  if (cinq && !cinq.remis && cinq.avance > cfg.rythme.attention) return el('five_hour', t.noms.five_hour, t.rapide, 'attention');
-  const autres = rs.filter((r) => r.kind !== 'five_hour');
-  const r = autres.find((x) => x.niveau !== 'ok') ?? autres[0];
-  return r ? el(r.kind, t.nomsCourts[r.kind] ?? t.noms[r.kind] ?? r.kind, valeurQuota(r, t, cfg), r.niveau) : [];
+  const icone = ICONES[c?.etat];
+  const cout = actif('cout') && fini(d.cout) ? montant(d.cout, cfg) : undefined;
+  if (icone || cout) {
+    e.push({ cle: 'cache', etiquette: '', valeur: [icone, cout].filter(Boolean).join(' '), niveau: c?.etat === 'froid' || c?.etat === 'incertain' ? 'attention' : 'ok' });
+  }
+  if (actif('depot') && d.depot?.nom) {
+    const b = d.depot.detachee ? t.detacheeCourt : brancheCourte(d.depot.branche);
+    if (b) e.push({ cle: 'depot', etiquette: '⎇', valeur: b, niveau: protegee(d.depot, cfg) ? 'attention' : 'ok' });
+  }
+  return e;
+}
+
+// Nom de branche pour le pied : le dernier segment après « / », sans suffixe d'empreinte (« -79d924 »), 12 caractères
+// au plus, « … » compris : claude/mod-pied-cache-79d924 → mod-pied-ca….
+export function brancheCourte(branche, max = 12) {
+  if (typeof branche !== 'string' || !branche) return undefined;
+  const fin = branche.split('/').filter(Boolean).pop() ?? branche;
+  const nom = fin.replace(/-[0-9a-f]{6,}$/i, '') || fin;
+  const car = [...nom];
+  return car.length > max ? `${car.slice(0, max - 1).join('')}…` : nom;
 }
 
 // Bandeau et panneau : tout le détail, chacun { cle, etiquette, valeur, detail, niveau, part?, repere? }.
@@ -347,10 +364,15 @@ export const texteExtension = (charge) => PREFIXE_EXTENSION + JSON.stringify(cha
 // événement. On y lit, depuis la fin, la dernière réponse du fil principal (`assistant`, hors sous-agents) et son usage :
 // le même { a, lu, ecrit, neuf, modele } que turn.step donne. Aucun appel au modèle.
 // Une compaction plus récente (`compact_boundary`) : l'ancien cache ne sert plus, rien.
-// `a` : l'heure de la 1re ligne de ce message (l'appli écrit un bloc par ligne) : quelques secondes après l'envoi de la
-// requête, d'où court le cache. `ttl` : la durée que la réponse a écrite, si elle en a écrit (« ephemeral_1h » ou 5 min).
+// `a` : le cache court depuis l'ENVOI de la requête. Sa ligne `api-request` (reliée par `requestRef`) en donne l'heure ;
+// sans elle, la 1re ligne de la réponse (l'appli écrit un bloc par ligne, des résultats d'outils s'intercalent) moins
+// MARGE_ENVOI_MS : la réponse arrive de quelques secondes à une minute après l'envoi (relevé du 05/11).
+// `ttl` : la durée que la réponse a écrite, si elle en a écrit (« ephemeral_1h » ou 5 min).
 // $.fs lit au plus 4 Mio d'un coup : au-delà, le mod ne lit pas (TAILLE_MAX_SESSION).
 export const TAILLE_MAX_SESSION = 4 * 1024 * 1024;
+export const MARGE_ENVOI_MS = 60_000;
+// Après la réponse, on remonte encore au plus ce nombre de lignes pour trouver sa requête.
+const RECHERCHE_REQUETE = 2000;
 export function derniereReponse(texte) {
   const lignes = String(texte ?? '').split(/\r?\n/);
   const lire = (l) => {
@@ -358,42 +380,62 @@ export function derniereReponse(texte) {
   };
   let r;
   let id;
+  let ref;
+  let debut;
+  let envoi;
+  let fin; // indice de la ligne où les blocs de la réponse sont épuisés
   for (let i = lignes.length - 1; i >= 0; i--) {
     const l = lignes[i];
-    // Tri grossier avant JSON.parse : la plupart des lignes ne sont pas des réponses.
-    if (r === undefined && l.includes('"compact_boundary"')) {
+    if (r === undefined) {
+      // Tri grossier avant JSON.parse : la plupart des lignes ne sont pas des réponses.
+      if (l.includes('"compact_boundary"') && lire(l)?.subtype === 'compact_boundary') return undefined;
+      if (!l.includes('"type":"assistant"')) continue;
       const o = lire(l);
-      if (o?.type === 'system' && o.subtype === 'compact_boundary') return undefined;
-    }
-    if (!l.includes('"type":"assistant"')) {
-      // Un message de l'utilisateur (ou un résultat d'outil) clôt la remontée : la réponse commence après lui.
-      if (r !== undefined && l.includes('"type":"user"') && lire(l)?.type === 'user') break;
+      const u = o?.type === 'assistant' && !o.isSidechain ? o.message?.usage : undefined;
+      const a = Date.parse(o?.timestamp);
+      if (!u || !fini(a) || o.message.model === '<synthetic>') continue;
+      id = o.message.id;
+      ref = typeof o.requestRef === 'string' ? o.requestRef : undefined;
+      debut = a;
+      r = { lu: u.cache_read_input_tokens ?? 0, ecrit: u.cache_creation_input_tokens ?? 0, neuf: u.input_tokens ?? 0 };
+      if (typeof o.message.model === 'string') r.modele = o.message.model;
+      const cc = u.cache_creation ?? {};
+      r.ttl = cc.ephemeral_1h_input_tokens > 0 ? '1h' : cc.ephemeral_5m_input_tokens > 0 ? '5m' : undefined;
+      if (id === undefined) fin = i;
       continue;
     }
-    const o = lire(l);
-    if (o?.type !== 'assistant' || o.isSidechain) continue;
-    const a = Date.parse(o.timestamp);
-    if (r !== undefined) {
-      if (o.message?.id !== id) break;
-      if (fini(a) && a < r.a) r.a = a;
-      continue;
+    if (fin !== undefined && (!ref || fin - i > RECHERCHE_REQUETE)) break;
+    if (ref && l.includes('"api-request"') && l.includes(ref)) {
+      const o = lire(l);
+      const a = Date.parse(o?.timestamp);
+      if (o?.type === 'api-request' && o.id === ref && fini(a)) {
+        envoi = a;
+        break;
+      }
     }
-    const u = o.message?.usage;
-    if (!u || !fini(a) || o.message.model === '<synthetic>') continue;
-    id = o.message.id;
-    r = { a, lu: u.cache_read_input_tokens ?? 0, ecrit: u.cache_creation_input_tokens ?? 0, neuf: u.input_tokens ?? 0 };
-    if (typeof o.message.model === 'string') r.modele = o.message.model;
-    const cc = u.cache_creation ?? {};
-    r.ttl = cc.ephemeral_1h_input_tokens > 0 ? '1h' : cc.ephemeral_5m_input_tokens > 0 ? '5m' : undefined;
-    if (id === undefined) break;
+    // Les autres blocs de la même réponse, plus haut ; une ligne `user` (résultat d'outil) peut s'intercaler.
+    if (fin === undefined && l.includes('"type":"assistant"')) {
+      const o = lire(l);
+      if (o?.type !== 'assistant' || o.isSidechain) continue;
+      if (o.message?.id !== id) {
+        fin = i;
+        continue;
+      }
+      const a = Date.parse(o.timestamp);
+      if (fini(a) && a < debut) debut = a;
+    }
   }
   if (!r) return undefined;
-  const { ttl, ...reponse } = r;
+  const { ttl, ...reste } = r;
+  // L'envoi ne peut pas suivre la réponse : une heure de requête incohérente est ignorée.
+  const a = envoi !== undefined && envoi <= debut ? envoi : debut - MARGE_ENVOI_MS;
+  const reponse = { a, ...reste };
   return ttl ? { reponse, ttl } : { reponse };
 }
 
 // Repli texte (terminal, ligne d'état, réponse de /sonar) : « semaine 41 % (20 %/j, remise ven. 12:00) ».
-export const texte = (el) => `${el.etiquette} ${el.valeur}${el.detail ? ` (${el.detail})` : ''}`;
+// Une étiquette vide (l'icône du cache au pied) ne laisse pas d'espace devant.
+export const texte = (el) => `${el.etiquette ? `${el.etiquette} ` : ''}${el.valeur}${el.detail ? ` (${el.detail})` : ''}`;
 export const ligne = (els, sep = '   ') => els.map(texte).join(sep);
 
 // ——— Journal des relevés de quota (option quotaLog, désactivée par défaut) ———

@@ -10,7 +10,7 @@ import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } 
 import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
 import {
   EMPLACEMENTS, TAILLE_MAX_SESSION, TTL, besoinMaison, chargeExtension, cheminArchive, cheminJournal, cleReleve, deduireTtl,
-  derniereReponse, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
+  SEP_PIED, derniereReponse, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -32,7 +32,6 @@ const GRIS = '#888'
 const TEINTE = { ok: GRIS, attention: '#d4a017', alerte: '#e5484d' } as const
 const PANNEAU = 'sonar'
 const SEP = '   '
-const SEP_BUREAU = '   '
 const GIT_DELAI_MS = 3000
 const GIT_ECART_MS = 5000
 
@@ -109,11 +108,13 @@ async function reprendreCache($: EngineInterface) {
     if (s?.kind !== 'file') continue
     if (s.size > TAILLE_MAX_SESSION) return
     const r = derniereReponse(String(await $.fs.read(chemin)))
-    // Une réponse a pu arriver pendant la lecture : elle l'emporte.
-    if (!r || (await read($, cache))) return
-    await update($, cache, () => r.reponse)
+    // Un /clear ou une reprise pendant la lecture : la conversation n'est plus la même, on n'écrit rien.
+    if (!r || (await $.session.id()) !== id) return
+    // Une réponse arrivée pendant la lecture l'emporte : l'écriture ne remplit qu'un cache encore vide (update compare
+    // et réessaie, sans fenêtre entre le test et l'écriture).
+    await update($, cache, cur => cur ?? r.reponse)
     const duree = r.ttl
-    if (duree && (await $.store.get('ttl')) === undefined && !(await read($, ttl))) await update($, ttl, () => duree)
+    if (duree && (await $.store.get('ttl')) === undefined) await update($, ttl, cur => cur ?? duree)
     return
   }
 }
@@ -197,7 +198,7 @@ function phrase(u: Vue, els: Morceau[], sep = SEP) {
   return (
     <Text>
       {els.flatMap((el, i) => [
-        <Text key={`${el.cle}-e`} dimColor size="caption">{`${i > 0 ? sep : ''}${el.etiquette} `}</Text>,
+        <Text key={`${el.cle}-e`} dimColor size="caption">{`${i > 0 ? sep : ''}${el.etiquette ? `${el.etiquette} ` : ''}`}</Text>,
         <Text key={`${el.cle}-v`} weight="medium" tabular {...(el.niveau === 'ok' ? {} : { color: COULEUR[el.niveau] })}>{el.valeur}</Text>,
         ...(el.detail ? [<Text key={`${el.cle}-d`} dimColor size="caption">{` (${el.detail})`}</Text>] : []),
       ])}
@@ -399,7 +400,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     await read($, tic)
-    // Le pied ne montre que ce qui mérite un coup d'œil (cas normal : la semaine seule).
+    // Le pied, court (logique.mjs, elementsPied) : cas normal « 🔥 2,40 $ · ⎇ master ».
     if ((await lieu($)) !== 'pied' || (await read($, masque))) return next(e)
     const { pied } = await calculer($)
     if (pied.length === 0) return next(e)
@@ -409,9 +410,9 @@ export const register: Register = (on, options) => {
       const u = $.ui.resolve(e)
       const { Text } = u
       const natifs = e.props.modes.join(' & ')
-      return <Text>{natifs ? <Text dimColor>{`${natifs} & `}</Text> : null}{phrase(u, pied, SEP_BUREAU)}</Text>
+      return <Text>{natifs ? <Text dimColor>{`${natifs} & `}</Text> : null}{phrase(u, pied, SEP_PIED)}</Text>
     }
-    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, ligne(pied, '  ')] } })
+    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, ligne(pied, SEP_PIED)] } })
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {

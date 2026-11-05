@@ -8,21 +8,23 @@ Un **mod** Claude Code qui donne à **l'onglet Code de Claude Desktop** ce que l
 Il ne répète pas ce que Claude Code affiche déjà (remplissage du contexte, pourcentage des 5 h) et ne montre que ce qui
 mérite un coup d'œil. Trois niveaux de lecture :
 
-**Le pied** de la zone de saisie (par défaut), entre le mode de permission et le nom du modèle. Le plus souvent, un seul mot :
+**Le pied** de la zone de saisie (par défaut), entre le mode de permission et le nom du modèle. Court (l'appli coupe un
+pied trop long par « … ») :
 
 ```
-sem. 41 %
+🔥 2,40 $ · ⎇ master
 ```
 
-Toujours **un seul élément** (l'appli coupe un pied trop long par « … ») : le plus urgent, dans cet ordre fixe :
+Dans cet ordre, séparés par « · », chacun seulement s'il est connu :
 
-1. `cache froid` : la prochaine réponse réécrira tout le cache ;
-2. `5 h rapide` : les 5 h partent plus vite que le temps ;
-3. une limite hors norme : la semaine (`sem. 82 %`), sinon une autre limite (`budget 92 %`) ;
-4. sinon la semaine (`sem. 41 %`).
+1. `5 h rapide` (orange), seulement quand les 5 h partent plus vite que le temps ;
+2. l'état du cache collé au coût de la session : 🔥 chaud, ❄️ froid (orange, la prochaine réponse réécrira tout le cache),
+   ❔ incertain (orange), puis le montant ;
+3. la branche (`⎇`), raccourcie : dernier segment après « / », sans suffixe d'empreinte, 12 caractères au plus
+   (`claude/mod-pied-cache-79d924` → `mod-pied-ca…`) ; orange sur une branche protégée ; `détachée` pour une tête détachée.
 
-L'étiquette est pâle, le chiffre net ; une seule couleur d'alerte, l'orange, sur la valeur (le rouge est réservé au bandeau
-et au panneau). La branche n'est pas au pied : elle est dans le panneau et dans le popover de sonar pour Windows.
+La semaine n'y est jamais, même en alerte : elle est dans le bandeau, le panneau et le popover de sonar pour Windows.
+Une seule couleur d'alerte au pied, l'orange, sur la valeur (le rouge est réservé au bandeau et au panneau).
 
 **Le bandeau** (`/sonar bandeau`, en option) au-dessus de la saisie : une jauge par fenêtre et pour le cache. La barre est
 l'usage, le petit trait vertical la part de la fenêtre déjà écoulée : barre au-delà du trait = vous consommez plus vite que
@@ -80,12 +82,12 @@ Le mod est alors lu **depuis ce dossier** : après une modification, `/reload-pl
 
 | Élément | Source | Pied | Couleur |
 |---|---|---|---|
-| `semaine` (quota sur 7 jours), heure de remise, budget par jour | `session.measure` | 3ᵉ s'il est hors norme, sinon 4ᵉ (`sem. 41 %`) | selon le **rythme** : consommation comparée à la part de la fenêtre déjà écoulée — orange à plus de `paceWarn` (5) points d'avance, rouge à plus de `paceAlert` (15) ; et orange dès `quotaWarn` (70 %), rouge dès `quotaAlert` (90 %) quel que soit le rythme |
-| `5 h`, heure de remise | `session.measure` | 2ᵉ : `5 h rapide`, sans pourcentage, seulement en avance sur le rythme | orange (rouge au bandeau et au panneau au-delà de `paceAlert`) |
-| autres limites (ex. `budget` d'une passerelle) | `session.measure` | avec leur pourcentage : 3ᵉ hors norme, 4ᵉ sans quota sur 7 jours | seuils absolus seulement (durée de fenêtre inconnue) |
-| `cache` chaud (taux de lecture, heure où il refroidit), incertain, froid | dernière requête du fil principal (`turn.step`, sous-agents exclus) ; à l'ouverture d'une session déjà commencée, sa dernière réponse lue dans le journal local de la session (voir plus bas) | 1ᵉʳ : `cache froid` seulement | froid en orange |
-| `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | jamais (panneau et popover Windows seulement) | orange sur une branche protégée |
-| `coût` estimé de la session (prix catalogue) | `session.measure` | jamais | — |
+| `semaine` (quota sur 7 jours), heure de remise, budget par jour | `session.measure` | jamais, même en alerte | selon le **rythme** : consommation comparée à la part de la fenêtre déjà écoulée — orange à plus de `paceWarn` (5) points d'avance, rouge à plus de `paceAlert` (15) ; et orange dès `quotaWarn` (70 %), rouge dès `quotaAlert` (90 %) quel que soit le rythme |
+| `5 h`, heure de remise | `session.measure` | 1ᵉʳ : `5 h rapide`, sans pourcentage, seulement en avance sur le rythme | orange (rouge au bandeau et au panneau au-delà de `paceAlert`) |
+| autres limites (ex. `budget` d'une passerelle) | `session.measure` | jamais | seuils absolus seulement (durée de fenêtre inconnue) |
+| `cache` chaud (taux de lecture, heure où il refroidit), incertain, froid | dernière requête du fil principal (`turn.step`, sous-agents exclus) ; à l'ouverture d'une session déjà commencée, sa dernière réponse lue dans le journal local de la session (voir plus bas) | 2ᵉ : l'icône, collée au coût (🔥 chaud, ❄️ froid, ❔ incertain) | froid en orange |
+| `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | 3ᵉ : `⎇` et le nom raccourci | orange sur une branche protégée |
+| `coût` estimé de la session (prix catalogue) | `session.measure` | 2ᵉ, après l'icône du cache (`🔥 2,40 $`) | — |
 
 Le mod n'affiche le contexte nulle part : Claude Code le montre déjà (l'extension sonar pour Windows, en option, reprend le bloc
 contexte de UI+ dans le popover du cercle).
@@ -102,7 +104,9 @@ Session déjà commencée (reprise, appli relancée) : le mod n'a encore vu pass
 la dernière réponse du fil principal dans le journal local que Claude Code tient pour chaque session
 (`~/.claude/projects/<projet>/<id de session>.jsonl`, ou sous `CLAUDE_CONFIG_DIR`) : son heure, son usage du cache et
 la durée qu'elle a écrite (5 min ou 1 h). Lecture seule, aucun token. Limite : le mod ne lit pas un fichier de plus de 4 Mio
-(une très longue session) ; le cache y reste inconnu jusqu'au prochain message.
+(une très longue session : sur le poste de l'auteur, environ une session sur cinq) ; le cache y reste inconnu jusqu'au
+prochain message. L'heure retenue est celle de l'envoi de la requête quand le journal la donne, sinon celle de la réponse
+moins une minute (prudence : le cache court depuis l'envoi).
 
 ## Commande `/sonar` (mots français ou anglais)
 

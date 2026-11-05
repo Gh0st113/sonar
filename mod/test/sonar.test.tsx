@@ -71,31 +71,31 @@ async function pied($: Moteur, surface: 'terminal' | 'desktop', modes: string[] 
   return t === '(rien)' ? '' : t
 }
 
-test('pied (défaut) : cas normal = la semaine seule, ni contexte ni % des 5 h', FR, async ($, on) => {
+test('pied (défaut) : cas normal = coût et branche, ni semaine, ni contexte, ni % des 5 h', FR, async ($, on) => {
   moteur(on)
   await demarrer($)
-  expect(await pied($, 'terminal')).toBe('sem. 41 %')
-  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  expect(await pied($, 'terminal')).toBe('1,23 $ · ⎇ x')
+  expect(await pied($, 'desktop')).toBe('1,23 $ · ⎇ x')
   // Sur le bureau, notre dessin remplace celui du moteur : un mode natif reste devant.
-  expect(await pied($, 'desktop', ['focus'])).toBe('focus & sem. 41 %')
+  expect(await pied($, 'desktop', ['focus'])).toBe('focus & 1,23 $ · ⎇ x')
 })
 
-test('pied : un seul élément, 5 h « rapide » sans % devant la semaine, jamais la branche ; une seule couleur', FR, async ($, on) => {
+test('pied : 5 h « rapide » en tête, branche protégée en orange, la semaine jamais même en alerte', FR, async ($, on) => {
   moteur(on, { git: 'main' })
   await demarrer($)
-  // Branche protégée : plus au pied (elle reste au panneau) ; la semaine, dans les clous, sans couleur.
-  expect(await pied($, 'terminal')).toBe('sem. 41 %')
   const calme = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await calme.find({ type: 'Text', text: /^41 %$/ }))?.props.color).toBeUndefined()
+  expect((await calme.find({ type: 'Text' }))?.text).toBe('1,23 $ · ⎇ main')
+  expect((await calme.find({ type: 'Text', text: /^1,23 \$$/ }))?.props.color).toBeUndefined()
+  expect((await calme.find({ type: 'Text', text: /^main$/ }))?.props.color).toBe('warning')
   await calme.unmount()
-  // 5 h : 3 h écoulées sur 5, 80 % utilisés = 20 points d'avance (rouge au panneau, orange au pied).
-  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 80 }, QUOTAS[1]!] })
-  expect(await pied($, 'terminal')).toBe('5 h rapide')
+  // 5 h : 3 h écoulées sur 5, 80 % utilisés = 20 points d'avance ; semaine à 95 % : pas au pied.
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 80 }, { ...QUOTAS[1]!, percentUsed: 95 }] })
+  expect(await pied($, 'terminal')).toBe('5 h rapide · 1,23 $ · ⎇ main')
   const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text' }))?.text).toBe('5 h rapide')
   expect((await ui.find({ type: 'Text', text: /^rapide$/ }))?.props.color).toBe('warning')
+  expect(await ui.find({ type: 'Text', text: /95/ })).toBeUndefined()
   await ui.unmount()
-  expect(await commande($, '')).toContain('branche main')
+  expect(await commande($, '')).toContain('semaine 95 %')
 })
 
 test('/sonar : le panneau s’ouvre (jauges sur le bureau, texte sur le terminal) ; sinon le détail en texte', FR, async ($, on) => {
@@ -142,13 +142,16 @@ test('cache : la réponse du fil principal compte, celle d’un sous-agent non ;
   await demarrer($)
   for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 3 })) { /* rien */ }
   for await (const _ of $.turn.step({ turnId: 't2', index: 0, model: 'claude-haiku-5-5', messageCount: 1, agentId: 'a1' })) { /* rien */ }
-  // Cache chaud : rien au pied ; le détail (durée de vie encore inconnue : « au moins ») dans /sonar.
-  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  // Cache chaud : 🔥 devant le coût ; le détail (durée de vie encore inconnue : « au moins ») dans /sonar.
+  expect(await pied($, 'desktop')).toBe('🔥 1,23 $ · ⎇ x')
   expect(await commande($, '')).toMatch(/cache chaud \(92 % relu, au moins jusqu'à \d\d:\d\d\)/)
   await horloge.advance(H + 60_000)
-  // Froid : il prend la place de la semaine (un seul élément au pied).
-  expect(await pied($, 'desktop')).toBe('cache froid')
-  expect(await pied($, 'terminal')).toBe('cache froid')
+  // Froid : ❄️, en orange.
+  expect(await pied($, 'desktop')).toBe('❄️ 1,23 $ · ⎇ x')
+  expect(await pied($, 'terminal')).toBe('❄️ 1,23 $ · ⎇ x')
+  const ui = await $.ui.mount({ ...PIED, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^❄️ 1,23 \$$/ }))?.props.color).toBe('warning')
+  await ui.unmount()
   expect(await commande($, '')).toContain('cache froid')
 })
 
@@ -196,6 +199,7 @@ test('session ouverte avant le mod : l’état du cache vient de son journal, sa
   const r = await commande($, '')
   expect(r).toMatch(/cache chaud \(90 % relu, jusqu'à \d\d:\d\d\)/)
   expect(r).toContain('durée du cache 1h')
+  expect(await pied($, 'desktop')).toBe('🔥 1,23 $')
   // Le porteur de l'extension Windows l'a aussi.
   const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
   const alt = (await ui.find({ type: 'Svg' } as never) as { props?: { alt?: string } } | undefined)?.props?.alt ?? ''
@@ -211,7 +215,7 @@ test('session ouverte avant le mod : journal de plus de 4 Mio non lu, rien ne ca
   await demarrer($)
   await attendre()
   expect(await commande($, '')).not.toMatch(/^cache /m)
-  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  expect(await pied($, 'desktop')).toBe('1,23 $')
 })
 
 test('/sonar bandeau : jauges sur le bureau, une ligne sur le terminal, couleur sur la valeur en alerte ; masquer puis afficher', FR, async ($, on) => {
@@ -257,7 +261,7 @@ test('/sonar indice : remplace la ligne d’aide sous la saisie', FR, async ($, 
 test('git en panne ou hors dépôt : pas de branche, le reste s’affiche', FR, async ($, on) => {
   moteur(on, { git: 'panne' })
   await demarrer($)
-  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  expect(await pied($, 'desktop')).toBe('1,23 $')
   expect(await commande($, '')).not.toMatch(/^branche /m)
 })
 
@@ -312,7 +316,7 @@ test('quota remis à zéro pendant l’attente : écrit en toutes lettres au tic
   const horloge = moteur(on, { git: 'hors-depot' })
   await demarrer($)
   await horloge.advance(2 * H + 60_000)
-  expect(await pied($, 'desktop')).toBe('sem. 41 %')
+  expect(await pied($, 'desktop')).toBe('1,23 $')
   expect(await commande($, '')).toContain('5 h remis à zéro')
 })
 
