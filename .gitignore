@@ -2,9 +2,3 @@
 # Types écrits par le moteur à chaque chargement du mod
 mod/.claude-plugin/types/
 node_modules/
-
-# Exe et clé de signature de sonar pour Windows : jamais dans le dépôt
-windows/*.exe
-windows/*.sig
-*.cle
-windows/installeur/sortie/

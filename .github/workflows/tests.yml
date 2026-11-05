@@ -1,0 +1,77 @@
+# Tests de sonar :
+#   node    (Linux)   tests de l'extension et de la logique du mod ;
+#   windows (Windows) sonar.ps1 sous Windows PowerShell 5.1 : installation, état, désinstallation, dans un faux
+#                     profil Claude (LOCALAPPDATA détourné), sur le runner jetable.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Actions épinglées par empreinte de commit (et non par tag, qu'on peut déplacer).
+permissions:
+  contents: read
+
+jobs:
+  node:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Tests de l'extension
+        run: node --test windows/test/
+      - name: Tests de la logique du mod
+        run: node --test mod/test/logique.test.mjs
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Installer, vérifier, désinstaller (PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $id = 'fmkadmapgofadopljbjfkapdkoienihi'
+
+          # Refus : le seul profil est occupé par une autre extension. Code 1, rien de posé.
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'occupe'
+          $seul = Join-Path $env:LOCALAPPDATA "Claude-Data\claude_x\extensions\$id"
+          New-Item -ItemType Directory -Force $seul | Out-Null
+          Set-Content (Join-Path $seul 'manifest.json') '{"name":"React Developer Tools"}'
+          powershell -NoProfile -ExecutionPolicy Bypass -File windows/sonar.ps1 installer
+          if ($LASTEXITCODE -ne 1) { throw "refus attendu (code 1), obtenu $LASTEXITCODE" }
+          if ($null -ne [Environment]::GetEnvironmentVariable('REACT_PROFILE', 'User')) { throw 'variable posée sans extension' }
+
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'lad'
+          $libre  = Join-Path $env:LOCALAPPDATA "Claude-Data\claude_a\extensions\$id"
+          $autre  = Join-Path $env:LOCALAPPDATA "Claude-Data\claude_b\extensions\$id"
+          New-Item -ItemType Directory -Force (Split-Path $libre), $autre | Out-Null
+          Set-Content (Join-Path $autre 'manifest.json') '{"name":"React Developer Tools"}'
+          function Lancer($action) {
+            powershell -NoProfile -ExecutionPolicy Bypass -File windows/sonar.ps1 $action
+            if ($LASTEXITCODE -ne 0) { throw "sonar.ps1 $action : code $LASTEXITCODE" }
+          }
+
+          Lancer installer
+          $m = Get-Content (Join-Path $libre 'manifest.json') -Raw | ConvertFrom-Json
+          if ($m.name -notlike 'UI+ for Claude*' -or $m.version_name -notlike 'install-*') { throw 'manifeste installé incorrect' }
+          foreach ($f in 'widget.js', 'widget.css', 'sonar-lecture.js', 'LICENSE-UI-PLUS') {
+            if (-not (Test-Path (Join-Path $libre $f))) { throw "manquant : $f" }
+          }
+          if ((Get-Content (Join-Path $autre 'manifest.json') -Raw) -notmatch 'React') { throw 'extension étrangère écrasée' }
+          if ([Environment]::GetEnvironmentVariable('REACT_PROFILE', 'User') -ne '1') { throw 'REACT_PROFILE non posée' }
+
+          Lancer etat
+          Start-Sleep -Seconds 1
+          Lancer installer   # une seconde installation remplace la première, avec un version_name neuf
+          if ((Get-Content (Join-Path $libre 'manifest.json') -Raw | ConvertFrom-Json).version_name -eq $m.version_name) { throw 'version_name inchangé' }
+
+          Lancer desinstaller
+          if (Test-Path $libre) { throw 'extension non retirée' }
+          if (-not (Test-Path (Join-Path $autre 'manifest.json'))) { throw 'extension étrangère retirée' }
+          if ($null -ne [Environment]::GetEnvironmentVariable('REACT_PROFILE', 'User')) { throw 'REACT_PROFILE non retirée' }
+          'Installation et désinstallation : OK'

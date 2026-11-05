@@ -1,8 +1,8 @@
 // D'après UI+ for Claude, de Lukas van Uden (licence MIT, voir LICENSE-UI-PLUS),
-// https://github.com/LukasvanUden/ui-plus-for-claude , commit 126cf9540f557466f697f679e9ea20505bf6442a.
+// https://github.com/LukasvanUden/ui-plus-for-claude , commit 1e8274fc149a49979c8688a447ae9bf9bd0d3028 (v0.5.0).
 // Adapté pour Claude Desktop Windows par sonar : textes français, sélecteurs vérifiés sur les relevés fr
 // (test/fixtures), et la partie « Sonar » plus bas (lecture des données que le mod sonar dépose dans
-// son pied, affichage de $ · cache · branche dans le popover du cercle et sous « Personnalisation »).
+// son bandeau, affichage de $ · cache · branche dans le popover du cercle et sous « Personnalisation »).
 //
 // Content script for https://claude.ai inside the Claude desktop app. Reads
 // plan usage through claude.ai's own API and shows it in two places: a
@@ -57,7 +57,7 @@
       confirmUninstall: 'Remove UI+ from Claude?',
       cancel: 'Cancel',
       remove: 'Remove',
-      removed: 'Hidden. To remove the extension completely, run "sonar retirer", or start Claude without the shortcut.',
+      removed: 'Hidden. To remove the extension completely, run desinstaller.cmd (windows folder of sonar).',
     },
     de: {
       title: 'Nutzung',
@@ -80,7 +80,7 @@
       confirmUninstall: 'UI+ aus Claude entfernen?',
       cancel: 'Abbrechen',
       remove: 'Entfernen',
-      removed: 'Ausgeblendet. Zum vollständigen Entfernen „sonar retirer“ ausführen oder Claude ohne die Verknüpfung starten.',
+      removed: 'Ausgeblendet. Zum vollständigen Entfernen desinstaller.cmd ausführen (Ordner windows von sonar).',
     },
     fr: {
       title: 'Utilisation',
@@ -103,7 +103,7 @@
       confirmUninstall: 'Retirer UI+ de Claude ?',
       cancel: 'Annuler',
       remove: 'Retirer',
-      removed: 'Masqué. Pour retirer complètement l\'extension : « sonar retirer », ou lancer Claude sans le raccourci.',
+      removed: 'Masqué. Pour retirer complètement l\'extension : desinstaller.cmd (dossier windows de sonar).',
     },
   };
 
@@ -753,6 +753,37 @@
     return null;
   }
 
+  // Some Claude versions (Claude for Windows 4.4212, for one) show when a
+  // session works but never mark a finished one as unread. When a session
+  // goes from working to idle while it isn't the open one, UI+ marks it
+  // Ready itself, until it is opened. Kept in sessionStorage, so it survives
+  // reloads but not a Claude restart.
+  const READY_KEY = 'usage-pace:inferred-ready';
+  const lastState = new Map();
+  let inferred;
+  try { inferred = new Set(JSON.parse(sessionStorage.getItem(READY_KEY) || '[]')); } catch { inferred = new Set(); }
+  function saveInferred() {
+    try { sessionStorage.setItem(READY_KEY, JSON.stringify([...inferred])); } catch {}
+  }
+
+  function inferReady(main, state) {
+    const key = main.closest('[data-row-key]')?.dataset.rowKey;
+    if (!key) return state;
+    const open = main.getAttribute('aria-current') === 'page' || main.dataset.selected === 'focused';
+    const before = lastState.get(key);
+    lastState.set(key, state);
+    let changed = false;
+    if (state || open) {
+      // Claude marks it itself, or it's in front of you: nothing to infer.
+      changed = inferred.delete(key);
+    } else if (before === 'running') {
+      inferred.add(key);
+      changed = true;
+    }
+    if (changed) saveInferred();
+    return state ?? (inferred.has(key) ? 'ready' : null);
+  }
+
   function setAttribute(node, name, value) {
     if (value === null) node.removeAttribute(name);
     else if (node.getAttribute(name) !== value) node.setAttribute(name, value);
@@ -772,7 +803,7 @@
     // icon or a title in its place.
     for (const main of scope.querySelectorAll('[data-row-main-button]:not([data-row-nav])')) {
       if (!main.querySelector(':scope > :is(.df-leading-slot, [data-row-label="iconless"])')) continue;
-      const state = sessionState(main.closest('[data-row]') ?? main);
+      const state = inferReady(main, sessionState(main.closest('[data-row]') ?? main));
       setAttribute(main, 'data-up-session', state ?? 'idle');
       setAttribute(main, 'data-up-badge', badges[state] ?? null);
     }
