@@ -180,7 +180,12 @@ function projets(on: On, fichiersBruts: Record<string, string>, taillesBrutes: R
   // Sous Windows, le moteur rend « /home/moi/… » absolu sur le lecteur courant (« C:\home\moi\… ») : le test Linux
   // échouait sous Windows (07/11). Les chemins se comparent donc sans lettre de lecteur, des deux côtés.
   const p = (x: string) => cle(x).replace(/^[A-Za-z]:/, '')
-  const sansLecteur = <T,>(o: Record<string, T>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [p(k), v]))
+  const sansLecteur = <T,>(o: Record<string, T>) => {
+    const r = Object.fromEntries(Object.entries(o).map(([k, v]) => [p(k), v]))
+    // Deux chemins qui ne diffèrent que par le lecteur (C:/x, D:/x) se confondraient : refusé plutôt qu'écrasé.
+    if (Object.keys(r).length !== Object.keys(o).length) throw new Error('projets() : deux chemins ne diffèrent que par le lecteur')
+    return r
+  }
   const fichiers = sansLecteur(fichiersBruts)
   const tailles = sansLecteur(taillesBrutes)
   const vu = { list: 0 }
