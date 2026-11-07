@@ -491,12 +491,21 @@ export const register: Register = (on, options) => {
     const vue = montrer ? await bandeau($, e) : undefined
     const u = $.ui.resolve(e)
     const Svg = e.surface === 'desktop' ? svgDe(u, e.surface) : undefined
-    if (!Svg) return vue ?? next(e)
+    if (!Svg && !vue) return next(e)
     const { Box } = u
+    // Les autres mods de la zone (la ligne 🐋 de baleine…) sont dessinés par next : sans lui, sonar les effaçait, et
+    // un mod passé avant sonar qui ne l'appelle pas efface le porteur (« introuvable », 07/11). Une erreur plus bas ne
+    // doit pas emporter le porteur.
+    let dessous = null
+    try {
+      dessous = await next(e)
+    } catch { /* le porteur reste */ }
+    if (!Svg) return <Box flexDirection="column">{vue}{dessous ?? null}</Box>
     const { extension } = await calculer($)
     return (
       <Box flexDirection="column">
         {vue ?? null}
+        {dessous ?? null}
         <Svg source={SVG_VIDE} alt={extension} width={1} height={1} />
       </Box>
     )

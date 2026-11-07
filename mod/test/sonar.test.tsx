@@ -359,9 +359,10 @@ test('bandeau sur le bureau : porteur invisible des données de l\'extension, qu
     await ui.unmount()
     return { p: svgs.find(s => s.props?.alt?.startsWith('sonar:1 '))?.props, texte }
   }
-  // Emplacement par défaut (pied) : le bandeau ne montre rien, il porte seulement les données.
+  // Emplacement par défaut (pied) : le bandeau ne montre rien de sonar, il porte seulement les données, et garde ce que
+  // dessinent les autres mods (« (moteur) » ici, la ligne 🐋 de baleine en vrai : sans next, l'un effaçait l'autre).
   const { p, texte } = await charge()
-  expect(texte).toBeUndefined()
+  expect(texte).toBe('(moteur)')
   expect(p?.width).toBe(1)
   expect(p?.height).toBe(1)
   const c = JSON.parse((p?.alt ?? '').slice('sonar:1 '.length))
@@ -373,13 +374,16 @@ test('bandeau sur le bureau : porteur invisible des données de l\'extension, qu
   expect(affiche.texte).toMatch(/^5 h/)
   expect(affiche.p?.alt?.startsWith('sonar:1 ')).toBe(true)
   await commande($, 'masquer')
-  expect((await charge()).p?.alt?.startsWith('sonar:1 ')).toBe(true)
+  const masque = await charge()
+  expect(masque.p?.alt?.startsWith('sonar:1 ')).toBe(true)
+  expect(masque.texte).toBe('(moteur)')
   // Le pied ne porte plus rien : un mode natif, rien de sonar, le dessin du moteur.
   expect(await pied($, 'desktop', ['focus'])).toBe('focus')
-  // Terminal : pas de porteur.
+  // Terminal : pas de porteur ; le bandeau de sonar garde aussi les autres mods.
   await commande($, 'afficher')
   const terminal = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
   expect(await terminal.find({ type: 'Svg' } as never)).toBeUndefined()
+  expect((await terminal.find({ type: 'Text', text: /moteur/ }))?.text).toBe('(moteur)')
   await terminal.unmount()
 })
 
