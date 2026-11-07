@@ -37,6 +37,8 @@ const PANNEAU = {
 let argvTail: string[] = []
 function moteur(on: On, opts: { git?: 'ok' | 'main' | 'panne' | 'hors-depot'; panneau?: boolean; tail?: string } = {}) {
   const horloge = mock.clock(on, { now: T0 })
+  // Remis à zéro : un appel d'un test précédent ne doit pas passer pour celui du test en cours.
+  argvTail = []
   mock.store(on)
   on('command.register', () => ({ value: { command: 'sonar' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -174,8 +176,18 @@ const reponseJsonl = (a: number) => [
 ].join('\n') + '\n'
 
 // Le dossier des projets : un sous-dossier par projet, le journal de la session dans l'un d'eux.
-function projets(on: On, fichiers: Record<string, string>, tailles: Record<string, number> = {}, cwd?: string) {
-  const p = cle
+function projets(on: On, fichiersBruts: Record<string, string>, taillesBrutes: Record<string, number> = {}, cwd?: string) {
+  // Sous Windows, le moteur rend « /home/moi/… » absolu sur le lecteur courant (« C:\home\moi\… ») : le test Linux
+  // échouait sous Windows (07/11). Les chemins se comparent donc sans lettre de lecteur, des deux côtés.
+  const p = (x: string) => cle(x).replace(/^[A-Za-z]:/, '')
+  const sansLecteur = <T,>(o: Record<string, T>) => {
+    const r = Object.fromEntries(Object.entries(o).map(([k, v]) => [p(k), v]))
+    // Deux chemins qui ne diffèrent que par le lecteur (C:/x, D:/x) se confondraient : refusé plutôt qu'écrasé.
+    if (Object.keys(r).length !== Object.keys(o).length) throw new Error('projets() : deux chemins ne diffèrent que par le lecteur')
+    return r
+  }
+  const fichiers = sansLecteur(fichiersBruts)
+  const tailles = sansLecteur(taillesBrutes)
   const vu = { list: 0 }
   on('session.id', () => ({ value: SESSION }))
   on('session.cwd', () => {
