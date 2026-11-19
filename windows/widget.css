@@ -72,7 +72,8 @@
    row's link, so its decoration is no sibling of it. */
 [data-up-session]:not([data-up-session="idle"]) .df-tail-mark,
 div[data-row]:has([data-up-session]:not([data-up-session="idle"])) [data-row-decoration] { display: none; }
-:is([data-up-session], div[data-row]:has([data-up-session])) .status-dot { visibility: hidden; }
+:is([data-up-session], div[data-row]:has([data-up-session])) .status-dot,
+:is([data-up-session], div[data-row]:has([data-up-session])) [data-cds="Pulse"] { visibility: hidden; }
 [data-up-session="awaiting"] { --up-state: var(--cds-fill-warning, #e0a23a); }
 [data-up-session="ready"] { --up-state: var(--cds-fill-accent, #2a78d6); }
 [data-up-session="error"] { --up-state: var(--cds-fill-danger, #e5484d); }

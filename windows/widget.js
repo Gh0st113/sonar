@@ -1,5 +1,5 @@
 // D'après UI+ for Claude, de Lukas van Uden (licence MIT, voir LICENSE-UI-PLUS),
-// https://github.com/LukasvanUden/ui-plus-for-claude , commit 1e8274fc149a49979c8688a447ae9bf9bd0d3028 (v0.5.0).
+// https://github.com/LukasvanUden/ui-plus-for-claude , commit 690afab5b1501a15979e2dfc3334e7839e6b3022 (v0.5.2).
 // Adapté pour Claude Desktop Windows par sonar : textes français, sélecteurs vérifiés sur les relevés fr
 // (test/fixtures), et la partie « Sonar » plus bas (lecture des données que le mod sonar dépose dans
 // son bandeau, affichage de $ · cache · branche dans le popover du cercle et sous « Personnalisation »).
@@ -252,17 +252,27 @@
     return null;
   }
 
-  // Grey up to where usage and time agree; the colored segment below it
-  // spans to whichever of the two is further along.
+  // Grey up to where usage and time agree; the colored segment starts where
+  // the grey ends and spans to whichever of the two is further along. The
+  // grey is translucent, so the two must not overlap or the color shows
+  // through it.
   function timeLine(time, className) {
     const line = element('div', 'up-time ' + className);
     line.dataset.version = String(version);
     if (time) {
-      const difference = element('div', 'up-segment ' + (time.over ? 'up-segment-over' : 'up-segment-buffer'));
-      difference.style.width = time.end + '%';
       const shared = element('div', 'up-segment up-segment-elapsed');
       shared.style.width = time.shared + '%';
-      line.append(difference, shared);
+      line.append(shared);
+      if (time.end > time.shared) {
+        const difference = element('div', 'up-segment ' + (time.over ? 'up-segment-over' : 'up-segment-buffer'));
+        difference.style.left = time.shared + '%';
+        difference.style.width = time.end - time.shared + '%';
+        if (time.shared > 0) {
+          difference.style.borderRadius = '0 99px 99px 0';
+          shared.style.borderRadius = '99px 0 0 99px';
+        }
+        line.append(difference);
+      }
     }
     return line;
   }
@@ -737,12 +747,22 @@
   const DOT_KINDS = { running: 'running', clay: 'running', awaiting: 'awaiting', ready: 'ready', unread: 'ready', error: 'error' };
   const ATTENTION = { working: 'running', waiting: 'awaiting', unread: 'ready' };
   const AWAITING_LABEL = /await|input|answer|wartet|eingabe|antwort/i;
+  // In the tab-style sidebar rows (Claude 4.23118 and later) the state is a
+  // [data-cds="Pulse"] dot colored by the state: muted while working (with
+  // .df-tab-dot-running), warning for awaiting, accent for unread.
+  const PULSE_COLORS = [['--cds-text-muted', 'running'], ['--cds-fill-warning', 'awaiting'], ['--cds-fill-accent', 'ready']];
 
   function sessionState(row) {
     const dot = DOT_KINDS[row.querySelector('.status-dot[data-kind]')?.dataset.kind];
     if (dot) return dot;
     const attention = ATTENTION[row.querySelector('[data-attention]')?.dataset.attention];
     if (attention) return attention;
+    for (const pulse of row.querySelectorAll('[data-cds="Pulse"]')) {
+      if (pulse.classList.contains('df-tab-dot-running')) return 'running';
+      const style = pulse.getAttribute('style') ?? '';
+      const state = PULSE_COLORS.find(([color]) => style.includes(color))?.[1];
+      if (state) return state;
+    }
     if (row.querySelector('.df-leading-slot .absolute > [data-cds="Icon"]')) return 'error';
     for (const status of row.querySelectorAll('[role="status"][aria-label]')) {
       const icon = status.querySelector('[data-cds="Icon"]');
