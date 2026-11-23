@@ -227,11 +227,6 @@ test('session ouverte avant le mod : l’état du cache vient de son journal, sa
   expect(r).toMatch(/cache chaud \(90 % relu, jusqu'à \d\d:\d\d\)/)
   expect(r).toContain('durée du cache 1h')
   expect(await pied($, 'desktop')).toBe('🔥 1,23 $')
-  // Le porteur de l'extension Windows l'a aussi.
-  const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
-  const alt = (await ui.find({ type: 'Svg' } as never) as { props?: { alt?: string } } | undefined)?.props?.alt ?? ''
-  expect(JSON.parse(alt.replace(/^sonar:1 /, '')).cache.etat).toBe('chaud')
-  await ui.unmount()
 })
 
 test('session ouverte avant le mod : le dossier déduit du dossier courant, sans parcourir projects/', FR, async ($, on) => {
@@ -325,6 +320,13 @@ test('/sonar bandeau : jauges sur le bureau, une ligne sur le terminal, couleur 
   expect((await bureau.find({ type: 'Text', text: /^90 %$/ }))?.props.color).toBe('error')
   const svg = await bureau.find({ type: 'Svg' } as never) as { props?: { source?: string } } | undefined
   expect(svg?.props?.source).toMatch(/^<svg [^>]*>.*<\/svg>$/)
+  // Ligne de temps au-dessus de chaque quota, comme UI+ : grise jusqu'où usage et temps concordent, puis verte quand le
+  // temps est devant (5 h : 23 % pour 60 % écoulé), orange quand l'usage est devant, rouge s'il est en alerte (semaine).
+  const sources = (await bureau.findAll({ type: 'Svg' } as never) as { props?: { source?: string; height?: number } }[]).map(s => s.props?.source ?? '')
+  expect(sources[0]).toContain('#3fa66b')
+  expect(sources[0]).not.toMatch(/#e0913a|#e5484d/)
+  expect(sources[1]).toContain('#e5484d')
+  expect(sources[1]).not.toContain('#3fa66b')
   expect(await bureau.find({ type: 'Button' })).toBeUndefined()
   await bureau.unmount()
   const terminal = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
@@ -361,37 +363,29 @@ test('git en panne ou hors dépôt : pas de branche, le reste s’affiche', FR, 
   expect(await commande($, '')).not.toMatch(/^branche /m)
 })
 
-test('bandeau sur le bureau : porteur invisible des données de l\'extension, quel que soit l\'emplacement ; rien sur le terminal', FR, async ($, on) => {
+test('bandeau : rien de sonar hors emplacement « bandeau » (ni image ni cadre), les autres mods gardés', FR, async ($, on) => {
   moteur(on)
   await demarrer($)
-  const charge = async () => {
+  const vue = async () => {
     const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
-    const svgs = await ui.findAll({ type: 'Svg' } as never) as { props?: { alt?: string; width?: number; height?: number } }[]
+    const svgs = await ui.findAll({ type: 'Svg' } as never)
     const texte = (await ui.find({ type: 'Text' }))?.text
     await ui.unmount()
-    return { p: svgs.find(s => s.props?.alt?.startsWith('sonar:1 '))?.props, texte }
+    return { svgs: svgs.length, texte }
   }
-  // Emplacement par défaut (pied) : le bandeau ne montre rien de sonar, il porte seulement les données, et garde ce que
-  // dessinent les autres mods (« (moteur) » ici, la ligne 🐋 de baleine en vrai : sans next, l'un effaçait l'autre).
-  const { p, texte } = await charge()
-  expect(texte).toBe('(moteur)')
-  expect(p?.width).toBe(1)
-  expect(p?.height).toBe(1)
-  const c = JSON.parse((p?.alt ?? '').slice('sonar:1 '.length))
-  expect(c.cout).toBe(1.23)
-  expect(c.depot).toEqual({ nom: 'projet-a', modifies: 2, branche: 'feat/x' })
-  // Bandeau affiché : les jauges et le porteur ; sonar masqué : le porteur seul.
+  // Emplacement par défaut (pied) : le bandeau est celui du moteur, tel quel (« (moteur) » ici, la ligne 🐋 de baleine
+  // en vrai). Avant la 0.7.0, une image invisible pour l'extension Windows y restait et laissait un cadre vide.
+  expect(await vue()).toEqual({ svgs: 0, texte: '(moteur)' })
+  // Bandeau affiché : les jauges, puis les autres mods ; sonar masqué : le moteur seul.
   await commande($, 'bandeau')
-  const affiche = await charge()
+  const affiche = await vue()
   expect(affiche.texte).toMatch(/^5 h/)
-  expect(affiche.p?.alt?.startsWith('sonar:1 ')).toBe(true)
+  expect(affiche.svgs).toBeGreaterThan(0)
   await commande($, 'masquer')
-  const masque = await charge()
-  expect(masque.p?.alt?.startsWith('sonar:1 ')).toBe(true)
-  expect(masque.texte).toBe('(moteur)')
+  expect(await vue()).toEqual({ svgs: 0, texte: '(moteur)' })
   // Le pied ne porte plus rien : un mode natif, rien de sonar, le dessin du moteur.
   expect(await pied($, 'desktop', ['focus'])).toBe('focus')
-  // Terminal : pas de porteur ; le bandeau de sonar garde aussi les autres mods.
+  // Terminal : pas de jauge dessinée ; le bandeau de sonar garde aussi les autres mods.
   await commande($, 'afficher')
   const terminal = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
   expect(await terminal.find({ type: 'Svg' } as never)).toBeUndefined()

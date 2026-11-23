@@ -9,8 +9,8 @@ import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } 
 
 import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
 import {
-  EMPLACEMENTS, TAILLE_MAX_SESSION, TTL, besoinMaison, chargeExtension, cheminArchive, cheminJournal, cleReleve, deduireTtl,
-  SEP_PIED, derniereReponse, dossierProjet, reponseFiche, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, langueHote, localeSysteme, majJournal, nomDepot, nomEmplacement, releve, texteExtension, textes,
+  EMPLACEMENTS, TAILLE_MAX_SESSION, TTL, besoinMaison, cheminArchive, cheminJournal, cleReleve, deduireTtl,
+  SEP_PIED, derniereReponse, dossierProjet, reponseFiche, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, langueHote, localeSysteme, majJournal, nomDepot, nomEmplacement, releve, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -187,7 +187,6 @@ async function calculer($: EngineInterface) {
   return {
     pied: elementsPied(d, maintenant, cfg) as Morceau[],
     jauges: jauges(d, maintenant, cfg) as Morceau[],
-    extension: texteExtension(chargeExtension(d, maintenant, cfg)) as string,
   }
 }
 
@@ -253,15 +252,33 @@ function phrase(u: Vue, els: Morceau[], sep = SEP) {
   )
 }
 
-// Jauge : barre = usage, trait = part de la fenêtre écoulée (ce que serait un usage régulier).
+// Jauge : barre = usage. Pour un quota (`repere` = part de la fenêtre écoulée), une ligne de temps au-dessus, comme
+// UI+ for Claude : grise jusqu'où usage et temps concordent, puis colorée jusqu'au plus avancé des deux, verte quand le
+// temps est devant (de la marge), orange quand l'usage est devant, rouge si le quota est en alerte.
 const JAUGE = { largeur: 120, hauteur: 8 }
+const LIGNE_TEMPS = { hauteur: 3, ecart: 2 }
+const RYTHME = { marge: '#3fa66b', avance: '#e0913a', alerte: '#e5484d' } as const
+const hauteurJauge = (repere: number | undefined) => JAUGE.hauteur + (repere === undefined ? 0 : LIGNE_TEMPS.hauteur + LIGNE_TEMPS.ecart)
 function svgJauge(part: number, repere: number | undefined, niveau: Morceau['niveau']) {
   const { largeur: L, hauteur: H } = JAUGE
-  const plein = Math.round(L * Math.min(1, Math.max(0, part)))
-  const fond = `<rect y="1" width="${L}" height="${H - 2}" rx="3" fill="${GRIS}" fill-opacity="0.25"/>`
-  const barre = plein > 0 ? `<rect y="1" width="${plein}" height="${H - 2}" rx="3" fill="${TEINTE[niveau]}"${niveau === 'ok' ? ' fill-opacity="0.7"' : ''}/>` : ''
-  const trait = repere === undefined ? '' : `<rect x="${Math.min(L - 2, Math.max(0, Math.round(L * repere) - 1))}" width="2" height="${H}" fill="${GRIS}"/>`
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${L}" height="${H}" viewBox="0 0 ${L} ${H}">${fond}${barre}${trait}</svg>`
+  const px = (x: number) => Math.round(L * Math.min(1, Math.max(0, x)))
+  const plein = px(part)
+  let temps = ''
+  if (repere !== undefined) {
+    const h = LIGNE_TEMPS.hauteur
+    const t = px(repere)
+    const commun = Math.min(plein, t)
+    const bout = Math.max(plein, t)
+    const teinte = plein > t ? (niveau === 'alerte' ? RYTHME.alerte : RYTHME.avance) : RYTHME.marge
+    temps = `<rect width="${L}" height="${h}" rx="1.5" fill="${GRIS}" fill-opacity="0.2"/>`
+      + (commun > 0 ? `<rect width="${commun}" height="${h}" rx="1.5" fill="${GRIS}"/>` : '')
+      + (bout > commun ? `<rect x="${commun}" width="${bout - commun}" height="${h}" rx="1.5" fill="${teinte}"/>` : '')
+  }
+  const y = hauteurJauge(repere) - H + 1
+  const fond = `<rect y="${y}" width="${L}" height="${H - 2}" rx="3" fill="${GRIS}" fill-opacity="0.25"/>`
+  const barre = plein > 0 ? `<rect y="${y}" width="${plein}" height="${H - 2}" rx="3" fill="${TEINTE[niveau]}"${niveau === 'ok' ? ' fill-opacity="0.7"' : ''}/>` : ''
+  const total = hauteurJauge(repere)
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${L}" height="${total}" viewBox="0 0 ${L} ${total}">${temps}${fond}${barre}</svg>`
 }
 
 // Le Svg là où la surface le dessine : jamais sur le terminal (le kit y laisse la clé, l'appli n'en dessine rien).
@@ -273,14 +290,10 @@ function bloc(u: Vue, el: Morceau, Svg: ReturnType<typeof svgDe>) {
   return (
     <Box key={el.cle} flexDirection="column">
       {phrase(u, [el])}
-      {Svg && el.part !== undefined ? <Svg source={svgJauge(el.part, el.repere, el.niveau)} alt={`${el.etiquette} ${el.valeur}`} width={JAUGE.largeur} height={JAUGE.hauteur} /> : null}
+      {Svg && el.part !== undefined ? <Svg source={svgJauge(el.part, el.repere, el.niveau)} alt={`${el.etiquette} ${el.valeur}`} width={JAUGE.largeur} height={hauteurJauge(el.repere)} /> : null}
     </Box>
   )
 }
-
-// Porteur des données de l'extension sonar pour Windows : une image transparente de 1 pixel (le moteur refuse 0), dont le
-// texte alternatif porte la charge (logique.mjs, chargeExtension). Rien de visible.
-const SVG_VIDE = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'
 
 // Bandeau : les jauges côte à côte (elles passent à la ligne si la place manque) ; sur le terminal, une ligne de texte.
 async function bandeau($: EngineInterface, e: RenderInput) {
@@ -482,33 +495,21 @@ export const register: Register = (on, options) => {
     return js.length > 0 ? phrase($.ui.resolve(e), js) : next(e)
   }).catch(($, e, next) => next(e))
 
-  // Sur le bureau, le bandeau porte toujours les données de l'extension sonar pour Windows (image invisible), quel que soit
-  // l'emplacement : c'est la seule zone des mods que l'extension peut lire (le pied n'en est pas une, essai du 30/10).
+  // Bandeau : seulement à l'emplacement « bandeau » ; sinon la zone reste au moteur, sans cadre vide.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     await read($, tic)
     if (e.props.hasSurvey) return next(e)
     const montrer = (await lieu($)) === 'bandeau' && !(await read($, masque))
     const vue = montrer ? await bandeau($, e) : undefined
-    const u = $.ui.resolve(e)
-    const Svg = e.surface === 'desktop' ? svgDe(u, e.surface) : undefined
-    if (!Svg && !vue) return next(e)
-    const { Box } = u
-    // Les autres mods de la zone (la ligne 🐋 de baleine…) sont dessinés par next : sans lui, sonar les effaçait, et
-    // un mod passé avant sonar qui ne l'appelle pas efface le porteur (« introuvable », 07/11). Une erreur plus bas ne
-    // doit pas emporter le porteur.
+    if (!vue) return next(e)
+    const { Box } = $.ui.resolve(e)
+    // Les autres mods de la zone (la ligne 🐋 de baleine…) sont dessinés par next : sans lui, sonar les effaçait (07/11).
+    // Une erreur plus bas ne doit pas emporter les jauges.
     let dessous = null
     try {
       dessous = await next(e)
-    } catch { /* le porteur reste */ }
-    if (!Svg) return <Box flexDirection="column">{vue}{dessous ?? null}</Box>
-    const { extension } = await calculer($)
-    return (
-      <Box flexDirection="column">
-        {vue ?? null}
-        {dessous ?? null}
-        <Svg source={SVG_VIDE} alt={extension} width={1} height={1} />
-      </Box>
-    )
+    } catch { /* les jauges restent */ }
+    return <Box flexDirection="column">{vue}{dessous ?? null}</Box>
   }).catch(($, e, next) => next(e))
 
   // Panneau ouvert par /sonar : tout le détail, jauges comprises sur le bureau ; fermé par sa croix.
