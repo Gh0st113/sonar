@@ -28,7 +28,8 @@ Une seule couleur d'alerte au pied, l'orange, sur la valeur (le rouge est réser
 **Le bandeau** (`/sonar bandeau`, en option) au-dessus de la saisie : une jauge par fenêtre et pour le cache. La barre est
 l'usage ; au-dessus de chaque quota, une ligne de temps comme celle de UI+ : grise jusqu'où usage et temps concordent,
 puis verte quand le temps est devant (de la marge), orange quand l'usage est devant (vous consommez plus vite que le rythme
-régulier), rouge si le quota est en alerte. Viennent ensuite la branche et le coût, en clair.
+régulier), rouge si, en plus, le quota est en alerte. La ligne suit le temps réellement écoulé ; la couleur de la valeur
+accorde une marge en début de fenêtre (1 h sur 5 h, 1 jour sur 7) et tient compte des seuils absolus (70 % et 90 % par défaut). Viennent ensuite la branche et le coût, en clair.
 
 **Le panneau** (`/sonar`) : tout le détail, jauges comprises, avec les heures de remise à zéro, le budget par jour, le taux
 de lecture du cache, la branche et les fichiers modifiés, le coût et le fichier des relevés. Il se ferme par sa croix.

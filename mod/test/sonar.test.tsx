@@ -343,13 +343,22 @@ test('/sonar bandeau : jauges sur le bureau, une ligne sur le terminal, couleur 
     const bout = teinte!.x + teinte!.w
     if (couleur === '#3fa66b') expect([gw, bout > usage]).toEqual([usage, true])
     else expect([bout, gw < usage]).toEqual([usage, true])
-    // Géométrie : ligne en haut, 2 px d'écart, barre dessous, hauteur annoncée = viewBox.
+    // Géométrie : ligne en haut (y 0), 2 px d'écart, barre dessous, hauteur annoncée = viewBox.
+    expect(ligneTemps.every(x => x.y === 0)).toBe(true)
     expect(barre!.y - 3).toBe(2)
     expect(svgs[i]!.height).toBe(12)
     expect(svgs[i]!.source).toContain('viewBox="0 0 120 12"')
   }
   expect(await bureau.find({ type: 'Button' })).toBeUndefined()
   await bureau.unmount()
+  // Usage devant sans alerte (5 h : 65 % pour 60 % écoulé, sous les seuils) : orange, jamais rouge ni vert.
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 65 }, QUOTAS[1]!] })
+  const avance = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  const s5h = ((await avance.findAll({ type: 'Svg' } as never))[0] as { props?: { source?: string } }).props?.source ?? ''
+  expect(s5h).toContain('#e0913a')
+  expect(s5h).not.toMatch(/#3fa66b|#e5484d/)
+  await avance.unmount()
+  await $.session.measure({ ...MESURE, rateLimits: [QUOTAS[0]!, { ...QUOTAS[1]!, percentUsed: 90 }] })
   const terminal = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
   expect((await terminal.find({ type: 'Text', text: /^5 h/ }))?.text).toMatch(/^5 h 23 % \(remise \d\d:\d\d\) {3}semaine 90 % \(.+\) {3}branche feat\/x \(projet-a, 2 modifiés\) {3}coût 1,23 \$$/)
   expect(await terminal.find({ type: 'Svg' } as never)).toBeUndefined()
