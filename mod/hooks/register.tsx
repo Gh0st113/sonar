@@ -258,7 +258,8 @@ function phrase(u: Vue, els: Morceau[], sep = SEP) {
 const JAUGE = { largeur: 120, hauteur: 8 }
 const LIGNE_TEMPS = { hauteur: 3, ecart: 2 }
 const RYTHME = { marge: '#3fa66b', avance: '#e0913a', alerte: '#e5484d' } as const
-const hauteurJauge = (repere: number | undefined) => JAUGE.hauteur + (repere === undefined ? 0 : LIGNE_TEMPS.hauteur + LIGNE_TEMPS.ecart)
+// La barre est dessinée 1 px sous le haut de sa boîte : la ligne de temps empiète de ce pixel pour garder l'écart annoncé.
+const hauteurJauge = (repere: number | undefined) => JAUGE.hauteur + (repere === undefined ? 0 : LIGNE_TEMPS.hauteur + LIGNE_TEMPS.ecart - 1)
 function svgJauge(part: number, repere: number | undefined, niveau: Morceau['niveau']) {
   const { largeur: L, hauteur: H } = JAUGE
   const px = (x: number) => Math.round(L * Math.min(1, Math.max(0, x)))

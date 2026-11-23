@@ -322,11 +322,32 @@ test('/sonar bandeau : jauges sur le bureau, une ligne sur le terminal, couleur 
   expect(svg?.props?.source).toMatch(/^<svg [^>]*>.*<\/svg>$/)
   // Ligne de temps au-dessus de chaque quota, comme UI+ : grise jusqu'où usage et temps concordent, puis verte quand le
   // temps est devant (5 h : 23 % pour 60 % écoulé), orange quand l'usage est devant, rouge s'il est en alerte (semaine).
-  const sources = (await bureau.findAll({ type: 'Svg' } as never) as { props?: { source?: string; height?: number } }[]).map(s => s.props?.source ?? '')
-  expect(sources[0]).toContain('#3fa66b')
-  expect(sources[0]).not.toMatch(/#e0913a|#e5484d/)
-  expect(sources[1]).toContain('#e5484d')
-  expect(sources[1]).not.toContain('#3fa66b')
+  const svgs = (await bureau.findAll({ type: 'Svg' } as never) as { props?: { source?: string; height?: number } }[]).map(s => s.props ?? {})
+  // Chaque <rect> : ses attributs numériques et sa couleur.
+  const rects = (s: string) => [...s.matchAll(/<rect ([^>]*)\/>/g)].map(([, a]) => {
+    const n = (k: string) => Number((new RegExp(`(?:^| )${k}="([\\d.]+)"`).exec(a!) ?? [])[1] ?? 0)
+    return { x: n('x'), y: n('y'), w: n('width'), h: n('height'), fill: /fill="([^"]+)"/.exec(a!)?.[1], pale: a!.includes('fill-opacity') }
+  })
+  for (const [i, couleur] of [[0, '#3fa66b'], [1, '#e5484d']] as const) {
+    const r = rects(svgs[i]!.source ?? '')
+    const ligneTemps = r.filter(x => x.h === 3)
+    const gris = ligneTemps.find(x => x.fill === '#888' && !x.pale)
+    const teinte = ligneTemps.find(x => x.fill !== '#888')
+    const barre = r.find(x => x.h === 6 && !x.pale) ?? r.find(x => x.h === 6 && x.w < 120)
+    // Gris de 0 à min(usage, temps), teinte de là jusqu'au max ; l'usage est la barre.
+    expect(teinte?.fill).toBe(couleur)
+    expect(teinte?.x).toBe(gris?.w ?? 0)
+    // Temps devant (vert) : le gris s'arrête à l'usage, la teinte va au temps ; usage devant : la teinte finit à l'usage.
+    const usage = barre!.w
+    const gw = gris?.w ?? 0
+    const bout = teinte!.x + teinte!.w
+    if (couleur === '#3fa66b') expect([gw, bout > usage]).toEqual([usage, true])
+    else expect([bout, gw < usage]).toEqual([usage, true])
+    // Géométrie : ligne en haut, 2 px d'écart, barre dessous, hauteur annoncée = viewBox.
+    expect(barre!.y - 3).toBe(2)
+    expect(svgs[i]!.height).toBe(12)
+    expect(svgs[i]!.source).toContain('viewBox="0 0 120 12"')
+  }
   expect(await bureau.find({ type: 'Button' })).toBeUndefined()
   await bureau.unmount()
   const terminal = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
