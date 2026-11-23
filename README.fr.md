@@ -22,8 +22,7 @@ Dans cet ordre, séparés par « · », chacun seulement s'il est connu :
 2. la branche (`⎇`), raccourcie : dernier segment après « / », sans suffixe d'empreinte, 20 caractères au plus
    (`claude/mod-pied-cache-79d924` → `mod-pied-cache`) ; orange sur une branche protégée ; `détachée` pour une tête détachée.
 
-Les limites (5 h, semaine) n'y sont jamais, même en alerte : elles sont dans le bandeau, le panneau, `/sonar` et le
-popover de sonar pour Windows.
+Les limites (5 h, semaine) n'y sont jamais, même en alerte : elles sont dans le bandeau, le panneau et `/sonar`.
 Une seule couleur d'alerte au pied, l'orange, sur la valeur (le rouge est réservé au bandeau et au panneau).
 
 **Le bandeau** (`/sonar bandeau`, en option) au-dessus de la saisie : une jauge par fenêtre et pour le cache. La barre est

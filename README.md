@@ -22,13 +22,13 @@ In this order, separated by "·", each only when known:
 2. the branch (`⎇`), shortened: last segment after "/", without a hash suffix, 20 characters at most
    (`claude/mod-pied-cache-79d924` → `mod-pied-cache`); orange on a protected branch; `detached` for a detached HEAD.
 
-The limits (5h, week) are never there, even in alert: they are in the banner, the pane, `/sonar` and the sonar for
-Windows popover.
+The limits (5h, week) are never there, even in alert: they are in the banner, the pane and `/sonar`.
 A single warning colour in the footer, orange, on the value (red is kept for the banner and the pane).
 
 **The banner** (`/sonar banner`, optional) above the prompt: one gauge per window and for the cache. The bar is usage;
 above each limit, a time line like UI+'s: grey up to where usage and time agree, then green when time is ahead (room to
-spare), orange when usage is ahead (you are using it faster than an even pace), red when the limit is in alert. Then the branch and the cost, in plain text.
+spare), orange when usage is ahead (you are using it faster than an even pace), red when the limit is in alert.
+Then the branch and the cost, in plain text.
 
 **The pane** (`/sonar`): the full detail, gauges included, with reset times, daily budget, cache hit ratio, branch and
 changed files, cost and the usage log file. Close it with its cross. When the pane cannot open, `/sonar` writes that
