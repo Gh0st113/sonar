@@ -8,7 +8,7 @@ A Claude Code **mod** that gives the **Claude Desktop Code tab** what the termin
 It does not repeat what Claude Code already shows (context fill, the 5-hour percentage) and shows only what deserves a
 glance. Three levels of reading:
 
-**The footer** of the prompt (default), between the permission mode and the model name. Short (the app cuts a footer
+**The footer** of the prompt (always shown), between the permission mode and the model name. Short (the app cuts a footer
 that is too long with "…"):
 
 ```
@@ -18,19 +18,19 @@ that is too long with "…"):
 In this order, separated by "·", each only when known:
 
 1. the cache state stuck to the session cost: 🔥 warm, ❄️ cold (orange, the next response will rewrite the whole cache),
-   ❔ uncertain (orange), then the amount;
+   ❔ uncertain (orange), then the amount; with the banner on, the cache moves there and the footer keeps the amount only;
 2. the branch (`⎇`), shortened: last segment after "/", without a hash suffix, 20 characters at most
    (`claude/mod-pied-cache-79d924` → `mod-pied-cache`); orange on a protected branch; `detached` for a detached HEAD.
 
 The limits (5h, week) are never there, even in alert: they are in the banner, the pane and `/sonar`.
 A single warning colour in the footer, orange, on the value (red is kept for the banner and the pane).
 
-**The banner** (`/sonar banner`, optional) above the prompt: one gauge per window and for the cache. The bar is usage;
+**The banner** (`/sonar banner`, optional, on top of the footer) above the prompt: one gauge per window and for the cache, all the same height. The bar is usage;
 above each limit, a time line like UI+'s: grey up to where usage and time agree, then green when time is ahead (room to
 spare), orange when usage is ahead (you are using it faster than an even pace), red when, on top of that, the limit is in alert. The line follows the time actually elapsed; the value's colour
 allows some slack at the start of a window (1 h of 5 h, 1 day of 7) and also follows the absolute thresholds (70 % and 90 % by
 default).
-Then the branch and the cost, in plain text.
+Branch and cost stay in the footer.
 
 **The pane** (`/sonar`): the full detail, gauges included, with reset times, daily budget, cache hit ratio, branch and
 changed files, cost and the usage log file. Close it with its cross. When the pane cannot open, `/sonar` writes that
@@ -45,7 +45,7 @@ cost $12.84
 ```
 
 In the terminal, the banner and the pane are written as text (the terminal draws no gauge). The `hint` and `status`
-placements exist for the terminal; the desktop app does not draw them.
+placements of versions before 0.8.0 are gone: the footer and the banner replace them.
 
 **The sonar extension for Windows and macOS is gone** (removed with mod 0.7.0): since Claude Desktop 6.28899
 (November 2026), the app no longer loads an extension through `REACT_PROFILE`. To remove it from a machine where it was
@@ -91,7 +91,7 @@ Systems: Windows (desktop app and terminal) and Linux (terminal, tried on Ubuntu
 | `week` (7-day limit), reset time, daily budget | `session.measure` | never, even in alert | by **pace**: usage compared with the share of the window already elapsed — orange more than `paceWarn` (5) points ahead, red more than `paceAlert` (15) ahead; and orange from `quotaWarn` (70 %), red from `quotaAlert` (90 %) whatever the pace |
 | `5h`, reset time | `session.measure` | never, even in alert | orange (red in the banner and pane past `paceAlert`) |
 | other limits (e.g. a gateway's `budget`) | `session.measure` | never | absolute thresholds only (no known window length) |
-| `cache` warm (hit ratio, when it goes cold), uncertain, cold | last request of the main thread (`turn.step`, subagents excluded); when a session already under way is opened, its last response read from the session's local transcript (see below) | 1st: the icon, stuck to the cost (🔥 warm, ❄️ cold, ❔ uncertain) | cold in orange |
+| `cache` warm (hit ratio, when it goes cold), uncertain, cold | last request of the main thread (`turn.step`, subagents excluded); when a session already under way is opened, its last response read from the session's local transcript (see below) | 1st: the icon, stuck to the cost (🔥 warm, ❄️ cold, ❔ uncertain); in the banner when it is on | cold in orange |
 | `branch`, repo, changed files | `$.session.repo()` + `git status` (at most every 5 s, 3 s timeout) | 2nd: `⎇` and the shortened name | orange on a protected branch |
 | session `cost` estimate (list price) | `session.measure` | 1st, after the cache icon (`🔥 $2.40`); nothing when 0 (new session, or an old one whose cost the engine did not keep) | — |
 
@@ -120,20 +120,20 @@ shift it. With neither `tail` nor that record (Windows terminal): the cache stay
 
 | Command | Effect |
 |---|---|
-| `/sonar` | opens the detail pane; answers with the current placement, cache lifetime and help |
-| `/sonar footer` (`pied`) | the essentials in the prompt footer (default); in the terminal, with the mode labels |
-| `/sonar hint` (`indice`) | the detail in place of the hint line under the prompt |
-| `/sonar status` (`ligne`) | the detail as a pinned status line under the prompt (`$.ui.status`) |
-| `/sonar banner` (`bandeau`) | the gauges above the prompt |
+| `/sonar` | opens the detail pane; answers with what is shown (footer, or footer + banner), cache lifetime and help |
+| `/sonar banner` (`bandeau`) | adds the banner (limits and cache as gauges) above the prompt; the footer keeps cost and branch |
+| `/sonar banner off` (`bandeau off`) | removes the banner: footer only (default) |
 | `/sonar ttl 5m` / `1h` / `auto` | prompt cache lifetime; `auto` infers it |
-| `/sonar hide` / `show` (`masquer` / `afficher`) | hide / bring back |
+| `/sonar hide` / `show` (`masquer` / `afficher`) | hide footer and banner / bring them back; `/sonar banner` brings them back too |
 
-The placement and a forced `ttl` are kept across sessions.
+The banner choice and a forced `ttl` are kept across sessions; a placement chosen before 0.8.0 is carried over
+(`banner` → banner on, the others → footer only).
 
 ## Options
 
 Set in `settings.json` under `pluginConfigs["sonar@sonar-mods"].options` (the key is `<plugin>@<marketplace>` once installed; or the config menu where the host has one):
-`language` (`auto` / `en` / `fr`), `clock` (`auto` / `24h` / `12h`), `placement`, `segments` (comma-separated:
+`language` (`auto` / `en` / `fr`), `clock` (`auto` / `24h` / `12h`), `banner` (`true`: banner on by default; the old
+`placement` option set to `banner` works too), `segments` (comma-separated:
 `quotas,cache,repo,cost`), `paceWarn`, `paceAlert`, `quotaWarn`, `quotaAlert`, `protectedBranches`.
 An invalid value falls back to its default; `contextWarn`, `contextAlert` and the `context` segment of earlier versions
 are ignored.

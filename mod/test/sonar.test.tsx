@@ -34,12 +34,15 @@ const PANNEAU = {
 // Le « moteur » sous le mod : ce que le test répond à ses appels, et le dessin par défaut de chaque composant.
 // `panneau` : ce que répond $.ui.open (placé ou non).
 // `tail` : ce que répond `tail -c` (Linux, macOS) ; absent, tail est introuvable (Windows). `argvTail` : son dernier appel.
+// `store` : ce que le store du mod contient déjà (choix d'une version d'avant). `statuts` : appels à $.ui.status.
 let argvTail: string[] = []
-function moteur(on: On, opts: { git?: 'ok' | 'main' | 'panne' | 'hors-depot'; panneau?: boolean; tail?: string } = {}) {
+let statuts = 0
+function moteur(on: On, opts: { git?: 'ok' | 'main' | 'panne' | 'hors-depot'; panneau?: boolean; tail?: string; store?: Record<string, unknown> } = {}) {
   const horloge = mock.clock(on, { now: T0 })
   // Remis à zéro : un appel d'un test précédent ne doit pas passer pour celui du test en cours.
   argvTail = []
-  mock.store(on)
+  statuts = 0
+  mock.store(on, opts.store)
   on('command.register', () => ({ value: { command: 'sonar' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.usage', () => ({ value: { startedAt: T0, context: { window: 200_000 }, rateLimits: [] } }))
@@ -56,7 +59,10 @@ function moteur(on: On, opts: { git?: 'ok' | 'main' | 'panne' | 'hors-depot'; pa
   })
   on('session.measure', (_, e) => ({ changed: e.changed }))
   on('session.end', () => ({ sessionId: 's1' }))
-  on('ui.status', () => ({ value: undefined }))
+  on('ui.status', () => {
+    statuts++
+    return { value: undefined }
+  })
   on('ui.open', () => ({ value: opts.panneau ? { isPlaced: true } : { isPlaced: false, reason: 'pas de surface' } }))
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
@@ -162,6 +168,24 @@ test('cache : la réponse du fil principal compte, celle d’un sous-agent non ;
   expect((await ui.find({ type: 'Text', text: /^❄️ 1,23 \$$/ }))?.props.color).toBe('warning')
   await ui.unmount()
   expect(await commande($, '')).toContain('cache froid')
+  // Bandeau actif : le cache y passe, le pied garde coût et branche sans l'icône ; retiré, l'icône revient.
+  expect(await commande($, 'bandeau')).toBe('Bandeau affiché : quotas et cache au-dessus de la saisie, coût et branche au pied.')
+  expect(await pied($, 'desktop')).toBe('1,23 $ · ⎇ x')
+  expect(await pied($, 'terminal')).toBe('1,23 $ · ⎇ x')
+  const haut = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
+  expect((await haut.find({ type: 'Text', text: /^5 h/ }))?.text).toMatch(/ {3}cache froid$/)
+  await haut.unmount()
+  // Sur le bureau, la jauge du cache (sans ligne de temps) a la hauteur des quotas : les barres sont alignées.
+  const bureau = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  const svgs = (await bureau.findAll({ type: 'Svg' } as never) as { props?: { source?: string; height?: number; alt?: string } }[]).map(s => s.props ?? {})
+  await bureau.unmount()
+  expect(svgs.map(s => s.alt)).toEqual(['5 h 23 %', 'semaine 41 %', 'cache froid'])
+  expect(svgs.map(s => s.height)).toEqual([12, 12, 12])
+  const yBarre = (s: string) => [...s.matchAll(/<rect y="(\d+)"/g)].map(m => Number(m[1]))
+  expect(yBarre(svgs[2]!.source ?? '')).toEqual(yBarre(svgs[0]!.source ?? '').slice(0, 1))
+  expect(svgs[2]!.source).toContain('viewBox="0 0 120 12"')
+  expect(await commande($, 'bandeau off')).toBe('Bandeau retiré : le pied seul.')
+  expect(await pied($, 'desktop')).toBe('❄️ 1,23 $ · ⎇ x')
 })
 
 // Journal local d'une session, tel que Claude Code l'écrit : une ligne JSON par événement.
@@ -309,7 +333,7 @@ test('fiche de Claude Desktop d’une autre session : rien', FR, async ($, on) =
   expect(await pied($, 'desktop')).toBe('1,23 $')
 })
 
-test('/sonar bandeau : jauges sur le bureau, une ligne sur le terminal, couleur sur la valeur en alerte ; masquer puis afficher', FR, async ($, on) => {
+test('/sonar bandeau : quotas en jauges sur le bureau, une ligne sur le terminal, le pied garde coût et branche ; masquer puis afficher, bandeau off', FR, async ($, on) => {
   moteur(on)
   await demarrer($)
   // Semaine très en avance : alerte.
@@ -350,7 +374,10 @@ test('/sonar bandeau : jauges sur le bureau, une ligne sur le terminal, couleur 
     expect(svgs[i]!.source).toContain('viewBox="0 0 120 12"')
   }
   expect(await bureau.find({ type: 'Button' })).toBeUndefined()
+  // Branche et coût sont au pied, plus dans le bandeau.
+  expect(await bureau.find({ type: 'Text', text: /branche|coût|1,23/ })).toBeUndefined()
   await bureau.unmount()
+  expect(await pied($, 'desktop')).toBe('1,23 $ · ⎇ x')
   // Usage devant sans alerte (5 h : 65 % pour 60 % écoulé, sous les seuils) : orange, jamais rouge ni vert.
   await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 65 }, QUOTAS[1]!] })
   const avance = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
@@ -360,30 +387,67 @@ test('/sonar bandeau : jauges sur le bureau, une ligne sur le terminal, couleur 
   await avance.unmount()
   await $.session.measure({ ...MESURE, rateLimits: [QUOTAS[0]!, { ...QUOTAS[1]!, percentUsed: 90 }] })
   const terminal = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
-  expect((await terminal.find({ type: 'Text', text: /^5 h/ }))?.text).toMatch(/^5 h 23 % \(remise \d\d:\d\d\) {3}semaine 90 % \(.+\) {3}branche feat\/x \(projet-a, 2 modifiés\) {3}coût 1,23 \$$/)
+  expect((await terminal.find({ type: 'Text', text: /^5 h/ }))?.text).toMatch(/^5 h 23 % \(remise \d\d:\d\d\) {3}semaine 90 % \(.+\)$/)
   expect(await terminal.find({ type: 'Svg' } as never)).toBeUndefined()
   await terminal.unmount()
+  expect(await pied($, 'terminal')).toBe('1,23 $ · ⎇ x')
+  // Masquer cache le bandeau et le pied ; afficher remet les deux.
   await commande($, 'masquer')
   const cache = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
   expect(await cache.find({ type: 'Text', text: /semaine/ })).toBeUndefined()
   await cache.unmount()
+  expect(await pied($, 'desktop')).toBe('')
   await commande($, 'afficher')
   const remis = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
   expect(await remis.find({ type: 'Text', text: /semaine/ })).toBeDefined()
   await remis.unmount()
-  // Le pied n'affiche plus rien : l'emplacement est unique.
-  expect(await pied($, 'desktop')).toBe('')
+  expect(await pied($, 'desktop')).toBe('1,23 $ · ⎇ x')
+  // Bandeau retiré : la zone revient au moteur, le pied reste ; « bandeau » pendant un masquage réaffiche tout.
+  await commande($, 'bandeau off')
+  const retire = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  expect((await retire.find({ type: 'Text' }))?.text).toBe('(moteur)')
+  await retire.unmount()
+  expect(await pied($, 'desktop')).toBe('1,23 $ · ⎇ x')
+  await commande($, 'masquer')
+  await commande($, 'bandeau')
+  expect(await pied($, 'desktop')).toBe('1,23 $ · ⎇ x')
+  const revenu = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  expect(await revenu.find({ type: 'Text', text: /semaine/ })).toBeDefined()
+  await revenu.unmount()
 })
 
-test('/sonar indice : remplace la ligne d’aide sous la saisie', FR, async ($, on) => {
+test('pied, indice, ligne : plus des choix de /sonar (aide affichée) ; ligne d’aide et ligne d’état restent au moteur', FR, async ($, on) => {
   moteur(on)
   await demarrer($)
-  await commande($, 'indice')
+  for (const mot of ['pied', 'indice', 'ligne', 'hint', 'status', 'bandeau oui']) {
+    const r = await commande($, mot)
+    expect(r).toContain(`argument inconnu : « ${mot} »`)
+    expect(r).toContain('/sonar bandeau | bandeau off')
+  }
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...INDICE, surface })
-    expect((await ui.find({ type: 'Text', text: /^5 h/ }))?.text).toMatch(/^5 h 23 % .* {3}coût 1,23 \$$/)
+    expect((await ui.find({ type: 'Text' }))?.text).toBe('? for shortcuts')
     await ui.unmount()
   }
+  expect(statuts).toBe(0)
+})
+
+test('choix gardé d’une version d’avant : emplacement « bandeau » → bandeau actif ; un autre → pied seul', FR, async ($, on) => {
+  moteur(on, { store: { emplacement: 'bandeau' } })
+  await demarrer($)
+  const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^5 h/ }))).toBeDefined()
+  await ui.unmount()
+  expect(await commande($, '')).toContain('Sonar : pied + bandeau')
+})
+
+test('choix gardé d’une version d’avant : emplacement « indice » → pied seul, même avec l’option bandeau', { options: { ...FR.options, banner: true } }, async ($, on) => {
+  moteur(on, { store: { emplacement: 'indice' } })
+  await demarrer($)
+  const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text' }))?.text).toBe('(moteur)')
+  await ui.unmount()
+  expect(await pied($, 'desktop')).toBe('1,23 $ · ⎇ x')
 })
 
 test('git en panne ou hors dépôt : pas de branche, le reste s’affiche', FR, async ($, on) => {
@@ -393,7 +457,7 @@ test('git en panne ou hors dépôt : pas de branche, le reste s’affiche', FR, 
   expect(await commande($, '')).not.toMatch(/^branche /m)
 })
 
-test('bandeau : rien de sonar hors emplacement « bandeau » (ni image ni cadre), les autres mods gardés', FR, async ($, on) => {
+test('bandeau : rien de sonar tant qu’il n’est pas activé (ni image ni cadre), les autres mods gardés', FR, async ($, on) => {
   moteur(on)
   await demarrer($)
   const vue = async () => {
@@ -403,7 +467,7 @@ test('bandeau : rien de sonar hors emplacement « bandeau » (ni image ni cadre)
     await ui.unmount()
     return { svgs: svgs.length, texte }
   }
-  // Emplacement par défaut (pied) : le bandeau est celui du moteur, tel quel (« (moteur) » ici, la ligne 🐋 de baleine
+  // Par défaut (pied seul) : le bandeau est celui du moteur, tel quel (« (moteur) » ici, la ligne 🐋 de baleine
   // en vrai). Avant la 0.7.0, une image invisible pour l'extension Windows y restait et laissait un cadre vide.
   expect(await vue()).toEqual({ svgs: 0, texte: '(moteur)' })
   // Bandeau affiché : les jauges, puis les autres mods ; sonar masqué : le moteur seul.
@@ -413,7 +477,7 @@ test('bandeau : rien de sonar hors emplacement « bandeau » (ni image ni cadre)
   expect(affiche.svgs).toBeGreaterThan(0)
   await commande($, 'masquer')
   expect(await vue()).toEqual({ svgs: 0, texte: '(moteur)' })
-  // Le pied ne porte plus rien : un mode natif, rien de sonar, le dessin du moteur.
+  // Masqué, le pied ne porte rien de sonar non plus : un mode natif, le dessin du moteur.
   expect(await pied($, 'desktop', ['focus'])).toBe('focus')
   // Terminal : pas de jauge dessinée ; le bandeau de sonar garde aussi les autres mods.
   await commande($, 'afficher')
@@ -444,18 +508,29 @@ test('quota remis à zéro pendant l’attente : écrit en toutes lettres au tic
   expect(await commande($, '')).toContain('5 h remis à zéro')
 })
 
-test('options : anglais, segments choisis (« context » ignoré), emplacement par défaut « banner »', { options: { language: 'en', clock: '24h', segments: 'context,cost', placement: 'banner' } }, async ($, on) => {
+test('options : anglais, segments choisis (« context » ignoré), bandeau actif par l’option', { options: { language: 'en', clock: '24h', segments: 'context,quotas,cost', banner: true } }, async ($, on) => {
   moteur(on)
   await demarrer($)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BANDEAU, surface })
-    expect((await ui.find({ type: 'Text', text: /cost/ }))?.text).toBe('cost $1.23')
-    expect(await ui.find({ type: 'Text', text: /5h|week|branch|ctx|34/ })).toBeUndefined()
+    expect((await ui.find({ type: 'Text', text: /^5h/ }))?.text).toMatch(/^5h 23%/)
+    expect(await ui.find({ type: 'Text', text: /cost|branch|ctx|34/ })).toBeUndefined()
     await ui.unmount()
   }
-  // Rien dans le pied : l'emplacement par défaut vient de l'option.
-  expect(await pied($, 'desktop')).toBe('')
-  expect(await commande($, 'footer')).toBe('Sonar shown: footer.')
+  // Le coût au pied ; pas de branche (segment non choisi).
+  expect(await pied($, 'desktop')).toBe('$1.23')
+  expect(await commande($, '')).toContain('Sonar: footer + banner')
+  expect(await commande($, 'footer')).toContain('unknown argument: "footer"')
+  expect(await commande($, 'banner off')).toBe('Banner removed: footer only.')
+  expect(await commande($, 'banner')).toBe('Banner shown: limits and cache above the prompt, cost and branch in the footer.')
+})
+
+test('ancienne option placement = banner : bandeau actif', { options: { ...FR.options, placement: 'banner' } }, async ($, on) => {
+  moteur(on)
+  await demarrer($)
+  const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /^5 h/ })).toBeDefined()
+  await ui.unmount()
 })
 
 // Discriminant là où Intl du moteur répond en-US (Linux : rouge prouvé sous Ubuntu sans le correctif) ; sous un Windows
@@ -464,7 +539,7 @@ test('Linux / macOS en terminal : la langue vient de LANG (Intl y répond en-US)
   moteur(on)
   mock.env(on, { LANG: 'fr_FR.UTF-8' })
   await demarrer($)
-  expect(await commande($, 'pied')).toBe('Sonar affiché : pied.')
+  expect(await commande($, 'bandeau off')).toBe('Bandeau retiré : le pied seul.')
   expect(await pied($, 'terminal')).toContain('1,23 $')
 })
 
@@ -472,7 +547,7 @@ test('LANG en français mais option « en » : l’option l’emporte', { option
   moteur(on)
   mock.env(on, { LANG: 'fr_FR.UTF-8' })
   await demarrer($)
-  expect(await commande($, 'footer')).toBe('Sonar shown: footer.')
+  expect(await commande($, 'banner off')).toBe('Banner removed: footer only.')
 })
 
 test('hors abonnement : ni quotas ni coût connus, le pied reste vide', FR, async ($, on) => {

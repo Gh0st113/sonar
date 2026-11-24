@@ -8,7 +8,7 @@ Un **mod** Claude Code qui donne à **l'onglet Code de Claude Desktop** ce que l
 Il ne répète pas ce que Claude Code affiche déjà (remplissage du contexte, pourcentage des 5 h) et ne montre que ce qui
 mérite un coup d'œil. Trois niveaux de lecture :
 
-**Le pied** de la zone de saisie (par défaut), entre le mode de permission et le nom du modèle. Court (l'appli coupe un
+**Le pied** de la zone de saisie (toujours affiché), entre le mode de permission et le nom du modèle. Court (l'appli coupe un
 pied trop long par « … ») :
 
 ```
@@ -18,19 +18,19 @@ pied trop long par « … ») :
 Dans cet ordre, séparés par « · », chacun seulement s'il est connu :
 
 1. l'état du cache collé au coût de la session : 🔥 chaud, ❄️ froid (orange, la prochaine réponse réécrira tout le cache),
-   ❔ incertain (orange), puis le montant ;
+   ❔ incertain (orange), puis le montant ; avec le bandeau, le cache y passe et le pied n'a plus que le montant ;
 2. la branche (`⎇`), raccourcie : dernier segment après « / », sans suffixe d'empreinte, 20 caractères au plus
    (`claude/mod-pied-cache-79d924` → `mod-pied-cache`) ; orange sur une branche protégée ; `détachée` pour une tête détachée.
 
 Les limites (5 h, semaine) n'y sont jamais, même en alerte : elles sont dans le bandeau, le panneau et `/sonar`.
 Une seule couleur d'alerte au pied, l'orange, sur la valeur (le rouge est réservé au bandeau et au panneau).
 
-**Le bandeau** (`/sonar bandeau`, en option) au-dessus de la saisie : une jauge par fenêtre et pour le cache. La barre est
+**Le bandeau** (`/sonar bandeau`, en option, en plus du pied) au-dessus de la saisie : une jauge par fenêtre et pour le cache, à la même hauteur. La barre est
 l'usage ; au-dessus de chaque quota, une ligne de temps comme celle de UI+ : grise jusqu'où usage et temps concordent,
 puis verte quand le temps est devant (de la marge), orange quand l'usage est devant (vous consommez plus vite que le rythme
 régulier), rouge si, en plus, le quota est en alerte. La ligne suit le temps réellement écoulé ; la couleur de la valeur
 accorde une marge en début de fenêtre (1 h sur 5 h, 1 jour sur 7) et tient compte des seuils absolus (70 % et 90 % par défaut).
-Viennent ensuite la branche et le coût, en clair.
+Branche et coût restent au pied.
 
 **Le panneau** (`/sonar`) : tout le détail, jauges comprises, avec les heures de remise à zéro, le budget par jour, le taux
 de lecture du cache, la branche et les fichiers modifiés, le coût et le fichier des relevés. Il se ferme par sa croix.
@@ -45,7 +45,7 @@ coût 12,84 $
 ```
 
 Dans le terminal, le bandeau et le panneau s'écrivent en texte (le terminal ne dessine pas de jauge). Les emplacements
-`indice` et `ligne` servent au terminal ; l'appli de bureau ne les dessine pas.
+`indice` et `ligne` des versions d'avant la 0.8.0 n'existent plus : le pied et le bandeau les remplacent.
 
 **L'extension sonar pour Windows et macOS n'existe plus** (retirée avec le mod 0.7.0) : depuis la version 6.28899 de
 Claude Desktop (novembre 2026), l'appli ne charge plus d'extension par `REACT_PROFILE`. Pour la retirer d'une machine où
@@ -91,7 +91,7 @@ Systèmes : Windows (appli et terminal) et Linux (terminal, essayé sous Ubuntu)
 | `semaine` (quota sur 7 jours), heure de remise, budget par jour | `session.measure` | jamais, même en alerte | selon le **rythme** : consommation comparée à la part de la fenêtre déjà écoulée — orange à plus de `paceWarn` (5) points d'avance, rouge à plus de `paceAlert` (15) ; et orange dès `quotaWarn` (70 %), rouge dès `quotaAlert` (90 %) quel que soit le rythme |
 | `5 h`, heure de remise | `session.measure` | jamais, même en alerte | orange (rouge au bandeau et au panneau au-delà de `paceAlert`) |
 | autres limites (ex. `budget` d'une passerelle) | `session.measure` | jamais | seuils absolus seulement (durée de fenêtre inconnue) |
-| `cache` chaud (taux de lecture, heure où il refroidit), incertain, froid | dernière requête du fil principal (`turn.step`, sous-agents exclus) ; à l'ouverture d'une session déjà commencée, sa dernière réponse lue dans le journal local de la session (voir plus bas) | 1ᵉʳ : l'icône, collée au coût (🔥 chaud, ❄️ froid, ❔ incertain) | froid en orange |
+| `cache` chaud (taux de lecture, heure où il refroidit), incertain, froid | dernière requête du fil principal (`turn.step`, sous-agents exclus) ; à l'ouverture d'une session déjà commencée, sa dernière réponse lue dans le journal local de la session (voir plus bas) | 1ᵉʳ : l'icône, collée au coût (🔥 chaud, ❄️ froid, ❔ incertain) ; au bandeau quand il est actif | froid en orange |
 | `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | 2ᵉ : `⎇` et le nom raccourci | orange sur une branche protégée |
 | `coût` estimé de la session (prix catalogue) | `session.measure` | 1ᵉʳ, après l'icône du cache (`🔥 2,40 $`) ; rien s'il vaut 0 (session neuve, ou ancienne session dont le moteur n'a pas gardé le coût) | — |
 
@@ -121,20 +121,20 @@ cache reste inconnu jusqu'au prochain message.
 
 | Commande | Effet |
 |---|---|
-| `/sonar` | ouvre le panneau de détail ; répond par l'emplacement actuel, la durée du cache et l'aide |
-| `/sonar pied` (`footer`) | l'essentiel dans le pied de la saisie (par défaut) ; dans le terminal, avec les libellés de mode |
-| `/sonar indice` (`hint`) | le détail à la place de la ligne d'aide sous la saisie |
-| `/sonar ligne` (`status`) | le détail en ligne d'état fixe sous la saisie (`$.ui.status`) |
-| `/sonar bandeau` (`banner`) | les jauges au-dessus de la saisie |
+| `/sonar` | ouvre le panneau de détail ; répond par l'affichage actuel (pied, ou pied + bandeau), la durée du cache et l'aide |
+| `/sonar bandeau` (`banner`) | ajoute le bandeau (quotas et cache en jauges) au-dessus de la saisie ; le pied garde coût et branche |
+| `/sonar bandeau off` (`banner off`) | retire le bandeau : le pied seul (par défaut) |
 | `/sonar ttl 5m` / `1h` / `auto` | durée de vie du cache ; `auto` la déduit |
-| `/sonar masquer` / `afficher` (`hide` / `show`) | masquer / réafficher |
+| `/sonar masquer` / `afficher` (`hide` / `show`) | masquer pied et bandeau / les réafficher ; `/sonar bandeau` réaffiche aussi |
 
-L'emplacement et une `ttl` forcée sont gardés d'une session à l'autre.
+Le choix du bandeau et une `ttl` forcée sont gardés d'une session à l'autre ; l'emplacement choisi avant la 0.8.0
+est repris (`bandeau` → bandeau actif, les autres → pied seul).
 
 ## Options
 
 Dans `settings.json`, sous `pluginConfigs["sonar@sonar-mods"].options` (la clé est `<plugin>@<catalogue>` une fois installé ; ou le menu de configuration quand l'hôte en a un) :
-`language` (`auto` / `en` / `fr`), `clock` (`auto` / `24h` / `12h`), `placement`, `segments` (séparés par des virgules :
+`language` (`auto` / `en` / `fr`), `clock` (`auto` / `24h` / `12h`), `banner` (`true` : bandeau actif par défaut ; l'ancienne
+option `placement` à `banner` vaut aussi), `segments` (séparés par des virgules :
 `quotas,cache,repo,cost`), `paceWarn`, `paceAlert`, `quotaWarn`, `quotaAlert`, `protectedBranches`.
 Une valeur invalide revient à sa valeur par défaut ; `contextWarn`, `contextAlert` et le segment `context` des versions
 précédentes sont ignorés.
