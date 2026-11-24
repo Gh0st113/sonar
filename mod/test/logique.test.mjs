@@ -6,7 +6,7 @@ import {
   rythme, etatCache, deduireTtl, elementsPied, jauges, ligne, lireStatut, nomDepot, lireCommande, lireConfig,
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
   releve, ajouterReleve, dernierReleve, cheminJournal, cheminArchive, isoUtc, majJournal, besoinMaison, TAILLE_MAX_JOURNAL,
-  chargeExtension, texteExtension, PREFIXE_EXTENSION, derniereReponse, brancheCourte, SEP_PIED, MARGE_ENVOI_MS, dossierProjet,
+  derniereReponse, brancheCourte, SEP_PIED, MARGE_ENVOI_MS, dossierProjet,
   reponseFiche, localeSysteme, langueHote,
 } from '../hooks/logique.mjs';
 
@@ -148,7 +148,6 @@ test('cache d’après la fiche de Claude Desktop (heure seule) : jamais « rien
   assert.equal(c.auMoins, true);
   assert.equal(etatCache(d, undefined, T0 + 10 * 60_000).etat, 'incertain');
   assert.equal(etatCache(d, TTL['1h'], T0 + H).etat, 'froid');
-  assert.equal(chargeExtension({ cache: d }, T0 + 60_000).cache.taux, undefined);
 });
 
 test('reponseFiche : lastActivityAt de la bonne session, envoi estimé ; sinon rien', () => {
@@ -242,13 +241,11 @@ test('pied : cas normal = icône du cache et coût, puis la branche ; jamais la 
   assert.ok([...pied({ ...TOUT, cout: 12.4, depot: { nom: 'p', branche: 'fix/cache-reprise-fiche', modifies: 2 } })].length <= 35);
 });
 
-test('coût nul (vieille session rechargée à 0, session neuve) : rien au pied, au détail ni au porteur', () => {
+test('coût nul (vieille session rechargée à 0, session neuve) : rien au pied ni au détail', () => {
   const zero = { ...TOUT, cout: 0, cache: { ...TOUT.cache, a: T0 - 2 * H } };
   assert.equal(pied(zero), '❄️ · ⎇ x');
   assert.equal(pied({ cout: 0 }), '');
   assert.ok(!jauges(zero, T0, FR).some(j => j.cle === 'cout'));
-  assert.equal(chargeExtension(zero, T0).cout, undefined);
-  assert.equal(chargeExtension({ ...zero, cout: 0.004 }, T0).cout, 0);
 });
 
 test('pied : icônes du cache, branche raccourcie ; les limites (5 h, semaine) jamais, même en alerte', () => {
@@ -408,34 +405,6 @@ test('journal des quotas : chemin du fichier et de l’archive', () => {
   assert.equal(lireConfig({ quotaLog: true, quotaLogPath: 'D:/q.jsonl' }).journal, 'D:/q.jsonl');
 });
 
-test('données pour l\'extension : sans langue, segments respectés', () => {
-  const T = Date.parse('2026-10-30T20:00:00Z');
-  const d = {
-    quotas: [{ kind: 'seven_day', percentUsed: 41 }],
-    cout: 4.004,
-    cache: { a: T - 60_000, lu: 99, ecrit: 1, neuf: 0, modele: 'm' },
-    ttlMs: TTL['1h'],
-    modele: 'm',
-    depot: { nom: 'mon-depot', branche: 'master', modifies: 2 },
-  };
-  const c = chargeExtension(d, T);
-  assert.deepEqual(c, {
-    a: T,
-    cache: { etat: 'chaud', expire: T - 60_000 + H, taux: 0.99 },
-    depot: { nom: 'mon-depot', modifies: 2, branche: 'master' },
-    cout: 4,
-  });
-  assert.equal(texteExtension(c), PREFIXE_EXTENSION + JSON.stringify(c));
-  assert.ok(texteExtension(c).startsWith('sonar:1 {'));
-  // Durée de vie inconnue : « au moins » ; autre modèle ; HEAD détachée ; rien sans mesure.
-  assert.deepEqual(chargeExtension({ ...d, ttlMs: undefined }, T).cache, { etat: 'chaud', expire: T - 60_000 + 5 * 60_000, auMoins: true, taux: 0.99 });
-  assert.deepEqual(chargeExtension({ ...d, modele: 'autre' }, T).cache, { etat: 'froid', autreModele: true });
-  assert.deepEqual(chargeExtension({ ...d, depot: { nom: 'r', detachee: true, modifies: 0 } }, T).depot, { nom: 'r', modifies: 0, detachee: true });
-  assert.deepEqual(chargeExtension({ quotas: [] }, T), { a: T });
-  // Segments désactivés : absents.
-  assert.deepEqual(chargeExtension(d, T, { ...DEFAUTS, segments: ['quotas', 'cout'] }), { a: T, cout: 4 });
-});
-
 // Journal de session tel que Claude Code l'écrit : une ligne JSON par événement, un bloc de réponse par ligne,
 // la requête envoyée (`api-request`) reliée à sa réponse par `requestRef`.
 const ts = (ms) => new Date(ms).toISOString();
@@ -484,5 +453,5 @@ test('session ouverte avant le mod : dernière réponse du fil principal lue dan
   assert.equal(derniereReponse(jsonl(util(T0), 'pas du json')), undefined);
   // Ce que la lecture donne s'affiche comme une réponse vue en direct.
   const { reponse } = derniereReponse(t);
-  assert.equal(chargeExtension({ cache: reponse, ttlMs: TTL['1h'] }, T0 - 2 * H + 60_000, FR).cache.etat, 'chaud');
+  assert.equal(etatCache(reponse, TTL['1h'], T0 - 2 * H + 60_000).etat, 'chaud');
 });

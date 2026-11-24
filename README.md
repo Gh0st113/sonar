@@ -22,13 +22,14 @@ In this order, separated by "·", each only when known:
 2. the branch (`⎇`), shortened: last segment after "/", without a hash suffix, 20 characters at most
    (`claude/mod-pied-cache-79d924` → `mod-pied-cache`); orange on a protected branch; `detached` for a detached HEAD.
 
-The limits (5h, week) are never there, even in alert: they are in the banner, the pane, `/sonar` and the sonar for
-Windows popover.
+The limits (5h, week) are never there, even in alert: they are in the banner, the pane and `/sonar`.
 A single warning colour in the footer, orange, on the value (red is kept for the banner and the pane).
 
-**The banner** (`/sonar banner`, optional) above the prompt: one gauge per window and for the cache. The bar is usage,
-the small vertical tick the share of the window already elapsed: bar past the tick = you are using it faster than an even
-pace. Then the branch and the cost, in plain text.
+**The banner** (`/sonar banner`, optional) above the prompt: one gauge per window and for the cache. The bar is usage;
+above each limit, a time line like UI+'s: grey up to where usage and time agree, then green when time is ahead (room to
+spare), orange when usage is ahead (you are using it faster than an even pace), red when, on top of that, the limit is in alert. The line follows the time actually elapsed; the value's colour
+allows some slack at the start of a window (1 h of 5 h, 1 day of 7) and also follows the absolute thresholds (70 % and 90 % by default).
+Then the branch and the cost, in plain text.
 
 **The pane** (`/sonar`): the full detail, gauges included, with reset times, daily budget, cache hit ratio, branch and
 changed files, cost and the usage log file. Close it with its cross. When the pane cannot open, `/sonar` writes that
@@ -93,12 +94,7 @@ Systems: Windows (desktop app and terminal) and Linux (terminal, tried on Ubuntu
 | `branch`, repo, changed files | `$.session.repo()` + `git status` (at most every 5 s, 3 s timeout) | 2nd: `⎇` and the shortened name | orange on a protected branch |
 | session `cost` estimate (list price) | `session.measure` | 1st, after the cache icon (`🔥 $2.40`); nothing when 0 (new session, or an old one whose cost the engine did not keep) | — |
 
-The mod shows context nowhere: Claude Code already does (the optional sonar for Windows brings UI+'s context block into
-the circle's popover).
-
-On the desktop, the banner also carries, whatever the placement, a transparent 1-pixel image whose alt text holds the
-cache, branch and cost as JSON (`sonar:1 {…}`): that is what sonar for Windows reads. Nothing visible; a screen
-reader may still announce it.
+The mod shows context nowhere: Claude Code already does.
 
 Cache lifetime: inferred from responses (a cache read after more than 6 minutes proves 1 h; a full rewrite points to 5 min),
 or told by the engine on a model switch, or forced with `/sonar ttl`. Until it is known, the cache is shown warm for 5 minutes

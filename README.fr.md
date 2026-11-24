@@ -22,13 +22,14 @@ Dans cet ordre, séparés par « · », chacun seulement s'il est connu :
 2. la branche (`⎇`), raccourcie : dernier segment après « / », sans suffixe d'empreinte, 20 caractères au plus
    (`claude/mod-pied-cache-79d924` → `mod-pied-cache`) ; orange sur une branche protégée ; `détachée` pour une tête détachée.
 
-Les limites (5 h, semaine) n'y sont jamais, même en alerte : elles sont dans le bandeau, le panneau, `/sonar` et le
-popover de sonar pour Windows.
+Les limites (5 h, semaine) n'y sont jamais, même en alerte : elles sont dans le bandeau, le panneau et `/sonar`.
 Une seule couleur d'alerte au pied, l'orange, sur la valeur (le rouge est réservé au bandeau et au panneau).
 
 **Le bandeau** (`/sonar bandeau`, en option) au-dessus de la saisie : une jauge par fenêtre et pour le cache. La barre est
-l'usage, le petit trait vertical la part de la fenêtre déjà écoulée : barre au-delà du trait = vous consommez plus vite que
-le rythme régulier. Viennent ensuite la branche et le coût, en clair.
+l'usage ; au-dessus de chaque quota, une ligne de temps comme celle de UI+ : grise jusqu'où usage et temps concordent,
+puis verte quand le temps est devant (de la marge), orange quand l'usage est devant (vous consommez plus vite que le rythme
+régulier), rouge si, en plus, le quota est en alerte. La ligne suit le temps réellement écoulé ; la couleur de la valeur
+accorde une marge en début de fenêtre (1 h sur 5 h, 1 jour sur 7) et tient compte des seuils absolus (70 % et 90 % par défaut). Viennent ensuite la branche et le coût, en clair.
 
 **Le panneau** (`/sonar`) : tout le détail, jauges comprises, avec les heures de remise à zéro, le budget par jour, le taux
 de lecture du cache, la branche et les fichiers modifiés, le coût et le fichier des relevés. Il se ferme par sa croix.
@@ -93,12 +94,7 @@ Systèmes : Windows (appli et terminal) et Linux (terminal, essayé sous Ubuntu)
 | `branche`, dépôt, fichiers modifiés | `$.session.repo()` + `git status` (au plus toutes les 5 s, délai 3 s) | 2ᵉ : `⎇` et le nom raccourci | orange sur une branche protégée |
 | `coût` estimé de la session (prix catalogue) | `session.measure` | 1ᵉʳ, après l'icône du cache (`🔥 2,40 $`) ; rien s'il vaut 0 (session neuve, ou ancienne session dont le moteur n'a pas gardé le coût) | — |
 
-Le mod n'affiche le contexte nulle part : Claude Code le montre déjà (l'extension sonar pour Windows, en option, reprend le bloc
-contexte de UI+ dans le popover du cercle).
-
-Sur le bureau, le bandeau porte aussi, quel que soit l'emplacement choisi, une image transparente de 1 pixel dont le texte
-alternatif contient le cache, la branche et le coût en JSON (`sonar:1 {…}`) : c'est ce que lit l'extension sonar pour Windows.
-Rien de visible ; un lecteur d'écran peut toutefois l'annoncer.
+Le mod n'affiche le contexte nulle part : Claude Code le montre déjà.
 
 Durée de vie du cache : déduite des réponses (une lecture du cache après plus de 6 minutes prouve 1 h ; une réécriture complète
 indique 5 min), donnée par le moteur lors d'un changement de modèle, ou forcée par `/sonar ttl`. Tant qu'elle est inconnue,
