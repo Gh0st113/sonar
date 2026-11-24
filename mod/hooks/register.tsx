@@ -251,7 +251,8 @@ const LIGNE_TEMPS = { hauteur: 3, ecart: 2 }
 const RYTHME = { marge: '#3fa66b', avance: '#e0913a', alerte: '#e5484d' } as const
 // La barre est dessinée 1 px sous le haut de sa boîte : la ligne de temps empiète de ce pixel pour garder l'écart annoncé.
 const hauteurJauge = (repere: number | undefined) => JAUGE.hauteur + (repere === undefined ? 0 : LIGNE_TEMPS.hauteur + LIGNE_TEMPS.ecart - 1)
-function svgJauge(part: number, repere: number | undefined, niveau: Morceau['niveau']) {
+// `total` : hauteur de l'image ; plus grande que la sienne, la jauge est poussée vers le bas (barres alignées dans le bandeau).
+function svgJauge(part: number, repere: number | undefined, niveau: Morceau['niveau'], total = hauteurJauge(repere)) {
   const { largeur: L, hauteur: H } = JAUGE
   const px = (x: number) => Math.round(L * Math.min(1, Math.max(0, x)))
   const plein = px(part)
@@ -266,10 +267,9 @@ function svgJauge(part: number, repere: number | undefined, niveau: Morceau['niv
       + (commun > 0 ? `<rect width="${commun}" height="${h}" rx="1.5" fill="${GRIS}"/>` : '')
       + (bout > commun ? `<rect x="${commun}" width="${bout - commun}" height="${h}" rx="1.5" fill="${teinte}"/>` : '')
   }
-  const y = hauteurJauge(repere) - H + 1
+  const y = total - H + 1
   const fond = `<rect y="${y}" width="${L}" height="${H - 2}" rx="3" fill="${GRIS}" fill-opacity="0.25"/>`
   const barre = plein > 0 ? `<rect y="${y}" width="${plein}" height="${H - 2}" rx="3" fill="${TEINTE[niveau]}"${niveau === 'ok' ? ' fill-opacity="0.7"' : ''}/>` : ''
-  const total = hauteurJauge(repere)
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${L}" height="${total}" viewBox="0 0 ${L} ${total}">${temps}${fond}${barre}</svg>`
 }
 
@@ -277,12 +277,13 @@ function svgJauge(part: number, repere: number | undefined, niveau: Morceau['niv
 const svgDe = (u: Vue, surface: string) => (surface !== 'terminal' && 'Svg' in u ? u.Svg : undefined)
 
 // Un élément du bandeau ou du panneau : sa ligne, et dessous sa jauge là où le Svg existe (pas sur le terminal).
-function bloc(u: Vue, el: Morceau, Svg: ReturnType<typeof svgDe>) {
+// `hauteur` : celle de toutes les jauges d'une même rangée (bandeau) ; sinon la sienne.
+function bloc(u: Vue, el: Morceau, Svg: ReturnType<typeof svgDe>, hauteur = hauteurJauge(el.repere)) {
   const { Box } = u
   return (
     <Box key={el.cle} flexDirection="column">
       {phrase(u, [el])}
-      {Svg && el.part !== undefined ? <Svg source={svgJauge(el.part, el.repere, el.niveau)} alt={`${el.etiquette} ${el.valeur}`} width={JAUGE.largeur} height={hauteurJauge(el.repere)} /> : null}
+      {Svg && el.part !== undefined ? <Svg source={svgJauge(el.part, el.repere, el.niveau, hauteur)} alt={`${el.etiquette} ${el.valeur}`} width={JAUGE.largeur} height={hauteur} /> : null}
     </Box>
   )
 }
@@ -296,7 +297,9 @@ async function bandeau($: EngineInterface, e: RenderInput) {
   const Svg = svgDe(u, e.surface)
   if (!Svg) return phrase(u, js)
   const { Box } = u
-  return <Box flexDirection="row" flexWrap="wrap" columnGap={3} rowGap={1}>{js.map(el => bloc(u, el, Svg))}</Box>
+  // La jauge du cache, sans ligne de temps, est moins haute : on la dessine à la hauteur des quotas.
+  const hauteur = Math.max(...js.map(el => hauteurJauge(el.repere)))
+  return <Box flexDirection="row" flexWrap="wrap" columnGap={3} rowGap={1}>{js.map(el => bloc(u, el, Svg, hauteur))}</Box>
 }
 
 // Sous le détail (panneau ou réponse de /sonar) : bandeau ou non, durée du cache, fichier des relevés.
