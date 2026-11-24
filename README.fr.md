@@ -32,6 +32,10 @@ régulier), rouge si, en plus, le quota est en alerte. La ligne suit le temps r�
 accorde une marge en début de fenêtre (1 h sur 5 h, 1 jour sur 7) et tient compte des seuils absolus (70 % et 90 % par défaut).
 Branche et coût restent au pied.
 
+![Bandeau : 5 h en orange (usage en avance sur le temps), semaine, cache chaud ; au pied, le coût](docs/bandeau.png)
+
+*Ci-dessus : 35 % des 5 h consommés avec moins de 30 % de la fenêtre écoulée : plus de 5 points d'avance → orange. La ligne 🐋 vient d'un autre mod (baleine), que le bandeau laisse s'afficher.*
+
 **Le panneau** (`/sonar`) : tout le détail, jauges comprises, avec les heures de remise à zéro, le budget par jour, le taux
 de lecture du cache, la branche et les fichiers modifiés, le coût et le fichier des relevés. Il se ferme par sa croix.
 Quand le panneau ne peut pas s'ouvrir, `/sonar` écrit ce détail, une ligne par élément :
@@ -159,6 +163,17 @@ utilisé. Au-delà de 3 Mio, son contenu part dans une archive à côté (`quota
 ```json
 "pluginConfigs": { "sonar@sonar-mods": { "options": { "quotaLog": true } } }
 ```
+
+## Fonctionnement
+
+Un plugin Claude Code en **TypeScript/JSX** (`mod/hooks/register.tsx`), chargé tel quel par le moteur : ni npm, ni build.
+
+- **Données** : le mod s'abonne aux événements du moteur — `session.measure` (quotas, coût) et `turn.step` (usage du
+  cache de chaque requête) — et garde les derniers chiffres dans des `atom()`.
+- **Affichage** : des crochets `ui.render` sur les emplacements de l'appli — `SessionMode` (pied), `AbovePrompt` (bandeau),
+  `Pane` (panneau) — renvoient du JSX avec les composants fournis par l'appli (`Box`, `Text`, `Svg` pour les jauges).
+  Dans le terminal, pas de `Svg` : le même contenu sort en texte.
+- **Logique pure** (rythme, seuils, textes) dans `mod/hooks/logique.mjs`, testée à part.
 
 ## Tests
 

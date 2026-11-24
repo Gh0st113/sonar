@@ -32,6 +32,10 @@ allows some slack at the start of a window (1 h of 5 h, 1 day of 7) and also fol
 default).
 Branch and cost stay in the footer.
 
+![Banner: 5h in orange (usage ahead of time), week, warm cache; cost in the footer](docs/bandeau.png)
+
+*Above (French UI): 35 % of the 5h limit used with less than 30 % of the window elapsed: more than 5 points ahead → orange. The 🐋 line comes from another mod (baleine), which the banner leaves in place.*
+
 **The pane** (`/sonar`): the full detail, gauges included, with reset times, daily budget, cache hit ratio, branch and
 changed files, cost and the usage log file. Close it with its cross. When the pane cannot open, `/sonar` writes that
 detail, one line per item:
@@ -158,6 +162,17 @@ Past 3 MiB its content moves to an archive next to it (`quota-log.<date>.jsonl`)
 ```json
 "pluginConfigs": { "sonar@sonar-mods": { "options": { "quotaLog": true } } }
 ```
+
+## How it works
+
+A Claude Code plugin in **TypeScript/JSX** (`mod/hooks/register.tsx`), loaded as is by the engine: no npm, no build.
+
+- **Data**: the mod subscribes to engine events — `session.measure` (limits, cost) and `turn.step` (cache usage of each
+  request) — and keeps the latest figures in `atom()`s.
+- **Display**: `ui.render` hooks on the app's slots — `SessionMode` (footer), `AbovePrompt` (banner), `Pane` (pane) —
+  return JSX built from components the app provides (`Box`, `Text`, `Svg` for the gauges). In the terminal there is no
+  `Svg`: the same content comes out as text.
+- **Pure logic** (pace, thresholds, texts) in `mod/hooks/logique.mjs`, tested on its own.
 
 ## Tests
 
