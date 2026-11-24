@@ -28,7 +28,8 @@ A single warning colour in the footer, orange, on the value (red is kept for the
 **The banner** (`/sonar banner`, optional) above the prompt: one gauge per window and for the cache. The bar is usage;
 above each limit, a time line like UI+'s: grey up to where usage and time agree, then green when time is ahead (room to
 spare), orange when usage is ahead (you are using it faster than an even pace), red when, on top of that, the limit is in alert. The line follows the time actually elapsed; the value's colour
-allows some slack at the start of a window (1 h of 5 h, 1 day of 7) and also follows the absolute thresholds (70 % and 90 % by default).
+allows some slack at the start of a window (1 h of 5 h, 1 day of 7) and also follows the absolute thresholds (70 % and 90 % by
+default).
 Then the branch and the cost, in plain text.
 
 **The pane** (`/sonar`): the full detail, gauges included, with reset times, daily budget, cache hit ratio, branch and
@@ -46,10 +47,10 @@ cost $12.84
 In the terminal, the banner and the pane are written as text (the terminal draws no gauge). The `hint` and `status`
 placements exist for the terminal; the desktop app does not draw them.
 
-**sonar for Windows** (optional): cache and cost in Claude Desktop's **usage circle** popover, with the
-limits' pace from [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude). Install, how it works and limits:
-[windows/README.md](windows/README.md). The same extension exists for **macOS** (not verified on a real Mac yet):
-[mac/README.md](mac/README.md).
+**The sonar extension for Windows and macOS is gone** (removed with mod 0.7.0): since Claude Desktop 6.28899
+(November 2026), the app no longer loads an extension through `REACT_PROFILE`. To remove it from a machine where it was
+installed, download the repository at its last state ([commit `c86aecb`](https://github.com/Gh0st113/sonar/tree/c86aecb)) and run
+`windows\desinstaller.cmd` (Windows) or `sh mac/installer.sh desinstaller` (macOS).
 
 *(Like a ship's sonar: it keeps sounding what lies around you — limits, cache, branch — so you never hit bottom by surprise.)*
 
@@ -81,7 +82,7 @@ claude plugin install sonar@sonar-mods
 The mod is then read **from that folder**: after an edit, `/reload-plugins` in the session is enough.
 
 Systems: Windows (desktop app and terminal) and Linux (terminal, tried on Ubuntu); macOS expected, not tried yet
-([issue #22](https://github.com/Gh0st113/sonar/issues/22)). The desktop extension exists for Windows and, untried, for macOS.
+([issue #22](https://github.com/Gh0st113/sonar/issues/22)).
 
 ## What is shown
 
@@ -164,16 +165,13 @@ Past 3 MiB its content moves to an archive next to it (`quota-log.<date>.jsonl`)
 node --test mod/test/
 claude plugin validate mod
 claude plugin test mod
-node --test windows/test/
 ```
 
-GitHub Actions runs the Node tests and a trial of the Windows install script on every push.
+GitHub Actions runs the mod logic tests on every push.
 
 ## Credits and sources
 
 - **[UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude)**, by Lukas van Uden (Windows support by
-  DarkstarDEV), MIT licence: sonar for Windows reuses its code (`widget.js`, `widget.css`, `manifest.json`, one test,
-  the install script), at commit
-  [`1e8274f`](https://github.com/LukasvanUden/ui-plus-for-claude/commit/1e8274fc149a49979c8688a447ae9bf9bd0d3028)
-  (tag `v0.5.0`). Its licence is included as is (`windows/LICENSE-UI-PLUS`, also copied with the extension).
-  Files taken, original git hashes, changes and audit: `windows/PROVENANCE.md` (in French).
+  DarkstarDEV), MIT licence: the gauges' time line takes its idea and colours. Up to 0.7.0, the sonar extension for Windows reused
+  its code; files taken, licence and audit: `windows/PROVENANCE.md` (in French) at
+  [commit `c86aecb`](https://github.com/Gh0st113/sonar/tree/c86aecb).

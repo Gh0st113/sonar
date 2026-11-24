@@ -29,7 +29,8 @@ Une seule couleur d'alerte au pied, l'orange, sur la valeur (le rouge est réser
 l'usage ; au-dessus de chaque quota, une ligne de temps comme celle de UI+ : grise jusqu'où usage et temps concordent,
 puis verte quand le temps est devant (de la marge), orange quand l'usage est devant (vous consommez plus vite que le rythme
 régulier), rouge si, en plus, le quota est en alerte. La ligne suit le temps réellement écoulé ; la couleur de la valeur
-accorde une marge en début de fenêtre (1 h sur 5 h, 1 jour sur 7) et tient compte des seuils absolus (70 % et 90 % par défaut). Viennent ensuite la branche et le coût, en clair.
+accorde une marge en début de fenêtre (1 h sur 5 h, 1 jour sur 7) et tient compte des seuils absolus (70 % et 90 % par défaut).
+Viennent ensuite la branche et le coût, en clair.
 
 **Le panneau** (`/sonar`) : tout le détail, jauges comprises, avec les heures de remise à zéro, le budget par jour, le taux
 de lecture du cache, la branche et les fichiers modifiés, le coût et le fichier des relevés. Il se ferme par sa croix.
@@ -46,10 +47,10 @@ coût 12,84 $
 Dans le terminal, le bandeau et le panneau s'écrivent en texte (le terminal ne dessine pas de jauge). Les emplacements
 `indice` et `ligne` servent au terminal ; l'appli de bureau ne les dessine pas.
 
-**sonar pour Windows** (en option) : cache et coût dans le popover du **cercle d'usage** de Claude Desktop,
-avec le rythme des limites de [UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude). Installation, fonctionnement
-et limites : [windows/README.fr.md](windows/README.fr.md). La même extension existe pour **macOS** (pas encore vérifiée sur un vrai Mac) :
-[mac/README.fr.md](mac/README.fr.md).
+**L'extension sonar pour Windows et macOS n'existe plus** (retirée avec le mod 0.7.0) : depuis la version 6.28899 de
+Claude Desktop (novembre 2026), l'appli ne charge plus d'extension par `REACT_PROFILE`. Pour la retirer d'une machine où
+elle était installée, téléchargez le dépôt à son dernier état ([commit `c86aecb`](https://github.com/Gh0st113/sonar/tree/c86aecb)) et lancez
+`windows\desinstaller.cmd` (Windows) ou `sh mac/installer.sh desinstaller` (macOS).
 
 *(Comme le sonar d'un navire : il sonde en continu ce qui vous entoure — quotas, cache, branche — pour ne jamais toucher le fond par surprise.)*
 
@@ -81,7 +82,7 @@ claude plugin install sonar@sonar-mods
 Le mod est alors lu **depuis ce dossier** : après une modification, `/reload-plugins` dans la session suffit.
 
 Systèmes : Windows (appli et terminal) et Linux (terminal, essayé sous Ubuntu) ; macOS attendu, pas encore essayé
-([issue #22](https://github.com/Gh0st113/sonar/issues/22)). L'extension de bureau existe pour Windows et, sans essai, pour macOS.
+([issue #22](https://github.com/Gh0st113/sonar/issues/22)).
 
 ## Ce qui est affiché
 
@@ -165,16 +166,13 @@ utilisé. Au-delà de 3 Mio, son contenu part dans une archive à côté (`quota
 node --test mod/test/
 claude plugin validate mod
 claude plugin test mod
-node --test windows/test/
 ```
 
-GitHub Actions lance les tests Node et un essai du script d'installation Windows à chaque push.
+GitHub Actions lance les tests de la logique du mod à chaque push.
 
 ## Crédits et sources
 
 - **[UI+ for Claude](https://github.com/LukasvanUden/ui-plus-for-claude)**, de Lukas van Uden (support Windows par
-  DarkstarDEV), sous licence MIT : sonar pour Windows reprend son code (`widget.js`, `widget.css`, `manifest.json`, un
-  test, le script d'installation), au commit
-  [`1e8274f`](https://github.com/LukasvanUden/ui-plus-for-claude/commit/1e8274fc149a49979c8688a447ae9bf9bd0d3028)
-  (tag `v0.5.0`). Sa licence est jointe telle quelle (`windows/LICENSE-UI-PLUS`, aussi copiée avec l'extension).
-  Fichiers repris, empreintes git d'origine, modifications et audit : `windows/PROVENANCE.md`.
+  DarkstarDEV), sous licence MIT : la ligne de temps des jauges en reprend l'idée et les couleurs. Jusqu'à la 0.7.0, l'extension
+  sonar pour Windows reprenait son code ; fichiers repris, licence et audit : `windows/PROVENANCE.md` au
+  [commit `c86aecb`](https://github.com/Gh0st113/sonar/tree/c86aecb).
