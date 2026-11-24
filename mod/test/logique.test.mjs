@@ -52,8 +52,12 @@ test('config : défauts, langue auto selon la locale, valeurs invalides ignorée
   assert.deepEqual(lireConfig({ segments: 'rien' }).segments, SEGMENTS); // aucun reconnu : tout
   assert.deepEqual(lireConfig({ protectedBranches: 'Main, develop' }).branches, ['main', 'develop']);
   assert.deepEqual(lireConfig({ protectedBranches: '' }).branches, []);
-  assert.equal(lireConfig({ placement: 'banner' }).emplacement, 'bandeau');
-  assert.equal(lireConfig({ placement: 'nulle-part' }).emplacement, 'pied');
+  assert.equal(lireConfig({ banner: true }).bandeau, true);
+  assert.equal(lireConfig({ banner: 'oui' }).bandeau, false);
+  // Ancienne option `placement` : banner / bandeau active le bandeau, le reste non.
+  assert.equal(lireConfig({ placement: 'banner' }).bandeau, true);
+  assert.equal(lireConfig({ placement: 'hint' }).bandeau, false);
+  assert.equal(lireConfig({ placement: 'nulle-part' }).bandeau, false);
 });
 
 test('rythme 7 j : à l’heure, en avance, très en avance', () => {
@@ -194,9 +198,12 @@ test('nom du dépôt', () => {
 
 test('commande /sonar, en français et en anglais', () => {
   assert.deepEqual(lireCommande(''), { aide: true });
-  assert.deepEqual(lireCommande(' Bandeau '), { emplacement: 'bandeau' });
-  assert.deepEqual(lireCommande('banner'), { emplacement: 'bandeau' });
-  assert.deepEqual(lireCommande('footer'), { emplacement: 'pied' });
+  assert.deepEqual(lireCommande(' Bandeau '), { bandeau: true });
+  assert.deepEqual(lireCommande('banner'), { bandeau: true });
+  assert.deepEqual(lireCommande('bandeau on'), { bandeau: true });
+  assert.deepEqual(lireCommande('Banner OFF'), { bandeau: false });
+  assert.deepEqual(lireCommande('bandeau off'), { bandeau: false });
+  for (const a of ['pied', 'footer', 'indice', 'hint', 'ligne', 'status', 'bandeau non', 'bandeau off on']) assert.equal(lireCommande(a).erreur, a);
   assert.deepEqual(lireCommande('ttl 5m'), { ttl: '5m' });
   assert.deepEqual(lireCommande('masquer'), { masque: true });
   assert.deepEqual(lireCommande('hide'), { masque: true });
@@ -277,6 +284,12 @@ test('pied : icônes du cache, branche raccourcie ; les limites (5 h, semaine) j
   assert.deepEqual(elementsPied(tout, T0, lireConfig({ language: 'fr', segments: 'quotas' })).map((x) => x.cle), []);
   assert.equal(pied(tout, lireConfig({ language: 'fr', segments: 'cache,repo' })), '🔥 · ⎇ main');
   assert.equal(pied(tout, lireConfig({ language: 'fr', segments: 'cost' })), '1,23 $');
+  // Bandeau actif : le cache y est, le pied le perd (coût et branche seuls).
+  const sansCache = (d, cfg = FR) => ligne(elementsPied(d, T0, cfg, { sansCache: true }), SEP_PIED);
+  assert.equal(sansCache(tout), '1,23 $ · ⎇ main');
+  assert.equal(sansCache({ ...sans, cache: { a: T0 - 2 * H, lu: 9, ecrit: 1, neuf: 0, modele: 'm' } }), '2,40 $');
+  assert.deepEqual(elementsPied({ cache: TOUT.cache, ttlMs: TTL['1h'], modele: 'm' }, T0, FR, { sansCache: true }), []);
+  assert.deepEqual(elementsPied({ ...sans, cache: { a: T0 - 2 * H, lu: 9, ecrit: 1, neuf: 0, modele: 'm' } }, T0, FR, { sansCache: true }), [{ cle: 'cout', etiquette: '', valeur: '2,40 $', niveau: 'ok' }]);
 });
 
 test('dossier du projet sous projects/ : le chemin, hors [A-Za-z0-9] remplacé par « - »', () => {

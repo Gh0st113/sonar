@@ -11,8 +11,6 @@ export type SonarReponse = { a: number; lu: number; ecrit: number; neuf: number;
 
 export type SonarDepot = { nom: string; branche?: string; detachee?: boolean; modifies: number }
 
-export type SonarEmplacement = 'pied' | 'indice' | 'ligne' | 'bandeau'
-
 declare module 'claude-code' {
   interface PluginState {
     sonar: {
@@ -23,7 +21,8 @@ declare module 'claude-code' {
       modele: string | null
       /** durée de vie du cache, déduite ou forcée */
       ttl: '5m' | '1h' | null
-      emplacement: SonarEmplacement | null
+      /** bandeau choisi par /sonar ; null : l'option du plugin décide */
+      bandeau: boolean | null
       masque: boolean
       /** compteur de redessin (minuterie) */
       tic: number

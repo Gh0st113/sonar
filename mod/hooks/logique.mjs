@@ -10,9 +10,10 @@ export const TTL = { '5m': 5 * 60_000, '1h': H };
 const TTL_MIN = TTL['5m'];
 const TTL_MAX = TTL['1h'];
 
-// pied = labels du pied de saisie ; indice = ligne d'aide sous la saisie ; ligne = $.ui.status ; bandeau = au-dessus.
-export const EMPLACEMENTS = ['pied', 'indice', 'ligne', 'bandeau'];
-const ALIAS = { footer: 'pied', hint: 'indice', status: 'ligne', banner: 'bandeau', hide: 'masquer', show: 'afficher' };
+// Le pied est toujours là ; le bandeau (au-dessus de la saisie) s'ajoute sur demande (0.8.0 : plus d'emplacement unique,
+// « indice » et « ligne » retirés). Bandeau actif : il prend quotas et cache, le pied garde coût et branche (DANS_LE_PIED).
+export const DANS_LE_PIED = ['depot', 'cout'];
+const ALIAS = { banner: 'bandeau', hide: 'masquer', show: 'afficher' };
 // Pas de contexte : Claude Code l'affiche déjà (comme le % des 5 h). « context » dans l'option est ignoré.
 export const SEGMENTS = ['quotas', 'cache', 'depot', 'cout'];
 const ALIAS_SEGMENTS = { quota: 'quotas', limits: 'quotas', repo: 'depot', git: 'depot', cost: 'cout' };
@@ -24,7 +25,7 @@ export const DEFAUTS = {
   quota: { attention: 70, alerte: 90 },
   segments: SEGMENTS,
   branches: ['main', 'master'],
-  emplacement: 'pied',
+  bandeau: false,
   // Journal des relevés de quota : null = désactivé, sinon l'option quotaLogPath telle quelle (vide = chemin par défaut).
   journal: null,
 };
@@ -44,13 +45,14 @@ const TEXTES = {
     inconnu: (a) => `argument inconnu : « ${a} »`,
     aide: [
       '/sonar — ouvre le panneau de détail',
-      '/sonar pied | indice | ligne | bandeau — où afficher le sonar',
+      '/sonar bandeau | bandeau off — ajoute ou retire le bandeau (quotas et cache) au-dessus de la saisie',
       '/sonar ttl 5m | 1h | auto — durée de vie du cache (auto : déduite des réponses)',
       '/sonar masquer | afficher',
       'Seuils, langue, segments, branches : réglages du plugin (pluginConfigs["sonar@sonar-mods"] dans settings.json).',
     ].join('\n'),
-    etat: (lieu, ttl, force) => `Sonar : ${lieu}, durée du cache ${ttl ?? 'inconnue'}${force ? ' (forcée)' : ''}.`,
-    affichee: (lieu) => `Sonar affiché : ${lieu}.`,
+    etat: (bandeau, ttl, force) => `Sonar : pied${bandeau ? ' + bandeau' : ''}, durée du cache ${ttl ?? 'inconnue'}${force ? ' (forcée)' : ''}.`,
+    bandeauOui: 'Bandeau affiché : quotas et cache au-dessus de la saisie, coût et branche au pied.',
+    bandeauNon: 'Bandeau retiré : le pied seul.',
     ttlAuto: 'Durée du cache : déduite des réponses.',
     ttlForce: (t) => `Durée du cache forcée : ${t}.`,
     masquee: 'Sonar masqué (/sonar afficher pour le remettre).',
@@ -71,13 +73,14 @@ const TEXTES = {
     inconnu: (a) => `unknown argument: "${a}"`,
     aide: [
       '/sonar — opens the detail pane',
-      '/sonar footer | hint | status | banner — where to show it',
+      '/sonar banner | banner off — adds or removes the banner (limits and cache) above the prompt',
       '/sonar ttl 5m | 1h | auto — prompt cache lifetime (auto: inferred from responses)',
       '/sonar hide | show',
       'Thresholds, language, segments, branches: plugin options (pluginConfigs["sonar@sonar-mods"] in settings.json).',
     ].join('\n'),
-    etat: (lieu, ttl, force) => `Sonar: ${lieu}, cache lifetime ${ttl ?? 'unknown'}${force ? ' (forced)' : ''}.`,
-    affichee: (lieu) => `Sonar shown: ${lieu}.`,
+    etat: (bandeau, ttl, force) => `Sonar: footer${bandeau ? ' + banner' : ''}, cache lifetime ${ttl ?? 'unknown'}${force ? ' (forced)' : ''}.`,
+    bandeauOui: 'Banner shown: limits and cache above the prompt, cost and branch in the footer.',
+    bandeauNon: 'Banner removed: footer only.',
     ttlAuto: 'Cache lifetime: inferred from responses.',
     ttlForce: (t) => `Cache lifetime forced: ${t}.`,
     masquee: 'Sonar hidden (/sonar show to bring it back).',
@@ -86,9 +89,6 @@ const TEXTES = {
   },
 };
 export const textes = (langue) => TEXTES[langue] ?? TEXTES.en;
-// Nom affiché d'un emplacement : le mot français ou anglais que /sonar accepte.
-const NOM_EMPLACEMENT = { en: { pied: 'footer', indice: 'hint', ligne: 'status', bandeau: 'banner' } };
-export const nomEmplacement = (lieu, langue) => NOM_EMPLACEMENT[langue]?.[lieu] ?? lieu;
 
 const fini = (x) => typeof x === 'number' && Number.isFinite(x);
 const liste = (v) => (Array.isArray(v) ? v.map(String) : typeof v === 'string' ? v.split(',') : [])
@@ -123,7 +123,6 @@ export function lireConfig(options = {}, localeHote = '') {
   const horloge = ['24h', '12h'].includes(o.clock) ? o.clock : langue === 'en' && /^en-us/i.test(String(localeHote)) ? '12h' : '24h';
   const segs = liste(o.segments).map((x) => ALIAS_SEGMENTS[x] ?? x).filter((x) => SEGMENTS.includes(x));
   const branches = o.protectedBranches === undefined ? DEFAUTS.branches : liste(o.protectedBranches);
-  const lieu = ALIAS[o.placement] ?? o.placement;
   return {
     langue,
     horloge,
@@ -131,16 +130,17 @@ export function lireConfig(options = {}, localeHote = '') {
     quota: paire(o.quotaWarn, o.quotaAlert, DEFAUTS.quota),
     segments: o.segments === undefined || segs.length === 0 ? SEGMENTS : segs,
     branches,
-    emplacement: EMPLACEMENTS.includes(lieu) ? lieu : DEFAUTS.emplacement,
+    // Option `banner` (0.8.0) ; l'ancienne `placement` = banner l'active aussi.
+    bandeau: o.banner === true || o.placement === 'banner' || o.placement === 'bandeau',
     journal: o.quotaLog === true ? String(o.quotaLogPath ?? '') : null,
   };
 }
 
-// Arguments de `/sonar` (français ou anglais) : un emplacement, « ttl 5m|1h|auto », masquer/afficher, ou rien (aide).
+// Arguments de `/sonar` (français ou anglais) : « bandeau [on|off] », « ttl 5m|1h|auto », masquer/afficher, ou rien (aide).
 export function lireCommande(args) {
   const mots = String(args ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean).map((m) => ALIAS[m] ?? m);
   if (mots.length === 0) return { aide: true };
-  if (EMPLACEMENTS.includes(mots[0]) && mots.length === 1) return { emplacement: mots[0] };
+  if (mots[0] === 'bandeau' && (mots.length === 1 || (mots.length === 2 && ['on', 'off'].includes(mots[1])))) return { bandeau: mots[1] !== 'off' };
   if (mots[0] === 'ttl' && mots.length === 2 && ['5m', '1h', 'auto'].includes(mots[1])) return { ttl: mots[1] };
   if (mots.length === 1 && (mots[0] === 'masquer' || mots[0] === 'afficher')) return { masque: mots[0] === 'masquer' };
   return { erreur: String(args ?? '').trim() };
@@ -271,20 +271,23 @@ const valeurQuota = (r, t, cfg) => (r.remis ? t.remis : r.epuise ? t.epuise : pc
 // Pied (choix de l'utilisateur, 05/11) : court, dans cet ordre, séparés par « · » :
 //   1. l'icône du cache collée au coût de la session : 🔥 chaud, ❄️ froid (orange), ❔ incertain (orange), puis le
 //      montant (`🔥 2,40 $`) ; pas d'icône si l'état du cache est inconnu, pas de montant si le coût l'est ;
+//      bandeau actif (`sansCache`) : le cache est dans le bandeau, le pied n'a que le montant ;
 //   2. la branche, raccourcie (brancheCourte) : `⎇ master` ; orange sur une branche protégée ; rien hors dépôt.
-// Les limites (5 h, semaine) n'y sont jamais : bandeau, panneau, /sonar et popover de sonar pour Windows.
+// Les limites (5 h, semaine) n'y sont jamais : bandeau, panneau et /sonar.
 // Chacun { cle, etiquette, valeur, niveau } ; l'étiquette peut être vide.
 export const SEP_PIED = ' · ';
 const ICONES = { chaud: '🔥', froid: '❄️', incertain: '❔' };
-export function elementsPied(d, maintenant, cfg = DEFAUTS) {
+export function elementsPied(d, maintenant, cfg = DEFAUTS, { sansCache = false } = {}) {
   const t = textes(cfg.langue);
   const actif = (k) => cfg.segments.includes(k);
   const e = [];
-  const c =actif('cache') ? etatCache(d.cache, d.ttlMs, maintenant, d.modele) : undefined;
+  const c = actif('cache') && !sansCache ? etatCache(d.cache, d.ttlMs, maintenant, d.modele) : undefined;
   const icone = ICONES[c?.etat];
   const cout = actif('cout') && coutConnu(d.cout) ? montant(d.cout, cfg) : undefined;
-  if (icone || cout) {
-    e.push({ cle: 'cache', etiquette: '', valeur: [icone, cout].filter(Boolean).join(' '), niveau: c?.etat === 'froid' || c?.etat === 'incertain' ? 'attention' : 'ok' });
+  if (icone) {
+    e.push({ cle: 'cache', etiquette: '', valeur: [icone, cout].filter(Boolean).join(' '), niveau: c.etat === 'froid' || c.etat === 'incertain' ? 'attention' : 'ok' });
+  } else if (cout) {
+    e.push({ cle: 'cout', etiquette: '', valeur: cout, niveau: 'ok' });
   }
   if (actif('depot') && d.depot?.nom) {
     const b = d.depot.detachee ? t.detacheeCourt : brancheCourte(d.depot.branche);

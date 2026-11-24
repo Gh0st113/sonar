@@ -7,10 +7,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } from 'claude-code'
 
-import type { SonarDepot, SonarEmplacement, SonarMesure, SonarReponse } from '../types'
+import type { SonarDepot, SonarMesure, SonarReponse } from '../types'
 import {
-  EMPLACEMENTS, TAILLE_MAX_SESSION, TTL, besoinMaison, cheminArchive, cheminJournal, cleReleve, deduireTtl,
-  SEP_PIED, derniereReponse, dossierProjet, reponseFiche, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, langueHote, localeSysteme, majJournal, nomDepot, nomEmplacement, releve, textes,
+  DANS_LE_PIED, TAILLE_MAX_SESSION, TTL, besoinMaison, cheminArchive, cheminJournal, cleReleve, deduireTtl,
+  SEP_PIED, derniereReponse, dossierProjet, reponseFiche, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, langueHote, localeSysteme, majJournal, nomDepot, releve, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -18,7 +18,8 @@ const cache = atom({ plugin: 'sonar', key: 'cache' } as const, null as SonarRepo
 const depot = atom({ plugin: 'sonar', key: 'depot' } as const, null as SonarDepot | null)
 const modele = atom({ plugin: 'sonar', key: 'modele' } as const, null as string | null)
 const ttl = atom({ plugin: 'sonar', key: 'ttl' } as const, null as '5m' | '1h' | null)
-const emplacement = atom({ plugin: 'sonar', key: 'emplacement' } as const, null as SonarEmplacement | null)
+// Bandeau choisi par /sonar (null : l'option du plugin décide).
+const avecBandeau = atom({ plugin: 'sonar', key: 'bandeau' } as const, null as boolean | null)
 const masque = atom({ plugin: 'sonar', key: 'masque' } as const, false)
 const tic = atom({ plugin: 'sonar', key: 'tic' } as const, 0)
 
@@ -166,12 +167,13 @@ async function lireFiche($: EngineInterface, id: string) {
   return undefined
 }
 
-// L'emplacement choisi par /sonar (gardé dans le store) l'emporte sur l'option du plugin.
-async function lieu($: EngineInterface): Promise<SonarEmplacement> {
-  return (await read($, emplacement)) ?? (cfg.emplacement as SonarEmplacement)
+// Le choix de /sonar (gardé dans le store) l'emporte sur l'option du plugin.
+async function bandeauActif($: EngineInterface): Promise<boolean> {
+  return (await read($, avecBandeau)) ?? cfg.bandeau
 }
 
-// Ce que le sonar sait à l'instant : `pied` (le minimum, pour le pied) et `jauges` (tout le détail).
+// Ce que le sonar sait à l'instant : `pied` (le minimum, pour le pied ; sans le cache quand le bandeau le montre) et
+// `jauges` (tout le détail).
 async function calculer($: EngineInterface) {
   const m = await read($, mesure)
   const t = await read($, ttl)
@@ -185,19 +187,9 @@ async function calculer($: EngineInterface) {
   }
   const maintenant = await $.clock.now()
   return {
-    pied: elementsPied(d, maintenant, cfg) as Morceau[],
+    pied: elementsPied(d, maintenant, cfg, { sansCache: await bandeauActif($) }) as Morceau[],
     jauges: jauges(d, maintenant, cfg) as Morceau[],
   }
-}
-
-// Emplacement « ligne » : $.ui.status n'est pas un dessin, il faut le reposer à chaque changement.
-async function poserStatut($: EngineInterface) {
-  if ((await lieu($)) !== 'ligne' || (await read($, masque))) {
-    $.ui.status(undefined)
-    return
-  }
-  const t = ligne((await calculer($)).jauges, SEP)
-  $.ui.status(t || undefined)
 }
 
 // Git lancé hors du dessin, au plus toutes les 5 s ; en cas d'échec la dernière valeur reste.
@@ -229,7 +221,6 @@ function demarrerMinuterie($: EngineInterface) {
     void (async () => {
       await update($, tic, n => n + 1)
       await rafraichirDepot($)
-      await poserStatut($)
     })().catch(() => undefined)
   })
 }
@@ -297,8 +288,9 @@ function bloc(u: Vue, el: Morceau, Svg: ReturnType<typeof svgDe>) {
 }
 
 // Bandeau : les jauges côte à côte (elles passent à la ligne si la place manque) ; sur le terminal, une ligne de texte.
+// Branche et coût n'y sont pas : le pied les montre.
 async function bandeau($: EngineInterface, e: RenderInput) {
-  const { jauges: js } = await calculer($)
+  const js = (await calculer($)).jauges.filter(el => !DANS_LE_PIED.includes(el.cle))
   if (js.length === 0) return undefined
   const u = $.ui.resolve(e)
   const Svg = svgDe(u, e.surface)
@@ -307,11 +299,11 @@ async function bandeau($: EngineInterface, e: RenderInput) {
   return <Box flexDirection="row" flexWrap="wrap" columnGap={3} rowGap={1}>{js.map(el => bloc(u, el, Svg))}</Box>
 }
 
-// Sous le détail (panneau ou réponse de /sonar) : emplacement, durée du cache, fichier des relevés.
+// Sous le détail (panneau ou réponse de /sonar) : bandeau ou non, durée du cache, fichier des relevés.
 async function notes($: EngineInterface) {
   const t = textes(cfg.langue)
   const force = (await $.store.get('ttl')) !== undefined
-  const etat = t.etat(nomEmplacement(await lieu($), cfg.langue), (await read($, ttl)) ?? undefined, force)
+  const etat = t.etat(await bandeauActif($), (await read($, ttl)) ?? undefined, force)
   return cfg.journal === null ? etat : `${etat}\n${t.journal(await resoudreJournal($).catch(() => undefined))}`
 }
 
@@ -338,13 +330,14 @@ export const register: Register = (on, options) => {
       // Le menu ne propose pas de sous-commandes : `argumentHint` les rappelle en gris après le nom.
       await $.command.register({
         name: 'sonar',
-        description: cfg.langue === 'fr' ? 'Sonar : détail complet, emplacement, durée du cache, masquer / afficher' : 'Sonar: full detail, placement, cache lifetime, hide / show',
-        argumentHint: cfg.langue === 'fr' ? '[pied | indice | ligne | bandeau | ttl 5m|1h|auto | masquer | afficher]' : '[footer | hint | status | banner | ttl 5m|1h|auto | hide | show]',
+        description: cfg.langue === 'fr' ? 'Sonar : détail complet, bandeau, durée du cache, masquer / afficher' : 'Sonar: full detail, banner, cache lifetime, hide / show',
+        argumentHint: cfg.langue === 'fr' ? '[bandeau | bandeau off | ttl 5m|1h|auto | masquer | afficher]' : '[banner | banner off | ttl 5m|1h|auto | hide | show]',
       })
-      const lieuGarde = await $.store.get('emplacement')
-      if (typeof lieuGarde === 'string' && (EMPLACEMENTS as readonly string[]).includes(lieuGarde)) {
-        await update($, emplacement, () => lieuGarde as SonarEmplacement)
-      }
+      // Avant la 0.8.0, le store gardait un emplacement : « bandeau » vaut bandeau actif, un autre le pied seul.
+      const garde = await $.store.get('bandeau')
+      const ancien = await $.store.get('emplacement')
+      if (typeof garde === 'boolean') await update($, avecBandeau, () => garde)
+      else if (typeof ancien === 'string') await update($, avecBandeau, () => ancien === 'bandeau')
       const ttlGarde = await $.store.get('ttl')
       if (ttlGarde === '5m' || ttlGarde === '1h') await update($, ttl, () => ttlGarde)
       await update($, mesure, () => null)
@@ -356,9 +349,8 @@ export const register: Register = (on, options) => {
       }
       demarrerMinuterie($)
       // Lecture du journal de la session à côté : elle ne retarde pas le démarrage.
-      void reprendreCache($).then(() => poserStatut($)).catch(() => undefined)
+      void reprendreCache($).catch(() => undefined)
       await rafraichirDepot($)
-      await poserStatut($)
     } catch { /* le sonar ne bloque jamais le démarrage */ }
     return r
   }).catch(($, e, next) => next(e))
@@ -368,7 +360,6 @@ export const register: Register = (on, options) => {
       const m = versMesure(e)
       await update($, mesure, () => m)
       journaliser($, m)
-      await poserStatut($)
     } catch { /* idem */ }
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -405,7 +396,7 @@ export const register: Register = (on, options) => {
     const r = await next(e)
     if (e.agentId === undefined) {
       // git peut prendre jusqu'à 3 s : on ne fait pas attendre la fin du tour.
-      void rafraichirDepot($).then(() => poserStatut($)).catch(() => undefined)
+      void rafraichirDepot($).catch(() => undefined)
     }
     return r
   }).catch(($, e, next) => next(e))
@@ -415,7 +406,6 @@ export const register: Register = (on, options) => {
     try {
       await update($, modele, () => e.to_model)
       if ((await $.store.get('ttl')) === undefined) await update($, ttl, () => e.cache_ttl)
-      await poserStatut($)
     } catch { /* idem */ }
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -423,7 +413,6 @@ export const register: Register = (on, options) => {
   // Après une compaction, l'ancien cache ne sert plus : la prochaine réponse le réécrit.
   on('classic.PostCompact', async ($, e, next) => {
     await update($, cache, () => null).catch(() => undefined)
-    await poserStatut($).catch(() => undefined)
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -432,7 +421,6 @@ export const register: Register = (on, options) => {
   on('session.end', async ($, e, next) => {
     await update($, cache, () => null).catch(() => undefined)
     await update($, mesure, () => null).catch(() => undefined)
-    if (e.reason === 'clear') await poserStatut($).catch(() => undefined)
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -445,27 +433,25 @@ export const register: Register = (on, options) => {
       const detail = ouvert ? '' : ligne((await calculer($)).jauges, '\n')
       return { text: `${detail ? `${detail}\n` : ''}${await notes($)}\n${t.aide}` }
     }
-    if (c.emplacement) {
-      await update($, emplacement, () => c.emplacement as SonarEmplacement)
-      await $.store.set('emplacement', c.emplacement)
+    if (c.bandeau !== undefined) {
+      const oui = Boolean(c.bandeau)
+      await update($, avecBandeau, () => oui)
+      await $.store.set('bandeau', oui)
+      await $.store.delete('emplacement')
       await update($, masque, () => false)
-      await poserStatut($)
-      return { text: t.affichee(nomEmplacement(c.emplacement, cfg.langue)) }
+      return { text: oui ? t.bandeauOui : t.bandeauNon }
     }
     if (c.ttl) {
       if (c.ttl === 'auto') {
         await $.store.delete('ttl')
         await update($, ttl, () => null)
-        await poserStatut($)
         return { text: t.ttlAuto }
       }
       await $.store.set('ttl', c.ttl)
       await update($, ttl, () => c.ttl as '5m' | '1h')
-      await poserStatut($)
       return { text: t.ttlForce(c.ttl) }
     }
     await update($, masque, () => Boolean(c.masque))
-    await poserStatut($)
     return { text: c.masque ? t.masquee : t.remise }
   })
 
@@ -474,8 +460,8 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     await read($, tic)
-    // Le pied, court (logique.mjs, elementsPied) : cas normal « 🔥 2,40 $ · ⎇ master ».
-    if ((await lieu($)) !== 'pied' || (await read($, masque))) return next(e)
+    // Le pied, toujours là et court (logique.mjs, elementsPied) : cas normal « 🔥 2,40 $ · ⎇ master ».
+    if (await read($, masque)) return next(e)
     const { pied } = await calculer($)
     if (pied.length === 0) return next(e)
     // L'appli de bureau ne dessine pas les `modes` ajoutés (essai du 27/10) : on y dessine notre propre arbre,
@@ -489,18 +475,11 @@ export const register: Register = (on, options) => {
     return next({ ...e, props: { ...e.props, modes: [...e.props.modes, ligne(pied, SEP_PIED)] } })
   }).catch(($, e, next) => next(e))
 
-  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    await read($, tic)
-    if ((await lieu($)) !== 'indice' || (await read($, masque))) return next(e)
-    const { jauges: js } = await calculer($)
-    return js.length > 0 ? phrase($.ui.resolve(e), js) : next(e)
-  }).catch(($, e, next) => next(e))
-
-  // Bandeau : seulement à l'emplacement « bandeau » ; sinon la zone reste au moteur, sans cadre vide.
+  // Bandeau : seulement s'il est activé ; sinon la zone reste au moteur, sans cadre vide.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     await read($, tic)
     if (e.props.hasSurvey) return next(e)
-    const montrer = (await lieu($)) === 'bandeau' && !(await read($, masque))
+    const montrer = (await bandeauActif($)) && !(await read($, masque))
     const vue = montrer ? await bandeau($, e) : undefined
     if (!vue) return next(e)
     const { Box } = $.ui.resolve(e)
