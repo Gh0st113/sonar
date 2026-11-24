@@ -56,6 +56,7 @@ test('config : défauts, langue auto selon la locale, valeurs invalides ignorée
   assert.equal(lireConfig({ banner: 'oui' }).bandeau, false);
   // Ancienne option `placement` : banner / bandeau active le bandeau, le reste non.
   assert.equal(lireConfig({ placement: 'banner' }).bandeau, true);
+  assert.equal(lireConfig({ placement: 'banner', banner: false }).bandeau, true); // false = défaut rempli par le moteur
   assert.equal(lireConfig({ placement: 'hint' }).bandeau, false);
   assert.equal(lireConfig({ placement: 'nulle-part' }).bandeau, false);
 });

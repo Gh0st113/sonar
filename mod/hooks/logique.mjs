@@ -130,7 +130,8 @@ export function lireConfig(options = {}, localeHote = '') {
     quota: paire(o.quotaWarn, o.quotaAlert, DEFAUTS.quota),
     segments: o.segments === undefined || segs.length === 0 ? SEGMENTS : segs,
     branches,
-    // Option `banner` (0.8.0) ; l'ancienne `placement` = banner l'active aussi.
+    // Option `banner` (0.8.0) ; l'ancienne `placement` = banner l'active aussi. Le moteur remplit `banner` de son défaut
+    // (false) : « banner présent l'emporte » rendrait l'ancienne option sans effet. Pour couper, retirer `placement`.
     bandeau: o.banner === true || o.placement === 'banner' || o.placement === 'bandeau',
     journal: o.quotaLog === true ? String(o.quotaLogPath ?? '') : null,
   };
