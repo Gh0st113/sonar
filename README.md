@@ -32,9 +32,10 @@ allows some slack at the start of a window (1 h of 5 h, 1 day of 7) and also fol
 default).
 Branch and cost stay in the footer.
 
-![Banner: 5h in orange (usage ahead of time), week, warm cache; cost in the footer](docs/bandeau.png)
+![Banner: 5h in red (usage well ahead of time), week, warm cache; footer with cost and a protected branch in orange](docs/bandeau.png)
 
-*Above (French UI): 35 % of the 5h limit used with less than 30 % of the window elapsed: more than 5 points ahead → orange. The 🐋 line comes from another mod (baleine), which the banner leaves in place.*
+*Above (French UI): 53 % of the 5h limit used with just over a quarter of the window elapsed, more than 15 points ahead
+→ red (past 5 points it would be orange). In the footer, `main` in orange: protected branch.*
 
 **The pane** (`/sonar`): the full detail, gauges included, with reset times, daily budget, cache hit ratio, branch and
 changed files, cost and the usage log file. Close it with its cross. When the pane cannot open, `/sonar` writes that

@@ -32,9 +32,10 @@ régulier), rouge si, en plus, le quota est en alerte. La ligne suit le temps r�
 accorde une marge en début de fenêtre (1 h sur 5 h, 1 jour sur 7) et tient compte des seuils absolus (70 % et 90 % par défaut).
 Branche et coût restent au pied.
 
-![Bandeau : 5 h en orange (usage en avance sur le temps), semaine, cache chaud ; au pied, le coût](docs/bandeau.png)
+![Bandeau : 5 h en rouge (usage très en avance sur le temps), semaine, cache chaud ; au pied, coût et branche protégée en orange](docs/bandeau.png)
 
-*Ci-dessus : 35 % des 5 h consommés avec moins de 30 % de la fenêtre écoulée : plus de 5 points d'avance → orange. La ligne 🐋 vient d'un autre mod (baleine), que le bandeau laisse s'afficher.*
+*Ci-dessus : 53 % des 5 h consommés pour un peu plus d'un quart de la fenêtre écoulé, plus de 15 points d'avance → rouge
+(au-delà de 5 points, ce serait orange). Au pied, `main` en orange : branche protégée.*
 
 **Le panneau** (`/sonar`) : tout le détail, jauges comprises, avec les heures de remise à zéro, le budget par jour, le taux
 de lecture du cache, la branche et les fichiers modifiés, le coût et le fichier des relevés. Il se ferme par sa croix.
