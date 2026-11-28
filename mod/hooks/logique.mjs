@@ -35,7 +35,7 @@ const TEXTES = {
     noms: { five_hour: '5 h', seven_day: 'semaine', spend_limit: 'budget' },
     nomsCourts: { seven_day: 'sem.' },
     remis: 'remis à zéro', epuise: 'épuisé',
-    parJour: (p) => `${p} %/j`, reste: (p) => `reste ${p} %`, remet: (e) => `remise ${e}`,
+    parJour: (p) => `${p} %/j`, reste: (p) => `reste ${p} %`, remet: (e) => `reset ${e}`,
     ilYa: (n, jours) => `il y a ${n} ${jours ? 'j' : 'h'}`,
     cache: 'cache', chaud: 'chaud', froid: 'froid', autreModele: 'autre modèle', incertain: 'incertain',
     relu: (p) => `${p} relu`, jusqua: (h, auMoins) => `${auMoins ? 'au moins ' : ''}jusqu'à ${h}`,
@@ -459,7 +459,7 @@ export function reponseFiche(texte, id, maintenant) {
   return { a: t - MARGE_ENVOI_MS, lu: 0, ecrit: 0, neuf: 0, approx: true };
 }
 
-// Repli texte (terminal, ligne d'état, réponse de /sonar) : « semaine 41 % (20 %/j, remise ven. 12:00) ».
+// Repli texte (terminal, ligne d'état, réponse de /sonar) : « semaine 41 % (20 %/j, reset ven. 12:00) ».
 // Une étiquette vide (l'icône du cache au pied) ne laisse pas d'espace devant.
 export const texte = (el) => `${el.etiquette ? `${el.etiquette} ` : ''}${el.valeur}${el.detail ? ` (${el.detail})` : ''}`;
 export const ligne = (els, sep = '   ') => els.map(texte).join(sep);

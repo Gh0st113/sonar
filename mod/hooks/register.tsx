@@ -308,8 +308,9 @@ const svgDe = (u: Vue, surface: string) => (surface !== 'terminal' && 'Svg' in u
 
 // Un élément du bandeau ou du panneau : sa ligne, et dessous sa jauge là où le Svg existe (pas sur le terminal).
 // `colonne` (bandeau) : chaque élément part d'un peu moins d'un tiers de la rangée et grandit pour la remplir ; sous
-// `minWidth`, la rangée passe à la ligne. Dans le panneau, la jauge prend sa largeur.
-const COLONNE = { width: '30%', flexGrow: 1, minWidth: 24 } as const
+// `minWidth`, la rangée passe à la ligne. La barre est posée en bas de sa colonne : un texte sur deux lignes ne la décale
+// pas (les colonnes d'une rangée ont la même hauteur, `stretch`). Dans le panneau, la jauge prend sa largeur.
+const COLONNE = { width: '30%', flexGrow: 1, minWidth: 24, justifyContent: 'space-between' } as const
 function bloc(u: Vue, el: Morceau, Svg: ReturnType<typeof svgDe>, colonne = false) {
   const { Box } = u
   return (
@@ -329,7 +330,7 @@ async function bandeau($: EngineInterface, e: RenderInput) {
   const Svg = svgDe(u, e.surface)
   if (!Svg) return phrase(u, js)
   const { Box } = u
-  return <Box flexDirection="row" flexWrap="wrap" columnGap={3} rowGap={1}>{js.map(el => bloc(u, el, Svg, true))}</Box>
+  return <Box flexDirection="row" flexWrap="wrap" alignItems="stretch" columnGap={3} rowGap={1}>{js.map(el => bloc(u, el, Svg, true))}</Box>
 }
 
 // Sous le détail (panneau ou réponse de /sonar) : bandeau ou non, durée du cache, fichier des relevés.
