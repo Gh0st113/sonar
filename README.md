@@ -128,6 +128,14 @@ last reading seen in any session (the % and reset time of `5h` and `week`, in th
 shown; nor is a reading taken under another account (Claude Desktop gives the account to the engine; it is never
 shown). The first response brings back the live value.
 
+Open but silent session: its limits date from its last response. If another session of the same account has received
+a more recent reading since, it replaces the session's own, window by window, without `≥` or dimming since it was exact
+at its time; unless it is lower within the same window (the % only goes up: it is not fresher). Any value read more
+than an hour ago carries its age (`5h 75% (2h ago, resets 15:00)`), except a window that has already reset. The
+session's next response takes over again. Only readings received with a response are kept: the limits the engine
+hands back when a session already under way is opened date from its last response, at an unknown time; they show
+without an age and give way to any kept reading.
+
 ## `/sonar` command (English or French words)
 
 | Command | Effect |

@@ -1,8 +1,11 @@
-/** `releveA` : heure (ms) d'un relevé gardé ressorti en session froide ; absent pour une valeur vive */
-export type SonarQuota = { kind: string; percentUsed: number; resetsAt?: string; releveA?: number }
+/** `releveA` : heure (ms) d'un relevé gardé ressorti en session froide (un minimum) ; `luA` : heure de lecture d'une
+ * valeur exacte (vive, ou relevé plus récent d'une autre session) */
+export type SonarQuota = { kind: string; percentUsed: number; resetsAt?: string; releveA?: number; luA?: number }
 
 export type SonarMesure = {
   quotas: SonarQuota[]
+  /** heure (ms) de la mesure */
+  a?: number
   /** coût estimé de la session en USD (prix catalogue) */
   cout?: number
 }

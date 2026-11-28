@@ -322,13 +322,16 @@ export function jauges(d, maintenant, cfg = DEFAUTS) {
       if (!r) continue;
       // Relevé gardé (quotasGardes) : un minimum, « ≥ 87 % », arrondi vers le bas (87,6 → ≥ 87) ; « épuisé » reste un mot.
       // Ni %/j, ni reste, ni ligne de temps (sa marge verte serait fausse) ; le niveau reste : au moins X % ou au moins
-      // N points d'avance sont des alertes vraies. Son âge à partir d'1 h, arrondi vers le bas (heures, puis jours).
+      // N points d'avance sont des alertes vraies. Âge à partir d'1 h, arrondi vers le bas (heures, puis jours) : celui
+      // du relevé gardé, ou de la lecture d'une valeur exacte (`luA`, session silencieuse ; issue #35).
       const garde = fini(q.releveA);
+      const lu = garde ? q.releveA : q.luA;
       const bas = (x) => (x < 10 ? Math.floor(x * 10) / 10 : Math.floor(x));
       const valeur = !garde ? valeurQuota(r, t, cfg) : r.epuise ? t.epuise : `≥ ${pc(bas(r.utilise), cfg)}`;
       const detail = [];
-      if (garde && maintenant - q.releveA >= H) {
-        const h = Math.floor((maintenant - q.releveA) / H);
+      // Fenêtre déjà remise : son âge ne dit rien.
+      if (fini(lu) && !r.remis && maintenant - lu >= H) {
+        const h = Math.floor((maintenant - lu) / H);
         detail.push(h < 24 ? t.ilYa(h, false) : t.ilYa(Math.floor(h / 24), true));
       }
       if (!garde && r.parJour !== undefined) detail.push(t.parJour(pct(r.parJour, cfg)));
@@ -517,6 +520,30 @@ export function quotasGardes(r, maintenant, compte) {
     const f = r[kind];
     const fin = Date.parse(String(f?.resets_at ?? ''));
     return f && fini(f.pct) && fini(fin) && fin > maintenant ? [{ kind, percentUsed: f.pct, resetsAt: f.resets_at, releveA: ts }] : [];
+  });
+}
+
+// Session chaude mais silencieuse (issue #35) : ses quotas vifs datent de sa dernière réponse (`a`), alors qu'une
+// autre session a pu garder un relevé plus récent du même compte. Fenêtre par fenêtre, ce relevé remplace la valeur vive
+// s'il est strictement plus récent et que sa fenêtre court encore (mêmes contrôles que quotasGardes). Il est exact à son
+// heure : pas de « ≥ », seulement l'heure de lecture (`luA`), qui donne l'âge. Les autres quotas restent vifs.
+// Sans `a` (quotas repris au démarrage, datés de la dernière réponse de la session, heure inconnue) : tout relevé valide
+// l'emporte, la valeur vive n'a pas d'âge. Jamais un relevé d'une fenêtre plus ancienne (remise avant celle de la vive).
+export function quotasFrais(vifs, a, r, maintenant, compte) {
+  const date = fini(a);
+  const lus = date ? vifs.map((q) => ({ ...q, luA: a })) : vifs;
+  const ts = Date.parse(String(r?.ts ?? ''));
+  if (date && !(ts > a)) return lus;
+  const neufs = new Map(quotasGardes(r, maintenant, compte).map(({ releveA, ...q }) => [q.kind, { ...q, luA: releveA }]));
+  return lus.map((q) => {
+    const n = neufs.get(q.kind);
+    const finVive = Date.parse(String(q.resetsAt ?? ''));
+    // Deux fenêtres d'un même type sont espacées d'au moins 5 h : 1 h de marge absorbe un écart de lecture.
+    if (!n || Date.parse(n.resetsAt) < finVive - H) return q;
+    // Même fenêtre : le % ne fait que monter, un relevé plus bas n'est pas plus frais (vive sans heure, relevé d'avant).
+    // Remise vive inconnue : rien ne dit que c'est la même fenêtre, le relevé (plus récent) l'emporte.
+    const meme = fini(finVive) && !(Date.parse(n.resetsAt) > finVive + H);
+    return meme && n.percentUsed < q.percentUsed ? q : n;
   });
 }
 

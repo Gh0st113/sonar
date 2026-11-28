@@ -7,7 +7,7 @@ import {
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
   releve, ajouterReleve, dernierReleve, cheminJournal, cheminArchive, isoUtc, majJournal, besoinMaison, TAILLE_MAX_JOURNAL,
   derniereReponse, brancheCourte, SEP_PIED, MARGE_ENVOI_MS, dossierProjet,
-  reponseFiche, localeSysteme, langueHote, quotasGardes,
+  reponseFiche, localeSysteme, langueHote, quotasFrais, quotasGardes,
 } from '../hooks/logique.mjs';
 
 const H = 3_600_000;
@@ -407,6 +407,56 @@ test('relevé gardé dans le bandeau : « ≥ », âge au-delà d’1 h, remise 
   assert.match(ligne(jauges({ quotas: garde(0, [q5(100, 2 * H)]) }, T0, FR)), /^5 h épuisé \(/);
   assert.equal(jauges({ quotas: garde(0, [q5(40, 2 * H)]) }, T0, FR)[0].repere, undefined);
   assert.notEqual(jauges({ quotas: [q5(40, 2 * H)] }, T0, FR)[0].repere, undefined);
+});
+
+// Session chaude silencieuse (issue #35) : un relevé plus récent d'une autre session remplace la valeur vive.
+test('quotas frais : relevé plus récent du même compte pris fenêtre par fenêtre, sinon la valeur vive', () => {
+  const vifs = [q5(40, 3 * H), q7(20, 3 * J), { kind: 'spend_limit', percentUsed: 5 }];
+  // Même fenêtres que les vifs (remise au même moment, à quelques secondes près).
+  const neuf = { ...releve([q5(75, 3 * H + 30_000), q7(30, 3 * J)], T0 - H), compte: 'a' };
+  const vu = (l) => l.map(q => [q.kind, q.percentUsed, q.luA]);
+  // Plus récent, même compte : 5 h et semaine du relevé, lus à son heure ; le budget reste vif.
+  assert.deepEqual(vu(quotasFrais(vifs, T0 - 3 * H, neuf, T0, 'a')), [['five_hour', 75, T0 - H], ['seven_day', 30, T0 - H], ['spend_limit', 5, T0 - 3 * H]]);
+  assert.ok(quotasFrais(vifs, T0 - 3 * H, neuf, T0, 'a').every(q => q.releveA === undefined));
+  // Compte inconnu d'un côté : pris ; autre compte : la valeur vive.
+  assert.equal(quotasFrais(vifs, T0 - 3 * H, neuf, T0, undefined)[0].percentUsed, 75);
+  assert.equal(quotasFrais(vifs, T0 - 3 * H, { ...neuf, compte: undefined }, T0, 'a')[0].percentUsed, 75);
+  assert.deepEqual(vu(quotasFrais(vifs, T0 - 3 * H, neuf, T0, 'b')).map(x => x[1]), [40, 20, 5]);
+  // Plus ancien ou du même instant (le relevé de la session elle-même) : la valeur vive.
+  assert.deepEqual(vu(quotasFrais(vifs, T0 - H, neuf, T0, 'a')).map(x => x[1]), [40, 20, 5]);
+  assert.deepEqual(vu(quotasFrais(vifs, T0 - 30 * 60_000, neuf, T0, 'a')).map(x => x[1]), [40, 20, 5]);
+  // 5 h du relevé remise, semaine en cours : semaine du relevé, 5 h vive.
+  assert.deepEqual(vu(quotasFrais(vifs, T0 - 3 * H, neuf, T0 + 3 * H + 60_000, 'a')).map(x => x[1]), [40, 30, 5]);
+  // Relevé plus récent mais d'une fenêtre 5 h plus ancienne (remise 2 h avant celle de la vive) : 5 h vive.
+  const ancien = { ...releve([q5(90, H), q7(30, 3 * J)], T0 - H), compte: 'a' };
+  assert.deepEqual(vu(quotasFrais(vifs, T0 - 3 * H, ancien, T0, 'a')).map(x => x[1]), [40, 30, 5]);
+  // Sans heure de mesure (quotas repris au démarrage) : tout relevé valide l'emporte ; la vive restante sans âge.
+  assert.deepEqual(vu(quotasFrais(vifs, undefined, neuf, T0, 'a')), [['five_hour', 75, T0 - H], ['seven_day', 30, T0 - H], ['spend_limit', 5, undefined]]);
+  assert.deepEqual(quotasFrais(vifs, undefined, undefined, T0, 'a'), vifs);
+  // Même fenêtre mais % plus bas (relevé d'avant la reprise) : la vive ; fenêtre suivante plus basse : le relevé.
+  const bas = { ...releve([q5(30, 3 * H), q7(30, 3 * J)], T0 - H), compte: 'a' };
+  assert.deepEqual(vu(quotasFrais(vifs, undefined, bas, T0, 'a')).map(x => x[1]), [40, 30, 5]);
+  const suivante = { ...releve([q5(10, 8 * H)], T0 - H), compte: 'a' };
+  assert.equal(quotasFrais(vifs, T0 - 3 * H, suivante, T0, 'a')[0].percentUsed, 10);
+  // Vive sans heure de remise : le relevé plus récent l'emporte, même plus bas.
+  assert.equal(quotasFrais([{ kind: 'five_hour', percentUsed: 90 }], T0 - 3 * H, suivante, T0, 'a')[0].percentUsed, 10);
+  assert.deepEqual(quotasFrais(vifs, undefined, neuf, T0, 'b'), vifs);
+  assert.deepEqual(vu(quotasFrais(vifs, T0 - 3 * H, undefined, T0, 'a')).map(x => x[1]), [40, 20, 5]);
+});
+
+test('quotas frais dans le bandeau : sans « ≥ », rythme gardé, âge dès 1 h (valeur vive comprise)', () => {
+  const lus = (a) => [{ ...q5(40, 3 * H), luA: a }];
+  // Moins d'1 h : comme une valeur vive ; ligne de temps gardée, pas de « ≥ », pas pâle.
+  const jeune = jauges({ quotas: lus(T0 - 30 * 60_000) }, T0, FR);
+  assert.equal(ligne(jeune), ligne(jauges({ quotas: [q5(40, 3 * H)] }, T0, FR)));
+  assert.notEqual(jeune[0].repere, undefined);
+  assert.ok(!jeune[0].releve);
+  // 2 h 10 : « il y a 2 h » avant la remise, sans « ≥ ».
+  const vieux = ligne(jauges({ quotas: lus(T0 - 2 * H - 10 * 60_000) }, T0, FR));
+  assert.match(vieux, /^5 h 40 % \(il y a 2 h, .*remise \d\d:\d\d\)$/);
+  assert.doesNotMatch(vieux, /≥/);
+  // Fenêtre déjà remise : pas d'âge.
+  assert.equal(ligne(jauges({ quotas: [{ ...q5(40, -H), luA: T0 - 3 * H }] }, T0, FR)), '5 h remis à zéro');
 });
 
 test('journal des quotas : une ligne seulement quand le % ou l’heure de remise change', () => {
