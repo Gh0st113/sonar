@@ -323,7 +323,7 @@ test('jauges (fr) : tout le détail, sans contexte ni anciens symboles', () => {
   const t = ligne(j);
   assert.doesNotMatch(t, /undefined|NaN|ctx|contexte/);
   assert.doesNotMatch(t, SYMBOLES);
-  assert.match(t, /^5 h 23 % \(remise \d\d:\d\d\) {3}semaine 41 % \(20 %\/j, remise \S+ \d\d:\d\d\) {3}cache chaud \(92 % relu, jusqu'à \d\d:\d\d\) {3}branche feat\/x \(projet-a, 3 modifiés\) {3}coût 1,23 \$$/);
+  assert.match(t, /^limite 5 h 23 % \(reset \d\d:\d\d\) {3}semaine 41 % \(20 %\/j, reset \S+ \d\d:\d\d\) {3}cache chaud \(92 % relu, jusqu'à \d\d:\d\d\) {3}branche feat\/x \(projet-a, 3 modifiés\) {3}coût 1,23 \$$/);
   // Jauge = usage ; repère = part de fenêtre écoulée ; cache = temps qu'il lui reste ; pas de jauge pour la branche.
   assert.equal(j[0].part, 0.23);
   assert.ok(Math.abs(j[0].repere - 0.6) < 1e-9);
@@ -333,8 +333,8 @@ test('jauges (fr) : tout le détail, sans contexte ni anciens symboles', () => {
 });
 
 test('jauges (en) et cas limites', () => {
-  assert.match(ligne(jauges(TOUT, T0, EN)), /^5h 23% \(resets \d\d:\d\d\) {3}week 41% \(20%\/d, resets [A-Z][a-z]{2} \d\d:\d\d\) {3}cache warm \(92% reused, until \d\d:\d\d\) {3}branch feat\/x \(projet-a, 3 modified\) {3}cost \$1\.23$/);
-  assert.equal(ligne(jauges({ quotas: [q5(40, -1)] }, T0, FR)), '5 h remis à zéro');
+  assert.match(ligne(jauges(TOUT, T0, EN)), /^5h limit 23% \(resets \d\d:\d\d\) {3}week 41% \(20%\/d, resets [A-Z][a-z]{2} \d\d:\d\d\) {3}cache warm \(92% reused, until \d\d:\d\d\) {3}branch feat\/x \(projet-a, 3 modified\) {3}cost \$1\.23$/);
+  assert.equal(ligne(jauges({ quotas: [q5(40, -1)] }, T0, FR)), 'limite 5 h remis à zéro');
   assert.equal(jauges({ quotas: [q5(40, -1)] }, T0, FR)[0].part, 0);
   assert.equal(ligne(jauges({ quotas: [], depot: { nom: 'p', detachee: true, modifies: 1 } }, T0, EN)), 'branch detached HEAD (p, 1 modified)');
   assert.equal(ligne(jauges({ quotas: [], depot: { nom: 'p', modifies: 0 } }, T0, FR)), 'branche p');
@@ -342,7 +342,7 @@ test('jauges (en) et cas limites', () => {
   assert.match(ligne(jauges({ quotas: [], cache: { a: T0, lu: 9, ecrit: 1, neuf: 0 } }, T0 + 60_000, FR)), /^cache chaud \(90 % relu, au moins jusqu'à \d\d:\d\d\)$/);
   assert.equal(ligne(jauges({ quotas: [], cache: { a: T0, lu: 9, ecrit: 1, neuf: 0, modele: 'a' }, modele: 'b' }, T0, FR)), 'cache autre modèle');
   assert.match(ligne(jauges({ quotas: [{ kind: 'spend_limit', percentUsed: 62.8, resetsAt: iso(T0 + 10 * J) }] }, T0, EN)), /^budget 63% \(resets \d{1,2}\/\d{1,2}\)$/);
-  assert.match(ligne(jauges({ quotas: [q7(97, 0.5 * J)] }, T0, FR)), /^semaine 97 % \(reste 3 %, remise .+\)$/);
+  assert.match(ligne(jauges({ quotas: [q7(97, 0.5 * J)] }, T0, FR)), /^semaine 97 % \(reste 3 %, reset .+\)$/);
   assert.deepEqual(jauges({ quotas: [] }, T0, FR), []);
   // « context » dans l'option segments est ignoré : le contexte n'est affiché nulle part.
   assert.deepEqual(lireConfig({ segments: 'cost, context' }).segments, ['cout']);
@@ -390,21 +390,21 @@ test('relevé gardé dans le bandeau : « ≥ », âge au-delà d’1 h, remise 
   const garde = (ageMs, quotas) => quotasGardes(releve(quotas, T0 - ageMs), T0, undefined);
   // Moins d'1 h : pas d'âge.
   const jeune = jauges({ quotas: garde(30 * 60_000, [q5(87, 2 * H), q7(47, 3 * J)]) }, T0, FR);
-  assert.match(ligne(jeune), /^5 h ≥ 87 % \(remise \d\d:\d\d\) {3}semaine ≥ 47 % \(remise [a-z]{3}\. \d\d:\d\d\)$/);
+  assert.match(ligne(jeune), /^limite 5 h ≥ 87 % \(reset \d\d:\d\d\) {3}semaine ≥ 47 % \(reset [a-z]{3}\. \d\d:\d\d\)$/);
   assert.ok(jeune.every(j => j.releve === true));
   // Niveau d'alerte gardé (un minimum à 92 % est au moins 92 %).
   assert.equal(jauges({ quotas: garde(0, [q5(92, 2 * H)]) }, T0, FR)[0].niveau, 'alerte');
   // 3 h 50 : « il y a 3 h » ; 2 j 5 h : « il y a 2 j » ; anglais.
-  assert.match(ligne(jauges({ quotas: garde(3 * H + 50 * 60_000, [q5(40, H)]) }, T0, FR)), /^5 h ≥ 40 % \(il y a 3 h, remise \d\d:\d\d\)$/);
-  assert.match(ligne(jauges({ quotas: garde(2 * J + 5 * H, [q7(30, 3 * J)]) }, T0, FR)), /^semaine ≥ 30 % \(il y a 2 j, remise /);
-  assert.match(ligne(jauges({ quotas: garde(3 * H, [q5(40, H)]) }, T0, EN)), /^5h ≥ 40% \(3h ago, resets \d\d:\d\d\)$/);
+  assert.match(ligne(jauges({ quotas: garde(3 * H + 50 * 60_000, [q5(40, H)]) }, T0, FR)), /^limite 5 h ≥ 40 % \(il y a 3 h, reset \d\d:\d\d\)$/);
+  assert.match(ligne(jauges({ quotas: garde(2 * J + 5 * H, [q7(30, 3 * J)]) }, T0, FR)), /^semaine ≥ 30 % \(il y a 2 j, reset /);
+  assert.match(ligne(jauges({ quotas: garde(3 * H, [q5(40, H)]) }, T0, EN)), /^5h limit ≥ 40% \(3h ago, resets \d\d:\d\d\)$/);
   assert.match(ligne(jauges({ quotas: garde(2 * J, [q7(30, 3 * J)]) }, T0, EN)), /^week ≥ 30% \(2d ago, resets /);
   // Une valeur vive n'est pas marquée.
   assert.ok(!jauges({ quotas: [q5(87, 2 * H)] }, T0, FR)[0].releve);
   // Minimum arrondi vers le bas (87,6 → ≥ 87 ; 5,67 → ≥ 5,6), « épuisé » sans « ≥ » ; pas de ligne de temps (repere).
-  assert.match(ligne(jauges({ quotas: garde(0, [q5(87.6, 2 * H)]) }, T0, FR)), /^5 h ≥ 87 % /);
-  assert.match(ligne(jauges({ quotas: garde(0, [q5(5.67, 2 * H)]) }, T0, FR)), /^5 h ≥ 5,6 % /);
-  assert.match(ligne(jauges({ quotas: garde(0, [q5(100, 2 * H)]) }, T0, FR)), /^5 h épuisé \(/);
+  assert.match(ligne(jauges({ quotas: garde(0, [q5(87.6, 2 * H)]) }, T0, FR)), /^limite 5 h ≥ 87 % /);
+  assert.match(ligne(jauges({ quotas: garde(0, [q5(5.67, 2 * H)]) }, T0, FR)), /^limite 5 h ≥ 5,6 % /);
+  assert.match(ligne(jauges({ quotas: garde(0, [q5(100, 2 * H)]) }, T0, FR)), /^limite 5 h épuisé \(/);
   assert.equal(jauges({ quotas: garde(0, [q5(40, 2 * H)]) }, T0, FR)[0].repere, undefined);
   assert.notEqual(jauges({ quotas: [q5(40, 2 * H)] }, T0, FR)[0].repere, undefined);
 });
@@ -453,10 +453,10 @@ test('quotas frais dans le bandeau : sans « ≥ », rythme gardé, âge dès 1 
   assert.ok(!jeune[0].releve);
   // 2 h 10 : « il y a 2 h » avant la remise, sans « ≥ ».
   const vieux = ligne(jauges({ quotas: lus(T0 - 2 * H - 10 * 60_000) }, T0, FR));
-  assert.match(vieux, /^5 h 40 % \(il y a 2 h, .*remise \d\d:\d\d\)$/);
+  assert.match(vieux, /^limite 5 h 40 % \(il y a 2 h, .*reset \d\d:\d\d\)$/);
   assert.doesNotMatch(vieux, /≥/);
   // Fenêtre déjà remise : pas d'âge.
-  assert.equal(ligne(jauges({ quotas: [{ ...q5(40, -H), luA: T0 - 3 * H }] }, T0, FR)), '5 h remis à zéro');
+  assert.equal(ligne(jauges({ quotas: [{ ...q5(40, -H), luA: T0 - 3 * H }] }, T0, FR)), 'limite 5 h remis à zéro');
 });
 
 test('journal des quotas : une ligne seulement quand le % ou l’heure de remise change', () => {

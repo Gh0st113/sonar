@@ -25,9 +25,12 @@ In this order, separated by "·", each only when known:
 The limits (5h, week) are never there, even in alert: they are in the banner, the pane and `/sonar`.
 A single warning colour in the footer, orange, on the value (red is kept for the banner and the pane).
 
-**The banner** (`/sonar banner`, optional, on top of the footer) above the prompt: one gauge per window and for the cache, all the same height. The bar is usage;
-above each limit, a time line like UI+'s: grey up to where usage and time agree, then green when time is ahead (room to
-spare), orange when usage is ahead (you are using it faster than an even pace), red when, on top of that, the limit is in alert. The line follows the time actually elapsed; the value's colour
+**The banner** (`/sonar banner`, optional, on top of the footer) above the prompt: one bar per window and for the cache, all the same height,
+each in its own column across the width of the banner (they wrap in a narrow window). For a limit, the bar is
+blue up to where usage and time agree, then coloured up to whichever is further: green when time is ahead (room to spare),
+orange when usage is ahead (you are using it faster than an even pace), red when, on top of that, the limit is in alert. A reading kept from
+another session is drawn faded, usage alone, in blue. The cache bar shows the time it has left, in blood orange, turning
+blue over the last 20 % of its lifetime (soon cold). The bar follows the time actually elapsed; the value's colour
 allows some slack at the start of a window (1 h of 5 h, 1 day of 7) and also follows the absolute thresholds (70 % and 90 % by
 default).
 Branch and cost stay in the footer.
@@ -42,7 +45,7 @@ changed files, cost and the usage log file. Close it with its cross. When the pa
 detail, one line per item:
 
 ```
-5h 23% (resets 15:00)
+5h limit 23% (resets 15:00)
 week 41% (20%/d, resets Fri 13:00)
 cache warm (92% reused, until 13:42)
 branch feat/x (my-repo, 2 modified)
@@ -124,14 +127,14 @@ shift it. With neither `tail` nor that record (Windows terminal): the cache stay
 New session (no response yet): the engine only gives the usage limits with the first response. So the mod keeps the
 last reading seen in any session (the % and reset time of `5h` and `week`, in the plugin's local storage, even without
 `quotaLog`) and shows it meanwhile, dimmed and as a minimum, since the % only goes up until the reset:
-`5h ≥ 87% (resets 03:30)`, with its age past one hour (`3h ago, resets 03:30`). A window that has already reset is not
+`5h limit ≥ 87% (resets 03:30)`, with its age past one hour (`3h ago, resets 03:30`). A window that has already reset is not
 shown; nor is a reading taken under another account (Claude Desktop gives the account to the engine; it is never
 shown). The first response brings back the live value.
 
 Open but silent session: its limits date from its last response. If another session of the same account has received
 a more recent reading since, it replaces the session's own, window by window, without `≥` or dimming since it was exact
 at its time; unless it is lower within the same window (the % only goes up: it is not fresher). Any value read more
-than an hour ago carries its age (`5h 75% (2h ago, resets 15:00)`), except a window that has already reset. The
+than an hour ago carries its age (`5h limit 75% (2h ago, resets 15:00)`), except a window that has already reset. The
 session's next response takes over again. Only readings received with a response are kept: the limits the engine
 hands back when a session already under way is opened date from its last response, at an unknown time; they show
 without an age and give way to any kept reading.

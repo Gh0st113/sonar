@@ -31,7 +31,6 @@ type Vue = ReturnType<EngineInterface['ui']['resolve']>
 const COULEUR = { attention: 'warning', alerte: 'error' } as const
 // Le Svg est dessiné comme une image : pas de couleurs du thème, un gris lisible sur fond clair comme sombre.
 const GRIS = '#888'
-const TEINTE = { ok: GRIS, attention: '#d4a017', alerte: '#e5484d' } as const
 const PANNEAU = 'sonar'
 const SEP = '   '
 const GIT_DELAI_MS = 3000
@@ -273,49 +272,51 @@ function phrase(u: Vue, els: Morceau[], sep = SEP) {
   )
 }
 
-// Jauge : barre = usage. Pour un quota (`repere` = part de la fenêtre écoulée), une ligne de temps au-dessus, comme
-// UI+ for Claude : grise jusqu'où usage et temps concordent, puis colorée jusqu'au plus avancé des deux, verte quand le
-// temps est devant (de la marge), orange quand l'usage est devant, rouge si le quota est en alerte.
-const JAUGE = { largeur: 120, hauteur: 8 }
-const LIGNE_TEMPS = { hauteur: 3, ecart: 2 }
-const RYTHME = { marge: '#3fa66b', avance: '#e0913a', alerte: '#e5484d' } as const
-// La barre est dessinée 1 px sous le haut de sa boîte : la ligne de temps empiète de ce pixel pour garder l'écart annoncé.
-const hauteurJauge = (repere: number | undefined) => JAUGE.hauteur + (repere === undefined ? 0 : LIGNE_TEMPS.hauteur + LIGNE_TEMPS.ecart - 1)
-// `total` : hauteur de l'image ; plus grande que la sienne, la jauge est poussée vers le bas (barres alignées dans le bandeau).
-// `pale` : relevé gardé (session froide), toute la jauge à demi-teinte.
-function svgJauge(part: number, repere: number | undefined, niveau: Morceau['niveau'], total = hauteurJauge(repere), pale = false) {
+// Jauge : une barre. Quota (`repere` = part de la fenêtre écoulée) : bleue de 0 jusqu'où usage et temps concordent, puis
+// colorée jusqu'au plus avancé des deux, verte quand le temps est devant (la marge), orange quand l'usage est devant, rouge
+// si en plus le quota est en alerte ; au-delà, la piste. Relevé gardé (session froide, sans temps) : l'usage en bleu, toute la
+// jauge à demi-teinte. Cache chaud : le temps qui lui reste, orange sanguin, bleu sur la fin (`BIENTOT_FROID`) ;
+// froid, la piste seule.
+// Largeur : le dessin est large (`largeur` px) et sans viewBox, ses rectangles en % ; sans `width`, l'appli le borne à la
+// place de sa colonne, et les % se calculent sur la largeur dessinée (coins ronds non déformés).
+const JAUGE = { largeur: 2000, hauteur: 8 }
+const COULEURS = { temps: '#5b8def', marge: '#3fa66b', avance: '#e0913a', alerte: '#e5484d', cache: '#d9480f' } as const
+const BIENTOT_FROID = 0.2
+function svgJauge(el: Morceau, part: number) {
   const { largeur: L, hauteur: H } = JAUGE
-  const px = (x: number) => Math.round(L * Math.min(1, Math.max(0, x)))
-  const plein = px(part)
-  let temps = ''
-  if (repere !== undefined) {
-    const h = LIGNE_TEMPS.hauteur
-    const t = px(repere)
-    const commun = Math.min(plein, t)
-    const bout = Math.max(plein, t)
-    const teinte = plein > t ? (niveau === 'alerte' ? RYTHME.alerte : RYTHME.avance) : RYTHME.marge
-    temps = `<rect width="${L}" height="${h}" rx="1.5" fill="${GRIS}" fill-opacity="0.2"/>`
-      + (commun > 0 ? `<rect width="${commun}" height="${h}" rx="1.5" fill="${GRIS}"/>` : '')
-      + (bout > commun ? `<rect x="${commun}" width="${bout - commun}" height="${h}" rx="1.5" fill="${teinte}"/>` : '')
+  const pc = (x: number) => Math.round(1000 * Math.min(1, Math.max(0, x))) / 10
+  const rect = (w: number, fill: string, plus = '') => `<rect y="1" width="${w}%" height="${H - 2}" rx="3" fill="${fill}"${plus}/>`
+  const u = pc(part)
+  let barres: [number, string][]
+  if (el.releve) barres = [[u, COULEURS.temps]]
+  else if (el.repere !== undefined) {
+    const t = pc(el.repere)
+    // Le rythme sur les valeurs brutes ; seuls les dessins sont arrondis. Le rouge seulement quand l'usage est devant :
+    // en alerte par le seuil absolu, une marge de temps reste verte.
+    const devant = part > el.repere
+    const teinte = !devant ? COULEURS.marge : el.niveau === 'alerte' ? COULEURS.alerte : COULEURS.avance
+    // La couleur jusqu'au bout, le bleu par-dessus jusqu'à la part commune : la jonction reste nette malgré les coins ronds.
+    barres = [[Math.max(u, t), teinte], [Math.min(u, t), COULEURS.temps]]
   }
-  const y = total - H + 1
-  const fond = `<rect y="${y}" width="${L}" height="${H - 2}" rx="3" fill="${GRIS}" fill-opacity="0.25"/>`
-  const barre = plein > 0 ? `<rect y="${y}" width="${plein}" height="${H - 2}" rx="3" fill="${TEINTE[niveau]}"${niveau === 'ok' ? ' fill-opacity="0.7"' : ''}/>` : ''
-  const dessin = pale ? `<g opacity="0.5">${temps}${fond}${barre}</g>` : `${temps}${fond}${barre}`
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${L}" height="${total}" viewBox="0 0 ${L} ${total}">${dessin}</svg>`
+  else barres = [[u, part <= BIENTOT_FROID ? COULEURS.temps : COULEURS.cache]]
+  const dessin = rect(100, GRIS, ' fill-opacity="0.25"') + barres.filter(([w]) => w > 0).map(([w, c]) => rect(w, c)).join('')
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${L}" height="${H}">${el.releve ? `<g opacity="0.5">${dessin}</g>` : dessin}</svg>`
 }
 
 // Le Svg là où la surface le dessine : jamais sur le terminal (le kit y laisse la clé, l'appli n'en dessine rien).
 const svgDe = (u: Vue, surface: string) => (surface !== 'terminal' && 'Svg' in u ? u.Svg : undefined)
 
 // Un élément du bandeau ou du panneau : sa ligne, et dessous sa jauge là où le Svg existe (pas sur le terminal).
-// `hauteur` : celle de toutes les jauges d'une même rangée (bandeau) ; sinon la sienne.
-function bloc(u: Vue, el: Morceau, Svg: ReturnType<typeof svgDe>, hauteur = hauteurJauge(el.repere)) {
+// `colonne` (bandeau) : chaque élément part d'un peu moins d'un tiers de la rangée et grandit pour la remplir ; sous
+// `minWidth`, la rangée passe à la ligne. La barre est posée en bas de sa colonne : un texte sur deux lignes ne la décale
+// pas (les colonnes d'une rangée ont la même hauteur, `stretch`). Dans le panneau, la jauge prend sa largeur.
+const COLONNE = { width: '30%', flexGrow: 1, minWidth: 24, justifyContent: 'space-between' } as const
+function bloc(u: Vue, el: Morceau, Svg: ReturnType<typeof svgDe>, colonne = false) {
   const { Box } = u
   return (
-    <Box key={el.cle} flexDirection="column">
+    <Box key={el.cle} flexDirection="column" {...(colonne ? COLONNE : {})}>
       {phrase(u, [el])}
-      {Svg && el.part !== undefined ? <Svg source={svgJauge(el.part, el.repere, el.niveau, hauteur, el.releve)} alt={`${el.etiquette} ${el.valeur}`} width={JAUGE.largeur} height={hauteur} /> : null}
+      {Svg && el.part !== undefined ? <Svg source={svgJauge(el, el.part)} alt={`${el.etiquette} ${el.valeur}`} height={JAUGE.hauteur} /> : null}
     </Box>
   )
 }
@@ -329,9 +330,7 @@ async function bandeau($: EngineInterface, e: RenderInput) {
   const Svg = svgDe(u, e.surface)
   if (!Svg) return phrase(u, js)
   const { Box } = u
-  // La jauge du cache, sans ligne de temps, est moins haute : on la dessine à la hauteur des quotas.
-  const hauteur = Math.max(...js.map(el => hauteurJauge(el.repere)))
-  return <Box flexDirection="row" flexWrap="wrap" columnGap={3} rowGap={1}>{js.map(el => bloc(u, el, Svg, hauteur))}</Box>
+  return <Box flexDirection="row" flexWrap="wrap" alignItems="stretch" columnGap={3} rowGap={1}>{js.map(el => bloc(u, el, Svg, true))}</Box>
 }
 
 // Sous le détail (panneau ou réponse de /sonar) : bandeau ou non, durée du cache, fichier des relevés.
