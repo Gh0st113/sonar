@@ -7,7 +7,7 @@ import {
   pct, montant, echeance, heure, TTL, DEFAUTS, SEGMENTS,
   releve, ajouterReleve, dernierReleve, cheminJournal, cheminArchive, isoUtc, majJournal, besoinMaison, TAILLE_MAX_JOURNAL,
   derniereReponse, brancheCourte, SEP_PIED, MARGE_ENVOI_MS, dossierProjet,
-  reponseFiche, localeSysteme, langueHote,
+  reponseFiche, localeSysteme, langueHote, quotasGardes,
 } from '../hooks/logique.mjs';
 
 const H = 3_600_000;
@@ -365,6 +365,48 @@ test('journal des quotas : format de ligne, fenêtre absente omise, heure de rem
   assert.equal(releve([], ts), undefined);
   assert.equal(releve([{ kind: 'five_hour', percentUsed: NaN }, { kind: 'spend_limit', percentUsed: 3 }], ts), undefined);
   assert.equal(releve(undefined, ts), undefined);
+});
+
+// Session froide (issue #33) : le dernier relevé gardé, ressorti comme minimum tant que sa fenêtre court.
+test('relevé gardé : fenêtres encore en cours seulement, horloge et compte vérifiés', () => {
+  const r = { ts: iso(T0 - 2 * H), compte: 'a', ...releve([q5(87, 2 * H), q7(47, 3 * J)], T0 - 2 * H) };
+  // Les deux fenêtres courent : les deux, marquées de l'heure du relevé.
+  assert.deepEqual(quotasGardes(r, T0, 'a').map(q => [q.kind, q.percentUsed, q.releveA]), [['five_hour', 87, T0 - 2 * H], ['seven_day', 47, T0 - 2 * H]]);
+  // 5 h remise, semaine en cours : la semaine seule ; les deux remises : rien.
+  assert.deepEqual(quotasGardes(r, T0 + 2 * H, 'a').map(q => q.kind), ['seven_day']);
+  assert.deepEqual(quotasGardes(r, T0 + 3 * J, 'a'), []);
+  // Autre compte : rien ; compte inconnu d'un côté (terminal) : accepté.
+  assert.deepEqual(quotasGardes(r, T0, 'b'), []);
+  assert.equal(quotasGardes(r, T0, undefined).length, 2);
+  assert.equal(quotasGardes({ ...r, compte: undefined }, T0, 'a').length, 2);
+  // Relevé daté dans le futur (horloge reculée), absent, abîmé, sans heure de remise : rien.
+  assert.deepEqual(quotasGardes(r, T0 - 3 * H, 'a'), []);
+  for (const x of [undefined, null, 'x', {}, { ts: 'n/a', five_hour: { pct: 1, resets_at: iso(T0 + H) } }, { ts: iso(T0), five_hour: { pct: 1 } }]) {
+    assert.deepEqual(quotasGardes(x, T0, 'a'), []);
+  }
+});
+
+test('relevé gardé dans le bandeau : « ≥ », âge au-delà d’1 h, remise gardée, pas de rythme', () => {
+  const garde = (ageMs, quotas) => quotasGardes(releve(quotas, T0 - ageMs), T0, undefined);
+  // Moins d'1 h : pas d'âge.
+  const jeune = jauges({ quotas: garde(30 * 60_000, [q5(87, 2 * H), q7(47, 3 * J)]) }, T0, FR);
+  assert.match(ligne(jeune), /^5 h ≥ 87 % \(remise \d\d:\d\d\) {3}semaine ≥ 47 % \(remise [a-z]{3}\. \d\d:\d\d\)$/);
+  assert.ok(jeune.every(j => j.releve === true));
+  // Niveau d'alerte gardé (un minimum à 92 % est au moins 92 %).
+  assert.equal(jauges({ quotas: garde(0, [q5(92, 2 * H)]) }, T0, FR)[0].niveau, 'alerte');
+  // 3 h 50 : « il y a 3 h » ; 2 j 5 h : « il y a 2 j » ; anglais.
+  assert.match(ligne(jauges({ quotas: garde(3 * H + 50 * 60_000, [q5(40, H)]) }, T0, FR)), /^5 h ≥ 40 % \(il y a 3 h, remise \d\d:\d\d\)$/);
+  assert.match(ligne(jauges({ quotas: garde(2 * J + 5 * H, [q7(30, 3 * J)]) }, T0, FR)), /^semaine ≥ 30 % \(il y a 2 j, remise /);
+  assert.match(ligne(jauges({ quotas: garde(3 * H, [q5(40, H)]) }, T0, EN)), /^5h ≥ 40% \(3h ago, resets \d\d:\d\d\)$/);
+  assert.match(ligne(jauges({ quotas: garde(2 * J, [q7(30, 3 * J)]) }, T0, EN)), /^week ≥ 30% \(2d ago, resets /);
+  // Une valeur vive n'est pas marquée.
+  assert.ok(!jauges({ quotas: [q5(87, 2 * H)] }, T0, FR)[0].releve);
+  // Minimum arrondi vers le bas (87,6 → ≥ 87 ; 5,67 → ≥ 5,6), « épuisé » sans « ≥ » ; pas de ligne de temps (repere).
+  assert.match(ligne(jauges({ quotas: garde(0, [q5(87.6, 2 * H)]) }, T0, FR)), /^5 h ≥ 87 % /);
+  assert.match(ligne(jauges({ quotas: garde(0, [q5(5.67, 2 * H)]) }, T0, FR)), /^5 h ≥ 5,6 % /);
+  assert.match(ligne(jauges({ quotas: garde(0, [q5(100, 2 * H)]) }, T0, FR)), /^5 h épuisé \(/);
+  assert.equal(jauges({ quotas: garde(0, [q5(40, 2 * H)]) }, T0, FR)[0].repere, undefined);
+  assert.notEqual(jauges({ quotas: [q5(40, 2 * H)] }, T0, FR)[0].repere, undefined);
 });
 
 test('journal des quotas : une ligne seulement quand le % ou l’heure de remise change', () => {

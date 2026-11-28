@@ -630,3 +630,86 @@ test('journal des quotas : chemin choisi, ligne déjà écrite par une autre ses
   // L'affichage n'en souffre pas.
   expect(await commande($, '')).toContain('5 h 30 %')
 })
+
+// Session froide (issue #33) : le moteur ne donne les quotas qu'après la 1re réponse ; le dernier relevé gardé les remplace.
+const GARDE = { ts: iso(T0 - 2 * H), five_hour: { pct: 87, resets_at: iso(T0 + H).replace('.000Z', 'Z') }, seven_day: { pct: 47, resets_at: iso(T0 + 72 * H).replace('.000Z', 'Z') } }
+
+test('session froide : le dernier relevé d’une autre session s’affiche comme minimum, en pâle, la valeur vive le remplace', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot' })
+  mock.env(on, { CLAUDE_CODE_ACCOUNT_UUID: 'compte-a' })
+  // Une première session reçoit des quotas : ils sont gardés.
+  await demarrer($)
+  await attendre()
+  await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
+  // Une session neuve, sans réponse : le relevé, marqué « ≥ ».
+  await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
+  expect(await commande($, '')).toMatch(/5 h ≥ 23 % \(remise \d\d:\d\d\)\nsemaine ≥ 41 % \(remise /)
+  await commande($, 'bandeau')
+  const bureau = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  expect((await bureau.find({ type: 'Text', text: /^≥ 23 %$/ }))?.props.dimColor).toBe(true)
+  await bureau.unmount()
+  // La 1re réponse : la valeur vive, sans « ≥ ».
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 30 }, QUOTAS[1]!] })
+  const r = await commande($, '')
+  expect(r).toContain('5 h 30 %')
+  expect(r).not.toContain('≥')
+})
+
+test('session froide : relevé vieux de 2 h, son âge affiché ; la fenêtre 5 h se remet pendant l’attente, la semaine reste', FR, async ($, on) => {
+  const horloge = moteur(on, { git: 'hors-depot', store: { releve: GARDE } })
+  await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
+  expect(await commande($, '')).toMatch(/5 h ≥ 87 % \(il y a 2 h, remise \d\d:\d\d\)\nsemaine ≥ 47 % \(il y a 2 h, remise /)
+  await horloge.advance(H + 60_000)
+  const r = await commande($, '')
+  expect(r).not.toContain('5 h')
+  expect(r).toMatch(/semaine ≥ 47 % \(il y a 3 h, remise /)
+})
+
+test('session froide : relevé d’un autre compte, rien', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot', store: { releve: { ...GARDE, compte: 'compte-b' } } })
+  mock.env(on, { CLAUDE_CODE_ACCOUNT_UUID: 'compte-a' })
+  await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
+  const r = await commande($, '')
+  expect(r).not.toContain('5 h')
+  expect(r).not.toContain('semaine')
+})
+
+test('session froide : la valeur vive remplace le relevé même plus basse ; jauge du relevé pâle, sans ligne de temps', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot', store: { releve: GARDE } })
+  await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
+  await commande($, 'bandeau')
+  const bureau = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  const sources = (await bureau.findAll({ type: 'Svg' } as never) as { props?: { source?: string } }[]).map(s => s.props?.source ?? '')
+  await bureau.unmount()
+  expect(sources[0]).toContain('<g opacity="0.5">')
+  expect(sources[0]).not.toContain('height="3"')
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 30 }, QUOTAS[1]!] })
+  const r = await commande($, '')
+  expect(r).toContain('5 h 30 %')
+  expect(r).not.toContain('≥')
+})
+
+test('relevé gardé : une session sans compte connu (terminal) n’écrase pas celui d’un compte', FR, async ($, on) => {
+  moteur(on, { git: 'hors-depot', store: { releve: { ...GARDE, compte: 'compte-a' } } })
+  await demarrer($)
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 30 }, QUOTAS[1]!] })
+  await attendre()
+  await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
+  // Session froide : toujours le relevé du compte A (87 %), pas les 30 % de la session sans compte.
+  await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
+  expect(await commande($, '')).toMatch(/5 h ≥ 87 % \(il y a 2 h, remise /)
+})
+
+test('relevé gardé : mêmes chiffres 90 min plus tard, l’âge repart de la dernière lecture', FR, async ($, on) => {
+  const horloge = moteur(on, { git: 'hors-depot' })
+  await demarrer($)
+  await attendre()
+  await horloge.advance(90 * 60_000)
+  await $.session.measure(MESURE)
+  await attendre()
+  await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
+  await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
+  const r = await commande($, '')
+  expect(r).toMatch(/5 h ≥ 23 % \(remise /)
+  expect(r).not.toContain('il y a')
+})

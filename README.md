@@ -121,6 +121,13 @@ engine), minus the same minute. The time only, no read ratio or lifetime: warm f
 hour, then cold. It follows the last response within seconds for most sessions, but activity without a response can
 shift it. With neither `tail` nor that record (Windows terminal): the cache stays unknown until the next message.
 
+New session (no response yet): the engine only gives the usage limits with the first response. So the mod keeps the
+last reading seen in any session (the % and reset time of `5h` and `week`, in the plugin's local storage, even without
+`quotaLog`) and shows it meanwhile, dimmed and as a minimum, since the % only goes up until the reset:
+`5h ≥ 87% (resets 03:30)`, with its age past one hour (`3h ago, resets 03:30`). A window that has already reset is not
+shown; nor is a reading taken under another account (Claude Desktop gives the account to the engine; it is never
+shown). The first response brings back the live value.
+
 ## `/sonar` command (English or French words)
 
 | Command | Effect |
