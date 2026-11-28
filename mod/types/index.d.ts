@@ -1,4 +1,5 @@
-export type SonarQuota = { kind: string; percentUsed: number; resetsAt?: string }
+/** `releveA` : heure (ms) d'un relevé gardé ressorti en session froide ; absent pour une valeur vive */
+export type SonarQuota = { kind: string; percentUsed: number; resetsAt?: string; releveA?: number }
 
 export type SonarMesure = {
   quotas: SonarQuota[]

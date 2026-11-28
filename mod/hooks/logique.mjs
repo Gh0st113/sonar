@@ -36,6 +36,7 @@ const TEXTES = {
     nomsCourts: { seven_day: 'sem.' },
     remis: 'remis à zéro', epuise: 'épuisé',
     parJour: (p) => `${p} %/j`, reste: (p) => `reste ${p} %`, remet: (e) => `remise ${e}`,
+    ilYa: (n, jours) => `il y a ${n} ${jours ? 'j' : 'h'}`,
     cache: 'cache', chaud: 'chaud', froid: 'froid', autreModele: 'autre modèle', incertain: 'incertain',
     relu: (p) => `${p} relu`, jusqua: (h, auMoins) => `${auMoins ? 'au moins ' : ''}jusqu'à ${h}`,
     branche: 'branche', detachee: 'HEAD détachée', detacheeCourt: 'détachée', modifies: (n) => `${n} modifié${n > 1 ? 's' : ''}`,
@@ -64,6 +65,7 @@ const TEXTES = {
     nomsCourts: {},
     remis: 'reset', epuise: 'exhausted',
     parJour: (p) => `${p}%/d`, reste: (p) => `${p}% left`, remet: (e) => `resets ${e}`,
+    ilYa: (n, jours) => `${n}${jours ? 'd' : 'h'} ago`,
     cache: 'cache', chaud: 'warm', froid: 'cold', autreModele: 'other model', incertain: 'uncertain',
     relu: (p) => `${p} reused`, jusqua: (h, auMoins) => `${auMoins ? 'at least ' : ''}until ${h}`,
     branche: 'branch', detachee: 'detached HEAD', detacheeCourt: 'detached', modifies: (n) => `${n} modified`,
@@ -318,13 +320,23 @@ export function jauges(d, maintenant, cfg = DEFAUTS) {
     for (const q of quotasTries(d.quotas)) {
       const r = rythme(q, maintenant, cfg);
       if (!r) continue;
+      // Relevé gardé (quotasGardes) : un minimum, « ≥ 87 % », arrondi vers le bas (87,6 → ≥ 87) ; « épuisé » reste un mot.
+      // Ni %/j, ni reste, ni ligne de temps (sa marge verte serait fausse) ; le niveau reste : au moins X % ou au moins
+      // N points d'avance sont des alertes vraies. Son âge à partir d'1 h, arrondi vers le bas (heures, puis jours).
+      const garde = fini(q.releveA);
+      const bas = (x) => (x < 10 ? Math.floor(x * 10) / 10 : Math.floor(x));
+      const valeur = !garde ? valeurQuota(r, t, cfg) : r.epuise ? t.epuise : `≥ ${pc(bas(r.utilise), cfg)}`;
       const detail = [];
-      if (r.parJour !== undefined) detail.push(t.parJour(pct(r.parJour, cfg)));
-      if (r.reste !== undefined) detail.push(t.reste(pct(r.reste, cfg)));
+      if (garde && maintenant - q.releveA >= H) {
+        const h = Math.floor((maintenant - q.releveA) / H);
+        detail.push(h < 24 ? t.ilYa(h, false) : t.ilYa(Math.floor(h / 24), true));
+      }
+      if (!garde && r.parJour !== undefined) detail.push(t.parJour(pct(r.parJour, cfg)));
+      if (!garde && r.reste !== undefined) detail.push(t.reste(pct(r.reste, cfg)));
       if (r.reset !== undefined) detail.push(t.remet(echeance(r.reset, maintenant, cfg)));
       j.push({
-        cle: r.kind, etiquette: t.noms[r.kind] ?? r.kind, valeur: valeurQuota(r, t, cfg), detail: detail.join(', '),
-        niveau: r.niveau, part: r.remis ? 0 : Math.min(1, r.utilise / 100), repere: r.part,
+        cle: r.kind, etiquette: t.noms[r.kind] ?? r.kind, valeur, detail: detail.join(', '),
+        niveau: r.niveau, part: r.remis ? 0 : Math.min(1, r.utilise / 100), ...(garde ? { releve: true } : { repere: r.part }),
       });
     }
   }
@@ -489,6 +501,23 @@ export function dernierReleve(texte) {
     } catch { /* ligne abîmée : on remonte */ }
   }
   return undefined;
+}
+
+// ——— Dernier relevé gardé (store du plugin, clé « releve » ; issue #33) ———
+// Le moteur ne donne les quotas qu'après la 1re réponse de la session : une session neuve n'en aurait aucun. Le mod garde
+// le dernier relevé vif (forme de `releve`, plus `compte` quand l'appli le donne) et le ressort comme minimum : dans une
+// fenêtre, le % ne fait que monter jusqu'à sa remise. Seulement les fenêtres pas encore remises ; rien si le relevé
+// vient d'un autre compte, est daté dans le futur (horloge reculée) ou est illisible. Sans limite d'âge : l'âge s'affiche.
+export function quotasGardes(r, maintenant, compte) {
+  if (!r || typeof r !== 'object') return [];
+  const ts = Date.parse(String(r.ts ?? ''));
+  if (!fini(ts) || ts > maintenant) return [];
+  if (compte && r.compte && compte !== r.compte) return [];
+  return FENETRES_JOURNAL.flatMap((kind) => {
+    const f = r[kind];
+    const fin = Date.parse(String(f?.resets_at ?? ''));
+    return f && fini(f.pct) && fini(fin) && fin > maintenant ? [{ kind, percentUsed: f.pct, resetsAt: f.resets_at, releveA: ts }] : [];
+  });
 }
 
 // Nouveau texte du journal avec `r` ajouté, ou undefined si rien n'a changé depuis sa dernière ligne.

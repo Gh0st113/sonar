@@ -10,7 +10,7 @@ import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } 
 import type { SonarDepot, SonarMesure, SonarReponse } from '../types'
 import {
   DANS_LE_PIED, TAILLE_MAX_SESSION, TTL, besoinMaison, cheminArchive, cheminJournal, cleReleve, deduireTtl,
-  SEP_PIED, derniereReponse, dossierProjet, reponseFiche, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, langueHote, localeSysteme, majJournal, nomDepot, releve, textes,
+  SEP_PIED, derniereReponse, dossierProjet, reponseFiche, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, langueHote, localeSysteme, majJournal, nomDepot, quotasGardes, releve, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -24,7 +24,8 @@ const masque = atom({ plugin: 'sonar', key: 'masque' } as const, false)
 const tic = atom({ plugin: 'sonar', key: 'tic' } as const, 0)
 
 // Ce que logique.mjs renvoie pour le pied (elementsPied) et le détail (jauges).
-type Morceau = { cle: string; etiquette: string; valeur: string; detail?: string; niveau: 'ok' | 'attention' | 'alerte'; part?: number; repere?: number }
+// `releve` : quota tiré du dernier relevé gardé (session froide), dessiné pâle.
+type Morceau = { cle: string; etiquette: string; valeur: string; detail?: string; niveau: 'ok' | 'attention' | 'alerte'; part?: number; repere?: number; releve?: boolean }
 type Vue = ReturnType<EngineInterface['ui']['resolve']>
 
 const COULEUR = { attention: 'warning', alerte: 'error' } as const
@@ -47,6 +48,10 @@ let gitEnCours = false
 let cheminReleves: string | undefined
 let derniereCle = ''
 let ecriture: Promise<unknown> = Promise.resolve()
+// Dernier relevé gardé dans le store (session froide, issue #33) : compte de la session (donné par l'appli de bureau,
+// jamais affiché).
+const CLE_GARDE = 'releve'
+let compte: string | undefined
 
 function localeHote(): string {
   try {
@@ -89,6 +94,24 @@ function journaliser($: EngineInterface, m: SonarMesure) {
     if (maj) await $.fs.write(chemin, maj.texte)
     derniereCle = cleReleve(r)
   }).catch(() => undefined)
+}
+
+// Le relevé vif est gardé dans le store (pour tous, journal ou non) : une session neuve le ressortira comme minimum tant
+// que le moteur n'a rien (logique.mjs, quotasGardes). La valeur vive l'écrase toujours, même plus basse. Plusieurs
+// sessions : la dernière écriture gagne, sans verrou (au pire un relevé un peu plus vieux, affiché avec son âge).
+// Réécrit à chaque mesure, même chiffres : l'âge affiché est celui de la dernière lecture, pas du dernier changement.
+// Une session qui ne connaît pas son compte (terminal) n'écrase pas un relevé qui en porte un : il pourrait être d'un
+// autre compte, et la protection « autre compte » sauterait.
+function garder($: EngineInterface, m: SonarMesure) {
+  void (async () => {
+    const r = releve(m.quotas, await $.clock.now())
+    if (!r) return
+    if (!compte) {
+      const avant = await $.store.get(CLE_GARDE) as { compte?: unknown } | undefined
+      if (avant?.compte) return
+    }
+    await $.store.set(CLE_GARDE, compte ? { ...r, compte } : r)
+  })().catch(() => undefined)
 }
 
 // Session ouverte avant le mod (reprise, appli relancée) : turn.step n'a encore rien vu, le cache resterait vide jusqu'au
@@ -177,15 +200,18 @@ async function bandeauActif($: EngineInterface): Promise<boolean> {
 async function calculer($: EngineInterface) {
   const m = await read($, mesure)
   const t = await read($, ttl)
+  const maintenant = await $.clock.now()
+  // Rien du moteur (session froide) : le dernier relevé gardé, revérifié à chaque dessin (une fenêtre se remet en route).
+  const quotas = m?.quotas.length ? m.quotas
+    : quotasGardes(await Promise.resolve().then(() => $.store.get(CLE_GARDE)).catch(() => undefined), maintenant, compte)
   const d = {
-    quotas: m?.quotas ?? [],
+    quotas,
     cout: m?.cout,
     cache: (await read($, cache)) ?? undefined,
     ttlMs: t ? TTL[t] : undefined,
     modele: (await read($, modele)) ?? undefined,
     depot: (await read($, depot)) ?? undefined,
   }
-  const maintenant = await $.clock.now()
   return {
     pied: elementsPied(d, maintenant, cfg, { sansCache: await bandeauActif($) }) as Morceau[],
     jauges: jauges(d, maintenant, cfg) as Morceau[],
@@ -236,7 +262,7 @@ function phrase(u: Vue, els: Morceau[], sep = SEP) {
     <Text>
       {els.flatMap((el, i) => [
         <Text key={`${el.cle}-e`} dimColor size="caption">{`${i > 0 ? sep : ''}${el.etiquette ? `${el.etiquette} ` : ''}`}</Text>,
-        <Text key={`${el.cle}-v`} weight="medium" tabular {...(el.niveau === 'ok' ? {} : { color: COULEUR[el.niveau] })}>{el.valeur}</Text>,
+        <Text key={`${el.cle}-v`} weight="medium" tabular {...(el.niveau === 'ok' ? {} : { color: COULEUR[el.niveau] })} {...(el.releve ? { dimColor: true } : {})}>{el.valeur}</Text>,
         ...(el.detail ? [<Text key={`${el.cle}-d`} dimColor size="caption">{` (${el.detail})`}</Text>] : []),
       ])}
     </Text>
@@ -252,7 +278,8 @@ const RYTHME = { marge: '#3fa66b', avance: '#e0913a', alerte: '#e5484d' } as con
 // La barre est dessinée 1 px sous le haut de sa boîte : la ligne de temps empiète de ce pixel pour garder l'écart annoncé.
 const hauteurJauge = (repere: number | undefined) => JAUGE.hauteur + (repere === undefined ? 0 : LIGNE_TEMPS.hauteur + LIGNE_TEMPS.ecart - 1)
 // `total` : hauteur de l'image ; plus grande que la sienne, la jauge est poussée vers le bas (barres alignées dans le bandeau).
-function svgJauge(part: number, repere: number | undefined, niveau: Morceau['niveau'], total = hauteurJauge(repere)) {
+// `pale` : relevé gardé (session froide), toute la jauge à demi-teinte.
+function svgJauge(part: number, repere: number | undefined, niveau: Morceau['niveau'], total = hauteurJauge(repere), pale = false) {
   const { largeur: L, hauteur: H } = JAUGE
   const px = (x: number) => Math.round(L * Math.min(1, Math.max(0, x)))
   const plein = px(part)
@@ -270,7 +297,8 @@ function svgJauge(part: number, repere: number | undefined, niveau: Morceau['niv
   const y = total - H + 1
   const fond = `<rect y="${y}" width="${L}" height="${H - 2}" rx="3" fill="${GRIS}" fill-opacity="0.25"/>`
   const barre = plein > 0 ? `<rect y="${y}" width="${plein}" height="${H - 2}" rx="3" fill="${TEINTE[niveau]}"${niveau === 'ok' ? ' fill-opacity="0.7"' : ''}/>` : ''
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${L}" height="${total}" viewBox="0 0 ${L} ${total}">${temps}${fond}${barre}</svg>`
+  const dessin = pale ? `<g opacity="0.5">${temps}${fond}${barre}</g>` : `${temps}${fond}${barre}`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${L}" height="${total}" viewBox="0 0 ${L} ${total}">${dessin}</svg>`
 }
 
 // Le Svg là où la surface le dessine : jamais sur le terminal (le kit y laisse la clé, l'appli n'en dessine rien).
@@ -283,7 +311,7 @@ function bloc(u: Vue, el: Morceau, Svg: ReturnType<typeof svgDe>, hauteur = haut
   return (
     <Box key={el.cle} flexDirection="column">
       {phrase(u, [el])}
-      {Svg && el.part !== undefined ? <Svg source={svgJauge(el.part, el.repere, el.niveau, hauteur)} alt={`${el.etiquette} ${el.valeur}`} width={JAUGE.largeur} height={hauteur} /> : null}
+      {Svg && el.part !== undefined ? <Svg source={svgJauge(el.part, el.repere, el.niveau, hauteur, el.releve)} alt={`${el.etiquette} ${el.valeur}`} width={JAUGE.largeur} height={hauteur} /> : null}
     </Box>
   )
 }
@@ -343,12 +371,15 @@ export const register: Register = (on, options) => {
       else if (typeof ancien === 'string') await update($, avecBandeau, () => ancien === 'bandeau')
       const ttlGarde = await $.store.get('ttl')
       if (ttlGarde === '5m' || ttlGarde === '1h') await update($, ttl, () => ttlGarde)
+      const id = await lire(() => $.env.get('CLAUDE_CODE_ACCOUNT_UUID'))
+      compte = id && /^[\w-]+$/.test(id) ? id : undefined
       await update($, mesure, () => null)
       const u = await $.session.usage().catch(() => undefined)
       if (u) {
         const m = versMesure(u)
         await update($, mesure, () => m)
         journaliser($, m)
+        garder($, m)
       }
       demarrerMinuterie($)
       // Lecture du journal de la session à côté : elle ne retarde pas le démarrage.
@@ -363,6 +394,7 @@ export const register: Register = (on, options) => {
       const m = versMesure(e)
       await update($, mesure, () => m)
       journaliser($, m)
+      garder($, m)
     } catch { /* idem */ }
     return next(e)
   }).catch(($, e, next) => next(e))

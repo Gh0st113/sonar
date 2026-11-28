@@ -122,6 +122,13 @@ variables que l'appli passe au moteur), moins la même minute. L'heure seule, sa
 plupart des sessions, mais une activité sans réponse peut la décaler. Sans `tail` ni fiche (terminal Windows) : le
 cache reste inconnu jusqu'au prochain message.
 
+Session neuve (aucune réponse encore) : le moteur ne donne les quotas qu'avec la première réponse. Le mod garde donc
+le dernier relevé vu dans n'importe quelle session (le % et l'heure de remise de `5 h` et `semaine`, dans le stockage
+local du plugin, même sans `quotaLog`) et l'affiche en attendant, en pâle et comme un minimum, puisque le % ne fait que
+monter jusqu'à la remise : `5 h ≥ 87 % (remise 03:30)`, avec son âge au-delà d'une heure (`il y a 3 h, remise 03:30`).
+Une fenêtre déjà remise à zéro n'est pas affichée ; un relevé pris sous un autre compte non plus (Claude Desktop donne
+le compte au moteur ; il n'est jamais affiché). La première réponse remet la valeur vive.
+
 ## Commande `/sonar` (mots français ou anglais)
 
 | Commande | Effet |
