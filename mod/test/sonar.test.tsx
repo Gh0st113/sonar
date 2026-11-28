@@ -37,12 +37,13 @@ const PANNEAU = {
 // `store` : ce que le store du mod contient déjà (choix d'une version d'avant). `statuts` : appels à $.ui.status.
 let argvTail: string[] = []
 let statuts = 0
-function moteur(on: On, opts: { git?: 'ok' | 'main' | 'panne' | 'hors-depot'; panneau?: boolean; tail?: string; store?: Record<string, unknown> } = {}) {
+// `storeLibre` : pas de store simulé, le test branche le sien.
+function moteur(on: On, opts: { git?: 'ok' | 'main' | 'panne' | 'hors-depot'; panneau?: boolean; tail?: string; store?: Record<string, unknown>; storeLibre?: boolean } = {}) {
   const horloge = mock.clock(on, { now: T0 })
   // Remis à zéro : un appel d'un test précédent ne doit pas passer pour celui du test en cours.
   argvTail = []
   statuts = 0
-  mock.store(on, opts.store)
+  if (!opts.storeLibre) mock.store(on, opts.store)
   on('command.register', () => ({ value: { command: 'sonar' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.usage', () => ({ value: { startedAt: T0, context: { window: 200_000 }, rateLimits: [] } }))
@@ -698,6 +699,41 @@ test('relevé gardé : une session sans compte connu (terminal) n’écrase pas 
   // Session froide : toujours le relevé du compte A (87 %), pas les 30 % de la session sans compte.
   await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
   expect(await commande($, '')).toMatch(/5 h ≥ 87 % \(il y a 2 h, remise /)
+})
+
+// Session chaude silencieuse (issue #35) : une autre session écrit un relevé plus récent dans le store partagé.
+test('session silencieuse : le relevé plus récent d’une autre session remplace sa valeur vive, sans « ≥ », avec son âge', FR, async ($, on) => {
+  // Store partagé visible du test : ce qu'une autre session y écrit, la session le lit au dessin suivant.
+  const store: Record<string, unknown> = {}
+  const horloge = moteur(on, { git: 'hors-depot', storeLibre: true })
+  on('store.get' as never, ((_: unknown, e: { key: string }) => ({ value: store[e.key] })) as never)
+  on('store.set' as never, ((_: unknown, e: { key: string; value: unknown }) => {
+    store[e.key] = e.value
+    return { value: undefined }
+  }) as never)
+  mock.env(on, { CLAUDE_CODE_ACCOUNT_UUID: 'compte-a' })
+  await demarrer($)
+  await attendre()
+  // Sa propre écriture ne compte pas pour plus récente.
+  expect(await commande($, '')).toMatch(/5 h 23 % \(remise /)
+  // 3 h plus tard, une autre session (même compte) a écrit 75 % il y a 1 h 30.
+  await horloge.advance(3 * H)
+  const fin5 = iso(T0 + 4 * H).replace('.000Z', 'Z')
+  store.releve = { ts: iso(T0 + 90 * 60_000), compte: 'compte-a', five_hour: { pct: 75, resets_at: fin5 }, seven_day: GARDE.seven_day }
+  const r = await commande($, '')
+  expect(r).toMatch(/5 h 75 % \(il y a 1 h, .*remise /)
+  expect(r).not.toContain('≥')
+  expect(r).toMatch(/semaine 47 % \(il y a 1 h, /)
+  // Un autre compte : retour aux valeurs vives (5 h remise entre-temps, sans âge ; semaine vieille de 3 h).
+  store.releve = { ts: iso(T0 + 2 * H), compte: 'compte-b', five_hour: { pct: 99, resets_at: fin5 } }
+  const b = await commande($, '')
+  expect(b).toMatch(/5 h remis à zéro\nsemaine 41 % \(il y a 3 h, /)
+  expect(b).not.toContain('99')
+  // La mesure vive suivante reprend la main.
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 80, resetsAt: fin5 }, QUOTAS[1]!] })
+  const v = await commande($, '')
+  expect(v).toContain('5 h 80 %')
+  expect(v).not.toContain('il y a')
 })
 
 test('relevé gardé : mêmes chiffres 90 min plus tard, l’âge repart de la dernière lecture', FR, async ($, on) => {

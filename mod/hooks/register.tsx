@@ -10,7 +10,7 @@ import type { EngineInterface, Register, RenderInput, SessionRateLimit, Timer } 
 import type { SonarDepot, SonarMesure, SonarReponse } from '../types'
 import {
   DANS_LE_PIED, TAILLE_MAX_SESSION, TTL, besoinMaison, cheminArchive, cheminJournal, cleReleve, deduireTtl,
-  SEP_PIED, derniereReponse, dossierProjet, reponseFiche, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, langueHote, localeSysteme, majJournal, nomDepot, quotasGardes, releve, textes,
+  SEP_PIED, derniereReponse, dossierProjet, reponseFiche, elementsPied, jauges, ligne, lireCommande, lireConfig, lireStatut, langueHote, localeSysteme, majJournal, nomDepot, quotasFrais, quotasGardes, releve, textes,
 } from './logique.mjs'
 
 const mesure = atom({ plugin: 'sonar', key: 'mesure' } as const, null as SonarMesure | null)
@@ -63,9 +63,11 @@ function localeHote(): string {
 
 // Données partielles tolérées (passerelle, hôte qui omet un champ).
 // Le contexte n'est pas gardé : Claude Code l'affiche déjà.
-const versMesure = (u: { rateLimits?: SessionRateLimit[]; cost?: { usd: number } }): SonarMesure => ({
+// `a` : heure de la mesure (une session silencieuse la compare au relevé gardé, issue #35).
+const versMesure = (u: { rateLimits?: SessionRateLimit[]; cost?: { usd: number } }, a?: number): SonarMesure => ({
   quotas: (u.rateLimits ?? []).map(q => ({ kind: q.kind, percentUsed: q.percentUsed, resetsAt: q.resetsAt })),
   cout: u.cost?.usd,
+  a,
 })
 
 async function resoudreJournal($: EngineInterface): Promise<string | undefined> {
@@ -84,7 +86,7 @@ function journaliser($: EngineInterface, m: SonarMesure) {
   const quand = $.clock.now()
   ecriture = ecriture.then(async () => {
     const maintenant = await quand
-    const r = releve(m.quotas, maintenant)
+    const r = releve(m.quotas, m.a ?? maintenant)
     if (!r || cleReleve(r) === derniereCle) return
     const chemin = await resoudreJournal($)
     if (!chemin) return
@@ -104,7 +106,8 @@ function journaliser($: EngineInterface, m: SonarMesure) {
 // autre compte, et la protection « autre compte » sauterait.
 function garder($: EngineInterface, m: SonarMesure) {
   void (async () => {
-    const r = releve(m.quotas, await $.clock.now())
+    // Daté de la mesure : la session ne prend jamais son propre relevé pour un plus récent (quotasFrais).
+    const r = releve(m.quotas, m.a ?? await $.clock.now())
     if (!r) return
     if (!compte) {
       const avant = await $.store.get(CLE_GARDE) as { compte?: unknown } | undefined
@@ -202,8 +205,9 @@ async function calculer($: EngineInterface) {
   const t = await read($, ttl)
   const maintenant = await $.clock.now()
   // Rien du moteur (session froide) : le dernier relevé gardé, revérifié à chaque dessin (une fenêtre se remet en route).
-  const quotas = m?.quotas.length ? m.quotas
-    : quotasGardes(await Promise.resolve().then(() => $.store.get(CLE_GARDE)).catch(() => undefined), maintenant, compte)
+  // Valeur vive : remplacée fenêtre par fenêtre par un relevé plus récent d'une autre session (issue #35).
+  const garde = await Promise.resolve().then(() => $.store.get(CLE_GARDE)).catch(() => undefined)
+  const quotas = m?.quotas.length ? quotasFrais(m.quotas, m.a, garde, maintenant, compte) : quotasGardes(garde, maintenant, compte)
   const d = {
     quotas,
     cout: m?.cout,
@@ -376,10 +380,10 @@ export const register: Register = (on, options) => {
       await update($, mesure, () => null)
       const u = await $.session.usage().catch(() => undefined)
       if (u) {
+        // Quotas de la dernière réponse de la session (peut-être d'il y a des heures), pas une mesure neuve : sans heure,
+        // ni gardés ni journalisés, ils cèdent à tout relevé valide du store (quotasFrais).
         const m = versMesure(u)
         await update($, mesure, () => m)
-        journaliser($, m)
-        garder($, m)
       }
       demarrerMinuterie($)
       // Lecture du journal de la session à côté : elle ne retarde pas le démarrage.
@@ -391,7 +395,7 @@ export const register: Register = (on, options) => {
 
   on('session.measure', async ($, e, next) => {
     try {
-      const m = versMesure(e)
+      const m = versMesure(e, await $.clock.now())
       await update($, mesure, () => m)
       journaliser($, m)
       garder($, m)
