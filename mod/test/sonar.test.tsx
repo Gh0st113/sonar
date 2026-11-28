@@ -127,7 +127,7 @@ test('/sonar : le panneau s’ouvre (jauges sur le bureau, texte sur le terminal
   expect(r).toContain('Sonar : pied')
   const bureau = await $.ui.mount({ ...PANNEAU, surface: 'desktop' })
   expect((await bureau.find({ type: 'Text', text: /^semaine/ }))?.text).toMatch(/^semaine 41 % \(20 %\/j, reset \S+ \d\d:\d\d\)$/)
-  expect((await bureau.find({ type: 'Svg' } as never) as { props?: { alt?: string } } | undefined)?.props?.alt).toBe('5 h 23 %')
+  expect((await bureau.find({ type: 'Svg' } as never) as { props?: { alt?: string } } | undefined)?.props?.alt).toBe('limite 5 h 23 %')
   expect(await bureau.find({ type: 'Text', text: /ctx|contexte/ })).toBeUndefined()
   expect((await bureau.find({ type: 'Text', text: /Sonar : pied/ }))?.text).toContain('durée du cache inconnue')
   await bureau.unmount()
@@ -141,7 +141,7 @@ test('/sonar sans panneau placé : une ligne par élément, sans contexte ni anc
   await demarrer($)
   const r = await commande($, '')
   const [l5, l7, branche, cout] = r.split('\n')
-  expect(l5).toMatch(/^5 h 23 % \(reset \d\d:\d\d\)$/)
+  expect(l5).toMatch(/^limite 5 h 23 % \(reset \d\d:\d\d\)$/)
   expect(l7).toMatch(/^semaine 41 % \(20 %\/j, reset \S+ \d\d:\d\d\)$/)
   expect(branche).toBe('branche feat/x (projet-a, 2 modifiés)')
   expect(cout).toBe('coût 1,23 $')
@@ -207,14 +207,14 @@ test('cache : la réponse du fil principal compte, celle d’un sous-agent non ;
   expect(await pied($, 'desktop')).toBe('1,23 $ · ⎇ x')
   expect(await pied($, 'terminal')).toBe('1,23 $ · ⎇ x')
   const haut = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
-  expect((await haut.find({ type: 'Text', text: /^5 h/ }))?.text).toMatch(/ {3}cache froid$/)
+  expect((await haut.find({ type: 'Text', text: /^limite 5 h/ }))?.text).toMatch(/ {3}cache froid$/)
   await haut.unmount()
   // Sur le bureau, la jauge du cache (sans temps écoulé) a la hauteur des quotas, chacune dans sa colonne.
   const bureau = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
   const svgs = (await bureau.findAll({ type: 'Svg' } as never) as { props?: { source?: string; height?: number; alt?: string } }[]).map(s => s.props ?? {})
   const colonnes = (await bureau.findAll({ type: 'Box' }) as { props: { width?: unknown } }[]).filter(b => b.props.width === '30%')
   await bureau.unmount()
-  expect(svgs.map(s => s.alt)).toEqual(['5 h 23 %', 'semaine 41 %', 'cache froid'])
+  expect(svgs.map(s => s.alt)).toEqual(['limite 5 h 23 %', 'semaine 41 %', 'cache froid'])
   expect(svgs.map(s => s.height)).toEqual([8, 8, 8])
   expect(colonnes).toHaveLength(3)
   expect(svgs[2]!.source).not.toMatch(/#5b8def|mask/)
@@ -429,7 +429,7 @@ test('/sonar bandeau : quotas en jauges sur le bureau, une ligne sur le terminal
   expect(rects(sMarge).slice(1)).toEqual([{ x: 0, w: 96, fill: '#3fa66b', masque: false }, { x: 0, w: 92, fill: '#5b8def', masque: false }])
   await $.session.measure({ ...MESURE, rateLimits: [QUOTAS[0]!, { ...QUOTAS[1]!, percentUsed: 90 }] })
   const terminal = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
-  expect((await terminal.find({ type: 'Text', text: /^5 h/ }))?.text).toMatch(/^5 h 23 % \(reset \d\d:\d\d\) {3}semaine 90 % \(.+\)$/)
+  expect((await terminal.find({ type: 'Text', text: /^limite 5 h/ }))?.text).toMatch(/^limite 5 h 23 % \(reset \d\d:\d\d\) {3}semaine 90 % \(.+\)$/)
   expect(await terminal.find({ type: 'Svg' } as never)).toBeUndefined()
   await terminal.unmount()
   expect(await pied($, 'terminal')).toBe('1,23 $ · ⎇ x')
@@ -478,7 +478,7 @@ test('choix gardé d’une version d’avant : emplacement « bandeau » → ban
   moteur(on, { store: { emplacement: 'bandeau' } })
   await demarrer($)
   const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^5 h/ }))).toBeDefined()
+  expect((await ui.find({ type: 'Text', text: /^limite 5 h/ }))).toBeDefined()
   await ui.unmount()
   expect(await commande($, '')).toContain('Sonar : pied + bandeau')
 })
@@ -515,7 +515,7 @@ test('bandeau : rien de sonar tant qu’il n’est pas activé (ni image ni cadr
   // Bandeau affiché : les jauges, puis les autres mods ; sonar masqué : le moteur seul.
   await commande($, 'bandeau')
   const affiche = await vue()
-  expect(affiche.texte).toMatch(/^5 h/)
+  expect(affiche.texte).toMatch(/^limite 5 h/)
   expect(affiche.svgs).toBeGreaterThan(0)
   await commande($, 'masquer')
   expect(await vue()).toEqual({ svgs: 0, texte: '(moteur)' })
@@ -547,7 +547,7 @@ test('quota remis à zéro pendant l’attente : écrit en toutes lettres au tic
   await demarrer($)
   await horloge.advance(2 * H + 60_000)
   expect(await pied($, 'desktop')).toBe('1,23 $')
-  expect(await commande($, '')).toContain('5 h remis à zéro')
+  expect(await commande($, '')).toContain('limite 5 h remis à zéro')
 })
 
 test('options : anglais, segments choisis (« context » ignoré), bandeau actif par l’option', { options: { language: 'en', clock: '24h', segments: 'context,quotas,cost', banner: true } }, async ($, on) => {
@@ -555,7 +555,7 @@ test('options : anglais, segments choisis (« context » ignoré), bandeau actif
   await demarrer($)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BANDEAU, surface })
-    expect((await ui.find({ type: 'Text', text: /^5h/ }))?.text).toMatch(/^5h 23%/)
+    expect((await ui.find({ type: 'Text', text: /^5h/ }))?.text).toMatch(/^5h limit 23%/)
     expect(await ui.find({ type: 'Text', text: /cost|branch|ctx|34/ })).toBeUndefined()
     await ui.unmount()
   }
@@ -571,7 +571,7 @@ test('ancienne option placement = banner : bandeau actif', { options: { ...FR.op
   moteur(on)
   await demarrer($)
   const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: /^5 h/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^limite 5 h/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -670,7 +670,7 @@ test('journal des quotas : chemin choisi, ligne déjà écrite par une autre ses
   await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 30 }] })
   await attendre()
   // L'affichage n'en souffre pas.
-  expect(await commande($, '')).toContain('5 h 30 %')
+  expect(await commande($, '')).toContain('limite 5 h 30 %')
 })
 
 // Session froide (issue #33) : le moteur ne donne les quotas qu'après la 1re réponse ; le dernier relevé gardé les remplace.
@@ -685,7 +685,7 @@ test('session froide : le dernier relevé d’une autre session s’affiche comm
   await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
   // Une session neuve, sans réponse : le relevé, marqué « ≥ ».
   await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
-  expect(await commande($, '')).toMatch(/5 h ≥ 23 % \(reset \d\d:\d\d\)\nsemaine ≥ 41 % \(reset /)
+  expect(await commande($, '')).toMatch(/limite 5 h ≥ 23 % \(reset \d\d:\d\d\)\nsemaine ≥ 41 % \(reset /)
   await commande($, 'bandeau')
   const bureau = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
   expect((await bureau.find({ type: 'Text', text: /^≥ 23 %$/ }))?.props.dimColor).toBe(true)
@@ -693,17 +693,17 @@ test('session froide : le dernier relevé d’une autre session s’affiche comm
   // La 1re réponse : la valeur vive, sans « ≥ ».
   await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 30 }, QUOTAS[1]!] })
   const r = await commande($, '')
-  expect(r).toContain('5 h 30 %')
+  expect(r).toContain('limite 5 h 30 %')
   expect(r).not.toContain('≥')
 })
 
 test('session froide : relevé vieux de 2 h, son âge affiché ; la fenêtre 5 h se remet pendant l’attente, la semaine reste', FR, async ($, on) => {
   const horloge = moteur(on, { git: 'hors-depot', store: { releve: GARDE } })
   await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
-  expect(await commande($, '')).toMatch(/5 h ≥ 87 % \(il y a 2 h, reset \d\d:\d\d\)\nsemaine ≥ 47 % \(il y a 2 h, reset /)
+  expect(await commande($, '')).toMatch(/limite 5 h ≥ 87 % \(il y a 2 h, reset \d\d:\d\d\)\nsemaine ≥ 47 % \(il y a 2 h, reset /)
   await horloge.advance(H + 60_000)
   const r = await commande($, '')
-  expect(r).not.toContain('5 h')
+  expect(r).not.toContain('limite 5 h')
   expect(r).toMatch(/semaine ≥ 47 % \(il y a 3 h, reset /)
 })
 
@@ -712,7 +712,7 @@ test('session froide : relevé d’un autre compte, rien', FR, async ($, on) => 
   mock.env(on, { CLAUDE_CODE_ACCOUNT_UUID: 'compte-a' })
   await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
   const r = await commande($, '')
-  expect(r).not.toContain('5 h')
+  expect(r).not.toContain('limite 5 h')
   expect(r).not.toContain('semaine')
 })
 
@@ -729,7 +729,7 @@ test('session froide : la valeur vive remplace le relevé même plus basse ; jau
   expect(rects(sources[0]!).slice(1)).toEqual([{ x: 0, w: 87, fill: '#5b8def', masque: false }])
   await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 30 }, QUOTAS[1]!] })
   const r = await commande($, '')
-  expect(r).toContain('5 h 30 %')
+  expect(r).toContain('limite 5 h 30 %')
   expect(r).not.toContain('≥')
 })
 
@@ -741,7 +741,7 @@ test('relevé gardé : une session sans compte connu (terminal) n’écrase pas 
   await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
   // Session froide : toujours le relevé du compte A (87 %), pas les 30 % de la session sans compte.
   await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
-  expect(await commande($, '')).toMatch(/5 h ≥ 87 % \(il y a 2 h, reset /)
+  expect(await commande($, '')).toMatch(/limite 5 h ≥ 87 % \(il y a 2 h, reset /)
 })
 
 // Session chaude silencieuse (issue #35) : une autre session écrit un relevé plus récent dans le store partagé.
@@ -758,24 +758,24 @@ test('session silencieuse : le relevé plus récent d’une autre session rempla
   await demarrer($)
   await attendre()
   // Sa propre écriture ne compte pas pour plus récente.
-  expect(await commande($, '')).toMatch(/5 h 23 % \(reset /)
+  expect(await commande($, '')).toMatch(/limite 5 h 23 % \(reset /)
   // 3 h plus tard, une autre session (même compte) a écrit 75 % il y a 1 h 30.
   await horloge.advance(3 * H)
   const fin5 = iso(T0 + 4 * H).replace('.000Z', 'Z')
   store.releve = { ts: iso(T0 + 90 * 60_000), compte: 'compte-a', five_hour: { pct: 75, resets_at: fin5 }, seven_day: GARDE.seven_day }
   const r = await commande($, '')
-  expect(r).toMatch(/5 h 75 % \(il y a 1 h, .*reset /)
+  expect(r).toMatch(/limite 5 h 75 % \(il y a 1 h, .*reset /)
   expect(r).not.toContain('≥')
   expect(r).toMatch(/semaine 47 % \(il y a 1 h, /)
   // Un autre compte : retour aux valeurs vives (5 h remise entre-temps, sans âge ; semaine vieille de 3 h).
   store.releve = { ts: iso(T0 + 2 * H), compte: 'compte-b', five_hour: { pct: 99, resets_at: fin5 } }
   const b = await commande($, '')
-  expect(b).toMatch(/5 h remis à zéro\nsemaine 41 % \(il y a 3 h, /)
+  expect(b).toMatch(/limite 5 h remis à zéro\nsemaine 41 % \(il y a 3 h, /)
   expect(b).not.toContain('99')
   // La mesure vive suivante reprend la main.
   await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 80, resetsAt: fin5 }, QUOTAS[1]!] })
   const v = await commande($, '')
-  expect(v).toContain('5 h 80 %')
+  expect(v).toContain('limite 5 h 80 %')
   expect(v).not.toContain('il y a')
 })
 
@@ -789,6 +789,6 @@ test('relevé gardé : mêmes chiffres 90 min plus tard, l’âge repart de la d
   await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
   await $.session.start({ cwd: 'C:/Code/projet-a', surface: 'desktop', isInteractive: true })
   const r = await commande($, '')
-  expect(r).toMatch(/5 h ≥ 23 % \(reset /)
+  expect(r).toMatch(/limite 5 h ≥ 23 % \(reset /)
   expect(r).not.toContain('il y a')
 })

@@ -45,7 +45,7 @@ de lecture du cache, la branche et les fichiers modifiés, le coût et le fichie
 Quand le panneau ne peut pas s'ouvrir, `/sonar` écrit ce détail, une ligne par élément :
 
 ```
-5 h 23 % (reset 15:00)
+limite 5 h 23 % (reset 15:00)
 semaine 41 % (20 %/j, reset ven. 13:00)
 cache chaud (92 % relu, jusqu'à 13:42)
 branche feat/x (mon-depot, 2 modifiés)
@@ -128,14 +128,14 @@ cache reste inconnu jusqu'au prochain message.
 Session neuve (aucune réponse encore) : le moteur ne donne les quotas qu'avec la première réponse. Le mod garde donc
 le dernier relevé vu dans n'importe quelle session (le % et l'heure de remise de `5 h` et `semaine`, dans le stockage
 local du plugin, même sans `quotaLog`) et l'affiche en attendant, en pâle et comme un minimum, puisque le % ne fait que
-monter jusqu'à la remise : `5 h ≥ 87 % (reset 03:30)`, avec son âge au-delà d'une heure (`il y a 3 h, reset 03:30`).
+monter jusqu'à la remise : `limite 5 h ≥ 87 % (reset 03:30)`, avec son âge au-delà d'une heure (`il y a 3 h, reset 03:30`).
 Une fenêtre déjà remise à zéro n'est pas affichée ; un relevé pris sous un autre compte non plus (Claude Desktop donne
 le compte au moteur ; il n'est jamais affiché). La première réponse remet la valeur vive.
 
 Session ouverte mais silencieuse : ses quotas datent de sa dernière réponse. Si une autre session du même compte a reçu
 un relevé plus récent depuis, il remplace la valeur de la session, fenêtre par fenêtre, sans « ≥ » ni pâle puisqu'il
 était exact à son heure ; sauf s'il est plus bas dans la même fenêtre (le % ne fait que monter : il n'est pas plus frais).
-Toute valeur lue il y a plus d'une heure porte son âge (`5 h 75 % (il y a 2 h, reset 15:00)`), sauf une fenêtre déjà
+Toute valeur lue il y a plus d'une heure porte son âge (`limite 5 h 75 % (il y a 2 h, reset 15:00)`), sauf une fenêtre déjà
 remise à zéro. La réponse suivante de la session reprend la main. Seuls les relevés reçus avec une réponse sont gardés :
 les quotas que le moteur redonne à l'ouverture d'une session déjà commencée datent de sa dernière réponse, d'heure
 inconnue ; ils s'affichent sans âge et cèdent à tout relevé gardé.

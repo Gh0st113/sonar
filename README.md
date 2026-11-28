@@ -45,7 +45,7 @@ changed files, cost and the usage log file. Close it with its cross. When the pa
 detail, one line per item:
 
 ```
-5h 23% (resets 15:00)
+5h limit 23% (resets 15:00)
 week 41% (20%/d, resets Fri 13:00)
 cache warm (92% reused, until 13:42)
 branch feat/x (my-repo, 2 modified)
@@ -127,14 +127,14 @@ shift it. With neither `tail` nor that record (Windows terminal): the cache stay
 New session (no response yet): the engine only gives the usage limits with the first response. So the mod keeps the
 last reading seen in any session (the % and reset time of `5h` and `week`, in the plugin's local storage, even without
 `quotaLog`) and shows it meanwhile, dimmed and as a minimum, since the % only goes up until the reset:
-`5h ≥ 87% (resets 03:30)`, with its age past one hour (`3h ago, resets 03:30`). A window that has already reset is not
+`5h limit ≥ 87% (resets 03:30)`, with its age past one hour (`3h ago, resets 03:30`). A window that has already reset is not
 shown; nor is a reading taken under another account (Claude Desktop gives the account to the engine; it is never
 shown). The first response brings back the live value.
 
 Open but silent session: its limits date from its last response. If another session of the same account has received
 a more recent reading since, it replaces the session's own, window by window, without `≥` or dimming since it was exact
 at its time; unless it is lower within the same window (the % only goes up: it is not fresher). Any value read more
-than an hour ago carries its age (`5h 75% (2h ago, resets 15:00)`), except a window that has already reset. The
+than an hour ago carries its age (`5h limit 75% (2h ago, resets 15:00)`), except a window that has already reset. The
 session's next response takes over again. Only readings received with a response are kept: the limits the engine
 hands back when a session already under way is opened date from its last response, at an unknown time; they show
 without an age and give way to any kept reading.

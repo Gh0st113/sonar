@@ -32,7 +32,7 @@ export const DEFAUTS = {
 
 const TEXTES = {
   fr: {
-    noms: { five_hour: '5 h', seven_day: 'semaine', spend_limit: 'budget' },
+    noms: { five_hour: 'limite 5 h', seven_day: 'semaine', spend_limit: 'budget' },
     nomsCourts: { seven_day: 'sem.' },
     remis: 'remis à zéro', epuise: 'épuisé',
     parJour: (p) => `${p} %/j`, reste: (p) => `reste ${p} %`, remet: (e) => `reset ${e}`,
@@ -61,7 +61,7 @@ const TEXTES = {
     journal: (c) => `Relevés de quota : ${c ?? 'dossier personnel introuvable, aucun relevé'}`,
   },
   en: {
-    noms: { five_hour: '5h', seven_day: 'week', spend_limit: 'budget' },
+    noms: { five_hour: '5h limit', seven_day: 'week', spend_limit: 'budget' },
     nomsCourts: {},
     remis: 'reset', epuise: 'exhausted',
     parJour: (p) => `${p}%/d`, reste: (p) => `${p}% left`, remet: (e) => `resets ${e}`,
