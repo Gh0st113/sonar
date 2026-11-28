@@ -25,10 +25,13 @@ Dans cet ordre, séparés par « · », chacun seulement s'il est connu :
 Les limites (5 h, semaine) n'y sont jamais, même en alerte : elles sont dans le bandeau, le panneau et `/sonar`.
 Une seule couleur d'alerte au pied, l'orange, sur la valeur (le rouge est réservé au bandeau et au panneau).
 
-**Le bandeau** (`/sonar bandeau`, en option, en plus du pied) au-dessus de la saisie : une jauge par fenêtre et pour le cache, à la même hauteur. La barre est
-l'usage ; au-dessus de chaque quota, une ligne de temps comme celle de UI+ : grise jusqu'où usage et temps concordent,
-puis verte quand le temps est devant (de la marge), orange quand l'usage est devant (vous consommez plus vite que le rythme
-régulier), rouge si, en plus, le quota est en alerte. La ligne suit le temps réellement écoulé ; la couleur de la valeur
+**Le bandeau** (`/sonar bandeau`, en option, en plus du pied) au-dessus de la saisie : une barre par fenêtre et pour le cache, à la même hauteur,
+chacune dans sa colonne, sur toute la largeur du bandeau (elles passent à la ligne si la fenêtre est étroite). Pour un
+quota, la barre est bleue jusqu'où usage et temps concordent, puis colorée jusqu'au plus avancé des deux : verte quand le
+temps est devant (de la marge), orange quand l'usage est devant (vous consommez plus vite que le rythme régulier), rouge si,
+en plus, le quota est en alerte. Un relevé gardé d'une autre session est dessiné pâle, l'usage seul, en bleu. La barre du cache
+montre le temps qui lui reste, en orange sanguin, et passe au bleu sur les 20 derniers % de sa durée de vie (bientôt
+froid). La barre suit le temps réellement écoulé ; la couleur de la valeur
 accorde une marge en début de fenêtre (1 h sur 5 h, 1 jour sur 7) et tient compte des seuils absolus (70 % et 90 % par défaut).
 Branche et coût restent au pied.
 

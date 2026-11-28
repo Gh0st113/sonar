@@ -25,9 +25,12 @@ In this order, separated by "·", each only when known:
 The limits (5h, week) are never there, even in alert: they are in the banner, the pane and `/sonar`.
 A single warning colour in the footer, orange, on the value (red is kept for the banner and the pane).
 
-**The banner** (`/sonar banner`, optional, on top of the footer) above the prompt: one gauge per window and for the cache, all the same height. The bar is usage;
-above each limit, a time line like UI+'s: grey up to where usage and time agree, then green when time is ahead (room to
-spare), orange when usage is ahead (you are using it faster than an even pace), red when, on top of that, the limit is in alert. The line follows the time actually elapsed; the value's colour
+**The banner** (`/sonar banner`, optional, on top of the footer) above the prompt: one bar per window and for the cache, all the same height,
+each in its own column across the width of the banner (they wrap in a narrow window). For a limit, the bar is
+blue up to where usage and time agree, then coloured up to whichever is further: green when time is ahead (room to spare),
+orange when usage is ahead (you are using it faster than an even pace), red when, on top of that, the limit is in alert. A reading kept from
+another session is drawn faded, usage alone, in blue. The cache bar shows the time it has left, in blood orange, turning
+blue over the last 20 % of its lifetime (soon cold). The bar follows the time actually elapsed; the value's colour
 allows some slack at the start of a window (1 h of 5 h, 1 day of 7) and also follows the absolute thresholds (70 % and 90 % by
 default).
 Branch and cost stay in the footer.

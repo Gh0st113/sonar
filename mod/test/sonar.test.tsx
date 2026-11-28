@@ -25,6 +25,11 @@ const BANDEAU = {
   plugin: 'sonar', component: 'AbovePrompt',
   props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 120, scroll: { offset: 0, bodyRows: 4 }, view: {} },
 } as const
+// Chaque <rect> d'une jauge : position et largeur (en % ou en px), couleur, masque (la fente).
+const rects = (s: string) => [...s.matchAll(/<rect ([^>]*)\/>/g)].map(([, a]) => {
+  const n = (k: string) => Number((new RegExp(`(?:^| )${k}="([\\d.]+)%?"`).exec(a!) ?? [])[1] ?? 0)
+  return { x: n('x'), w: n('width'), fill: /fill="([^"]+)"/.exec(a!)?.[1], masque: a!.includes('mask=') }
+})
 const INDICE = { plugin: 'sonar', component: 'PromptHint', props: { isDraft: false, isWorking: false, hint: '? for shortcuts' } } as const
 const PANNEAU = {
   plugin: 'sonar', component: 'Pane', requestId: 'sonar',
@@ -144,6 +149,34 @@ test('/sonar sans panneau placé : une ligne par élément, sans contexte ni anc
   expect(r).not.toMatch(SYMBOLES)
 })
 
+test('jauge du cache chaud : orange sanguin, bleue sur les 20 derniers % de sa durée de vie ; froid, piste vide', FR, async ($, on) => {
+  const horloge = moteur(on)
+  on('turn.step', async function* (_, e) {
+    return {
+      turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' as const,
+      usage: { input_tokens: 4, output_tokens: 1, cache_read_input_tokens: 92, cache_creation_input_tokens: 4, model: 'claude-opus-5-5' },
+    }
+  })
+  await demarrer($)
+  for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 3 })) { /* rien */ }
+  await commande($, 'bandeau')
+  const barre = async () => {
+    const ui = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+    const s = (await ui.findAll({ type: 'Svg' } as never) as { props?: { source?: string; alt?: string } }[]).map(x => x.props ?? {}).find(x => x.alt?.startsWith('cache'))
+    await ui.unmount()
+    return rects(s?.source ?? '').slice(1)
+  }
+  // Durée de vie encore inconnue : 5 min au moins. 3 min plus tard, 40 % restent : orange sanguin.
+  await horloge.advance(3 * 60_000)
+  expect(await barre()).toEqual([{ x: 0, w: 40, fill: '#d9480f', masque: false }])
+  // 4 min 30 : 10 % restent, sous le seuil des 20 % : bleu, « bientôt froid ».
+  await horloge.advance(90_000)
+  expect(await barre()).toEqual([{ x: 0, w: 10, fill: '#5b8def', masque: false }])
+  // Au-delà, le cache n'est plus chaud : plus de barre colorée.
+  await horloge.advance(H)
+  expect(await barre()).toEqual([])
+})
+
 test('cache : la réponse du fil principal compte, celle d’un sous-agent non ; froid après 1 h, alors au pied', FR, async ($, on) => {
   const horloge = moteur(on)
   on('turn.step', async function* (_, e) {
@@ -176,15 +209,15 @@ test('cache : la réponse du fil principal compte, celle d’un sous-agent non ;
   const haut = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
   expect((await haut.find({ type: 'Text', text: /^5 h/ }))?.text).toMatch(/ {3}cache froid$/)
   await haut.unmount()
-  // Sur le bureau, la jauge du cache (sans ligne de temps) a la hauteur des quotas : les barres sont alignées.
+  // Sur le bureau, la jauge du cache (sans temps écoulé) a la hauteur des quotas, chacune dans sa colonne.
   const bureau = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
   const svgs = (await bureau.findAll({ type: 'Svg' } as never) as { props?: { source?: string; height?: number; alt?: string } }[]).map(s => s.props ?? {})
+  const colonnes = (await bureau.findAll({ type: 'Box' }) as { props: { width?: unknown } }[]).filter(b => b.props.width === '30%')
   await bureau.unmount()
   expect(svgs.map(s => s.alt)).toEqual(['5 h 23 %', 'semaine 41 %', 'cache froid'])
-  expect(svgs.map(s => s.height)).toEqual([12, 12, 12])
-  const yBarre = (s: string) => [...s.matchAll(/<rect y="(\d+)"/g)].map(m => Number(m[1]))
-  expect(yBarre(svgs[2]!.source ?? '')).toEqual(yBarre(svgs[0]!.source ?? '').slice(0, 1))
-  expect(svgs[2]!.source).toContain('viewBox="0 0 120 12"')
+  expect(svgs.map(s => s.height)).toEqual([8, 8, 8])
+  expect(colonnes).toHaveLength(3)
+  expect(svgs[2]!.source).not.toMatch(/#5b8def|mask/)
   expect(await commande($, 'bandeau off')).toBe('Bandeau retiré : le pied seul.')
   expect(await pied($, 'desktop')).toBe('❄️ 1,23 $ · ⎇ x')
 })
@@ -345,35 +378,23 @@ test('/sonar bandeau : quotas en jauges sur le bureau, une ligne sur le terminal
   expect((await bureau.find({ type: 'Text', text: /^90 %$/ }))?.props.color).toBe('error')
   const svg = await bureau.find({ type: 'Svg' } as never) as { props?: { source?: string } } | undefined
   expect(svg?.props?.source).toMatch(/^<svg [^>]*>.*<\/svg>$/)
-  // Ligne de temps au-dessus de chaque quota, comme UI+ : grise jusqu'où usage et temps concordent, puis verte quand le
-  // temps est devant (5 h : 23 % pour 60 % écoulé), orange quand l'usage est devant, rouge s'il est en alerte (semaine).
-  const svgs = (await bureau.findAll({ type: 'Svg' } as never) as { props?: { source?: string; height?: number } }[]).map(s => s.props ?? {})
-  // Chaque <rect> : ses attributs numériques et sa couleur.
-  const rects = (s: string) => [...s.matchAll(/<rect ([^>]*)\/>/g)].map(([, a]) => {
-    const n = (k: string) => Number((new RegExp(`(?:^| )${k}="([\\d.]+)"`).exec(a!) ?? [])[1] ?? 0)
-    return { x: n('x'), y: n('y'), w: n('width'), h: n('height'), fill: /fill="([^"]+)"/.exec(a!)?.[1], pale: a!.includes('fill-opacity') }
-  })
-  for (const [i, couleur] of [[0, '#3fa66b'], [1, '#e5484d']] as const) {
-    const r = rects(svgs[i]!.source ?? '')
-    const ligneTemps = r.filter(x => x.h === 3)
-    const gris = ligneTemps.find(x => x.fill === '#888' && !x.pale)
-    const teinte = ligneTemps.find(x => x.fill !== '#888')
-    const barre = r.find(x => x.h === 6 && !x.pale) ?? r.find(x => x.h === 6 && x.w < 120)
-    // Gris de 0 à min(usage, temps), teinte de là jusqu'au max ; l'usage est la barre.
-    expect(teinte?.fill).toBe(couleur)
-    expect(teinte?.x).toBe(gris?.w ?? 0)
-    // Temps devant (vert) : le gris s'arrête à l'usage, la teinte va au temps ; usage devant : la teinte finit à l'usage.
-    const usage = barre!.w
-    const gw = gris?.w ?? 0
-    const bout = teinte!.x + teinte!.w
-    if (couleur === '#3fa66b') expect([gw, bout > usage]).toEqual([usage, true])
-    else expect([bout, gw < usage]).toEqual([usage, true])
-    // Géométrie : ligne en haut (y 0), 2 px d'écart, barre dessous, hauteur annoncée = viewBox.
-    expect(ligneTemps.every(x => x.y === 0)).toBe(true)
-    expect(barre!.y - 3).toBe(2)
-    expect(svgs[i]!.height).toBe(12)
-    expect(svgs[i]!.source).toContain('viewBox="0 0 120 12"')
+  // Une barre par quota : bleue de 0 jusqu'où usage et temps concordent, puis colorée jusqu'au plus avancé des deux, verte
+  // quand le temps est devant (5 h : 23 % pour 60 % écoulé), orange quand l'usage est devant, rouge en alerte (semaine :
+  // 90 % pour 57,1 %). Après la piste, la couleur va de 0 au bout et le bleu par-dessus : la jonction reste nette.
+  const svgs = (await bureau.findAll({ type: 'Svg' } as never) as { props?: { source?: string; height?: number; width?: number } }[]).map(s => s.props ?? {})
+  expect(svgs).toHaveLength(2)
+  const [v5h, vSem] = [svgs[0]!.source ?? '', svgs[1]!.source ?? '']
+  expect(rects(v5h).slice(1)).toEqual([{ x: 0, w: 60, fill: '#3fa66b', masque: false }, { x: 0, w: 23, fill: '#5b8def', masque: false }])
+  expect(rects(vSem).slice(1)).toEqual([{ x: 0, w: 90, fill: '#e5484d', masque: false }, { x: 0, w: 57.1, fill: '#5b8def', masque: false }])
+  for (const s of [v5h, vSem]) expect(s).not.toMatch(/mask|#d4a017/)
+  // Largeur : celle de la colonne (pas de `width` : le dessin, en %, est borné par la place) ; une seule hauteur.
+  for (const s of svgs) {
+    expect([s.width, s.height]).toEqual([undefined, 8])
+    expect(s.source).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" width="2000" height="8">/)
+    expect(s.source).not.toContain('viewBox')
   }
+  const colonnes = (await bureau.findAll({ type: 'Box' }) as { props: { width?: unknown; flexGrow?: unknown; minWidth?: unknown } }[]).filter(b => b.props.width === '30%')
+  expect(colonnes.map(b => [b.props.flexGrow, b.props.minWidth])).toEqual([[1, 24], [1, 24]])
   expect(await bureau.find({ type: 'Button' })).toBeUndefined()
   // Branche et coût sont au pied, plus dans le bandeau.
   expect(await bureau.find({ type: 'Text', text: /branche|coût|1,23/ })).toBeUndefined()
@@ -385,7 +406,23 @@ test('/sonar bandeau : quotas en jauges sur le bureau, une ligne sur le terminal
   const s5h = ((await avance.findAll({ type: 'Svg' } as never))[0] as { props?: { source?: string } }).props?.source ?? ''
   expect(s5h).toContain('#e0913a')
   expect(s5h).not.toMatch(/#3fa66b|#e5484d/)
+  expect(rects(s5h).slice(1)).toEqual([{ x: 0, w: 65, fill: '#e0913a', masque: false }, { x: 0, w: 60, fill: '#5b8def', masque: false }])
   await avance.unmount()
+  // Niveau « attention » (72 % pour 60 %) : la barre suit le rythme, orange ; le jaune reste sur la valeur en texte.
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 72 }, QUOTAS[1]!] })
+  const attention = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  const sAtt = ((await attention.findAll({ type: 'Svg' } as never))[0] as { props?: { source?: string } }).props?.source ?? ''
+  expect((await attention.find({ type: 'Text', text: /^72 %$/ }))?.props.color).toBe('warning')
+  await attention.unmount()
+  expect(sAtt).toContain('#e0913a')
+  expect(sAtt).not.toContain('#d4a017')
+  // Alerte par le seuil absolu (92 %) mais temps devant (96 % écoulé) : la marge reste verte, jamais rouge.
+  await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 92, resetsAt: iso(T0 + 0.2 * H) }, QUOTAS[1]!] })
+  const marge = await $.ui.mount({ ...BANDEAU, surface: 'desktop' })
+  const sMarge = ((await marge.findAll({ type: 'Svg' } as never))[0] as { props?: { source?: string } }).props?.source ?? ''
+  expect((await marge.find({ type: 'Text', text: /^92 %$/ }))?.props.color).toBe('error')
+  await marge.unmount()
+  expect(rects(sMarge).slice(1)).toEqual([{ x: 0, w: 96, fill: '#3fa66b', masque: false }, { x: 0, w: 92, fill: '#5b8def', masque: false }])
   await $.session.measure({ ...MESURE, rateLimits: [QUOTAS[0]!, { ...QUOTAS[1]!, percentUsed: 90 }] })
   const terminal = await $.ui.mount({ ...BANDEAU, surface: 'terminal' })
   expect((await terminal.find({ type: 'Text', text: /^5 h/ }))?.text).toMatch(/^5 h 23 % \(remise \d\d:\d\d\) {3}semaine 90 % \(.+\)$/)
@@ -683,7 +720,9 @@ test('session froide : la valeur vive remplace le relevé même plus basse ; jau
   const sources = (await bureau.findAll({ type: 'Svg' } as never) as { props?: { source?: string } }[]).map(s => s.props?.source ?? '')
   await bureau.unmount()
   expect(sources[0]).toContain('<g opacity="0.5">')
-  expect(sources[0]).not.toContain('height="3"')
+  expect(sources[0]).not.toMatch(/#3fa66b|#e0913a|#e5484d|mask/)
+  // Relevé gardé (87 %, niveau attention) : une barre bleue d'usage seule ; le jaune reste sur la valeur en texte.
+  expect(rects(sources[0]!).slice(1)).toEqual([{ x: 0, w: 87, fill: '#5b8def', masque: false }])
   await $.session.measure({ ...MESURE, rateLimits: [{ ...QUOTAS[0]!, percentUsed: 30 }, QUOTAS[1]!] })
   const r = await commande($, '')
   expect(r).toContain('5 h 30 %')
